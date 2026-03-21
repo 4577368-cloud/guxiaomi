@@ -1,5 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "fastapi",
-  "buildCommand": "python3 scripts/write_env_js.py && rm -rf web_public && mkdir -p web_public && cp -a project-proj_21qCfX0Vycj/. web_public/"
+  "buildCommand": "python3 scripts/write_env_js.py && rm -rf web_public && mkdir -p web_public && cp -a project-proj_21qCfX0Vycj/. web_public/",
+  "functions": {
+    "app.py": { "maxDuration": 300 }
+  }
 }

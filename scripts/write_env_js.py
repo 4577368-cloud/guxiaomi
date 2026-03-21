@@ -7,7 +7,25 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "project-proj_21qCfX0Vycj" / "env.js"
-base = (os.environ.get("ANALYSIS_API_BASE") or "").strip().rstrip("/")
+
+# 仅 ANALYSIS_API_BASE 会写入 env.js；以下别名避免在 Vercel 配错变量名导致前端一直用同源（静态站则无 /api → 404）
+def _api_base_from_env() -> str:
+    primary = (os.environ.get("ANALYSIS_API_BASE") or "").strip().rstrip("/")
+    if primary:
+        return primary
+    for key in (
+        "NEXT_PUBLIC_ANALYSIS_API_BASE",
+        "PUBLIC_ANALYSIS_API_BASE",
+        "VITE_ANALYSIS_API_BASE",
+    ):
+        v = (os.environ.get(key) or "").strip().rstrip("/")
+        if v:
+            print(f"write_env_js: using {key} (set ANALYSIS_API_BASE for clarity)")
+            return v
+    return ""
+
+
+base = _api_base_from_env()
 
 commit = (
     os.environ.get("VERCEL_GIT_COMMIT_SHA")

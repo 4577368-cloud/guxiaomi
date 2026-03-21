@@ -280,8 +280,27 @@ function fetchWithTimeoutNoAbort(url, options, timeoutMs) {
 function AnalysisApp() {
   const [apiBase, setApiBase] = React.useState(function () {
     try {
-      if (window.ANALYSIS_API_BASE) return window.ANALYSIS_API_BASE;
-      var saved = localStorage.getItem("analysis_api_base");
+      var injected = (window.ANALYSIS_API_BASE || "").trim().replace(/\/+$/, "");
+      if (injected) return injected;
+      var saved = (localStorage.getItem("analysis_api_base") || "").trim().replace(
+        /\/+$/,
+        "",
+      );
+      /* 线上站点勿沿用本地开发时写入的 localhost，否则会 404 或混合内容失败 */
+      var onDeployed =
+        typeof location !== "undefined" &&
+        location.hostname !== "localhost" &&
+        location.hostname !== "127.0.0.1";
+      if (
+        saved &&
+        onDeployed &&
+        /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test(saved)
+      ) {
+        saved = "";
+        try {
+          localStorage.removeItem("analysis_api_base");
+        } catch (_) {}
+      }
       if (saved) return saved;
     } catch (_) {}
     return API_BASE_FALLBACK;
@@ -758,6 +777,13 @@ function AnalysisApp() {
     setReport(null);
     const marketMap = { A股: "A 股", 港股: "港股", 美股: "美股" };
     try {
+      /* Vercel 上分析在同一次 POST 内跑完，可能需数分钟；本地仅返回 job_id，很快 */
+      var analyzePostTimeoutMs =
+        typeof location !== "undefined" &&
+        location.hostname !== "localhost" &&
+        location.hostname !== "127.0.0.1"
+          ? 360000
+          : 20000;
       const res = await fetchWithTimeoutNoAbort(
         `${apiBase}/api/analyze`,
         {
@@ -771,7 +797,7 @@ function AnalysisApp() {
             use_mock: form.use_mock,
           }),
         },
-        20000,
+        analyzePostTimeoutMs,
       );
       if (!res.ok) {
         const t = await res.text();
@@ -792,6 +818,25 @@ function AnalysisApp() {
       }
       const data = await res.json();
       if (!data.job_id) throw new Error("未返回任务 ID");
+      /* Vercel：后端 sync 一次返回结果，避免 Serverless 后台线程 + 跨实例轮询 404 */
+      if (data.sync && data.status === "done" && data.result) {
+        setReport(data.result);
+        setActiveTab("summary");
+        setJobId("");
+        try {
+          localStorage.removeItem(JOB_STORAGE_KEY);
+          localStorage.removeItem(JOB_STORAGE_VERSION_KEY);
+        } catch (_) {}
+        return;
+      }
+      if (data.sync && data.status === "failed") {
+        setError(data.error || "分析失败");
+        return;
+      }
+      if (data.sync && data.error) {
+        setError(data.error);
+        return;
+      }
       setJobId(data.job_id);
       try {
         localStorage.setItem(JOB_STORAGE_KEY, data.job_id);

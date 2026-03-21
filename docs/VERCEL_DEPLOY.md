@@ -9,7 +9,7 @@
 
 **推荐：** 生产环境 **API** 仍优先部署在 Render / Railway / VPS 等；Vercel 以静态页 + `ANALYSIS_API_BASE` 指过去为主。
 
-**异步分析任务（job 轮询）在 Vercel 上的限制：** 任务状态会写入 **`/tmp`**（与报告目录一致），**同一 Serverless 实例**内可轮询成功；若负载均衡把轮询打到**另一实例**，仍可能短暂 **404**（前端已对连续多次 404 再放弃）。**旧部署留下的 `localStorage` job_id** 在新实例上也会失效。长时间、强一致任务请使用**常驻进程**的 API 主机。
+**异步分析任务（job 轮询）在 Vercel 上的限制（已部分规避）：** 任务状态会写入 **`/tmp`**，轮询若打到**另一实例**会 **404**。当前实现：检测到 Vercel 运行时后，`POST /api/analyze` 会在**同一次请求内同步跑完分析**并直接返回 `result`（`sync: true`），前端不再依赖轮询。**代价：** 单次请求可能长达数分钟，需在 `vercel.json` 为 **`app.py` 配置 `maxDuration`**（已示例 300s），且受 **Vercel 套餐上限**约束（Hobby 默认较短，若仍超时需升级 Pro 或把 API 迁到常驻主机）。
 
 若坚持在 Vercel 上跑 FastAPI，需知：
 
@@ -84,7 +84,28 @@ python3 run_web.py
 
 ---
 
-## 五、部署后自检
+## 五、分析页 404（`/api/...` NOT_FOUND）排查
+
+1. **Vercel 是否跑起了 Python？**  
+   Project → Settings → General：**Framework Preset 须为 FastAPI**（或根目录 `vercel.json` 含 `"framework": "fastapi"`）。若误选 **Other / Static**，往往只发布静态文件，**没有** `/api/*` 路由 → 浏览器访问 `https://xxx.vercel.app/api/health` 会 **404**。  
+   **处理：** 改 Framework 后重新部署；或把 API 单独部署到 Render/Railway 等，并在 Vercel 配置 **`ANALYSIS_API_BASE=https://你的API根`**.
+
+2. **`ANALYSIS_API_BASE` 与 `env.js`**  
+   构建脚本**只**把 **`ANALYSIS_API_BASE`**（及少数别名，见 `write_env_js.py`）写入 `env.js`。若只在 Vercel 里配了 `API_URL`、`BACKEND_URL` 等**其它名字**，前端**不会**读到，仍会按「同源」请求当前站点 → 静态站即 404。  
+   **处理：** 在 Vercel Environment Variables 增加 **`ANALYSIS_API_BASE`**（无尾斜杠），值为你的 HTTPS API 根地址；重新部署后打开 `analysis.html` → Network 里请求域名应对应该变量。
+
+3. **本地 `localStorage` 污染**  
+   曾在本机用过分析页时可能写入 `analysis_api_base = http://localhost:8123`。在 **已部署的 https 站点** 上若仍沿用该值，请求会打到本机或失败。前端已尽量忽略「线上页面 + localhost 基址」的组合；若仍异常，在浏览器控制台执行：  
+   `localStorage.removeItem('analysis_api_base')` 后刷新。
+
+4. **临时指定 API**  
+   访问  
+   `analysis.html?api=https%3A%2F%2F你的API域名`  
+   可覆盖 `env.js` 与 localStorage，用于快速验证后端是否正常。
+
+---
+
+## 六、部署后自检
 
 1. 打开 `https://你的项目.vercel.app/analysis.html`。  
 2. 开发者工具 → Network：请求应指向 **`ANALYSIS_API_BASE` 的域名**，且状态 200。  
@@ -92,7 +113,7 @@ python3 run_web.py
 
 ---
 
-## 六、与「仅在 Vercel 配了 API 变量」的对应关系
+## 七、与「仅在 Vercel 配了 API 变量」的对应关系
 
 - **只配在 Vercel、且变量名不是 `ANALYSIS_API_BASE`**：前端 **不会**自动读到，请在 Vercel 增加 **`ANALYSIS_API_BASE`**（或改 `write_env_js.py` 去读你现有的变量名）。  
 - **Python API 的密钥**：必须在 **API 托管平台** 再配置一遍；Vercel 上的变量仅用于 **构建静态站时注入浏览器可见的 API 根地址**（`env.js`），不要把私钥写进 `env.js`。

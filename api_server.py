@@ -289,11 +289,38 @@ def _run_analyze_task(job_id: str, req: AnalyzeRequest):
 
 @app.post("/api/analyze")
 def api_analyze(req: AnalyzeRequest):
-    """提交分析任务，立即返回 job_id；分析在后台执行，报告默认保存。轮询 GET /api/analyze/status/{job_id} 获取结果。"""
+    """提交分析任务，立即返回 job_id；分析在后台执行，报告默认保存。轮询 GET /api/analyze/status/{job_id} 获取结果。
+
+    Vercel Serverless：请求返回后实例可能被冻结/轮换，后台线程与 /tmp 任务在轮询时经常对不上 → 分析看似「卡住」或 status 404。
+    因此在 Vercel 运行时改为**本请求内同步跑完**分析，并在响应里直接带上 result / error（前端可跳过轮询）。
+    """
     job_id = str(uuid.uuid4())
     with _jobs_lock:
-        _jobs[job_id] = {"status": "pending", "result": None, "error": None, "created_at": datetime.now().isoformat()}
+        _jobs[job_id] = {
+            "status": "pending",
+            "result": None,
+            "error": None,
+            "created_at": datetime.now().isoformat(),
+        }
         _persist_job_disk(job_id, _jobs[job_id])
+
+    if _is_vercel_runtime():
+        _run_analyze_task(job_id, req)
+        with _jobs_lock:
+            job = dict(_jobs.get(job_id) or {})
+        out: Dict[str, Any] = {"ok": True, "job_id": job_id, "sync": True}
+        st = job.get("status")
+        if st == "done" and job.get("result"):
+            out["status"] = "done"
+            out["result"] = job["result"]
+        elif st == "failed":
+            out["status"] = "failed"
+            out["error"] = job.get("error") or "分析失败"
+        else:
+            out["status"] = st or "unknown"
+            out["error"] = job.get("error")
+        return out
+
     t = threading.Thread(target=_run_analyze_task, args=(job_id, req), daemon=True)
     t.start()
     return {"ok": True, "job_id": job_id}
