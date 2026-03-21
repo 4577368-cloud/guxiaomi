@@ -26,6 +26,10 @@ cd guxiaomi
 pip install -r requirements-dev.txt
 ```
 
+## 部署（API 与静态站分离）
+
+生产推荐：**API** 部署在 [Render](https://render.com) / [Railway](https://railway.app) / 自有 VPS；**页面**部署在 Vercel，并在 Vercel 环境变量中设置 **`ANALYSIS_API_BASE`** 指向 API 的 HTTPS 根地址。逐步说明见 **`docs/SPLIT_DEPLOY.md`**。
+
 ## 数据源说明
 
 - **A 股**：本地推荐 **akshare**（`requirements-dev.txt`）；仅装 `requirements.txt` 时走 **腾讯财经 + yfinance** 等多源合并。

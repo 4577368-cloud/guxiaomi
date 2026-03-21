@@ -448,7 +448,7 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
               <a href={`analysis.html?code=${encodeURIComponent(stock.symbol)}&market=${marketStr}${stock.name ? '&name=' + encodeURIComponent(stock.name) : ''}`} className="btn btn-primary btn-sm">分析</a>
               <a href={newsUrl} className="btn btn-sm" style={{ backgroundColor: '#d02f5e', color: 'white' }}>新闻</a>
               <button type="button" onClick={() => { try { handleRefreshPrice(); } catch (e) { console.error(e); setIsRefreshingPrice(false); } }} disabled={isRefreshingPrice} className="btn btn-success btn-sm disabled:opacity-50">{isRefreshingPrice ? '刷新中' : '刷新'}</button>
-              <button type="button" onClick={() => { try { handleFetchHistory30(); } catch (e) { console.error(e); setIsFetchingHistory(false); } }} disabled={isFetchingHistory} className="btn btn-primary btn-sm disabled:opacity-50">{isFetchingHistory ? '获取中' : '获取30日收盘'}</button>
+              <button type="button" onClick={() => { try { handleFetchHistory30(); } catch (e) { console.error(e); setIsFetchingHistory(false); } }} disabled={isFetchingHistory} className="btn btn-primary btn-sm disabled:opacity-50" title="拉取最近30个交易日收盘价">{isFetchingHistory ? '…' : '30日收盘'}</button>
               <button type="button" onClick={onDelete} className="btn btn-danger btn-sm">删除</button>
               <button type="button" onClick={onToggleCollapse} className="btn btn-secondary btn-sm p-1.5" title={isCollapsed ? '展开' : '折叠'} aria-label={isCollapsed ? '展开' : '折叠'}>
                 <div className={`icon-chevron-${isCollapsed ? 'down' : 'up'} text-sm`}></div>

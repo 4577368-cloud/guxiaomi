@@ -1,0 +1,11 @@
+# Render Blueprint 可选模板：New → Blueprint 连接仓库后按需调整 rootDir / 区域
+# 若仓库根目录不是 guxiaomi，请取消注释并修改 rootDir
+services:
+  - type: web
+    name: guxiaomi-stock-api
+    runtime: python
+    plan: free
+    # rootDir: stock_analyzer/guxiaomi
+    buildCommand: pip install -r requirements-dev.txt
+    startCommand: uvicorn api_server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health

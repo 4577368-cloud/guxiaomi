@@ -1,5 +1,7 @@
 # 部署到 Vercel + 远程 API（股小蜜 / 股票分析）
 
+**分离部署（推荐生产）：** API 在 Render / Railway / VPS，Vercel 只发布静态页 + `ANALYSIS_API_BASE` → 完整操作清单见 **[SPLIT_DEPLOY.md](./SPLIT_DEPLOY.md)**。
+
 ## 架构说明（重要）
 
 | 部分 | 适合放 Vercel？ | 说明 |

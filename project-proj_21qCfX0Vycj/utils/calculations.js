@@ -236,3 +236,91 @@ function calculateBreakEvenPrice(stock, totalShares, totalCostWithFees, brokerCh
   
   return Math.max(0, Math.round(breakEvenPrice * 1000) / 1000);
 }
+
+/**
+ * 反推：卖出多少股、在什么单价卖，使「该笔卖出」的净盈利（实收 - 对应成本）≈ targetNetProfit。
+ * 与「现价 × 倍数」不同：会按单价从低到高搜索；持仓浮亏时需在更高价位卖足量才能净赚目标，而不是误导向「卖一部分就能实现目标盈利」。
+ * 在多种股数组合中选 |净盈利-目标| 最小且卖出总价（毛）相对较低的一种。
+ */
+function findSellPlanForTargetNetProfit(stock, stockAnalysis, brokerChannel, targetNetProfit) {
+  const maxShares = Math.floor(Number(stockAnalysis.totalShares) || 0);
+  const avgCost = Number(stockAnalysis.avgCost) || 0;
+  const currentPrice = Number(stock.currentPrice) || 0;
+  const breakEven = Number(stockAnalysis.breakEvenPrice) || 0;
+
+  if (!targetNetProfit || targetNetProfit <= 0 || maxShares <= 0 || avgCost <= 0) {
+    return null;
+  }
+
+  const tol = Math.max(1, targetNetProfit * 0.02);
+  let best = null;
+  let bestScore = Infinity;
+
+  const simAt = function (price, sh) {
+    if (price <= 0 || sh <= 0) return { netProfit: -1e18, grossAmount: 1e18 };
+    return calculateSellSimulation(stock, price, sh, brokerChannel);
+  };
+
+  const shareList = (function () {
+    if (maxShares <= 800) {
+      var arr = [];
+      for (var i = 1; i <= maxShares; i++) arr.push(i);
+      return arr;
+    }
+    var set = {};
+    set[1] = true;
+    set[maxShares] = true;
+    var stride = Math.ceil(maxShares / 350);
+    var j;
+    for (j = 1; j <= maxShares; j += stride) set[j] = true;
+    for (j = Math.max(1, maxShares - 40); j <= maxShares; j++) set[j] = true;
+    return Object.keys(set)
+      .map(function (x) {
+        return parseInt(x, 10);
+      })
+      .sort(function (a, b) {
+        return a - b;
+      });
+  })();
+
+  var si, shares, hi, npHi, expand, it, l, r, m, sim, diff, score;
+  for (si = 0; si < shareList.length; si++) {
+    shares = shareList[si];
+    hi = Math.max(currentPrice || 0, breakEven || 0, avgCost) * 2;
+    if (hi < 1e-6) hi = avgCost * 2;
+    npHi = simAt(hi, shares).netProfit;
+    expand = 0;
+    while (npHi < targetNetProfit - tol && expand < 45) {
+      hi *= 1.4;
+      npHi = simAt(hi, shares).netProfit;
+      expand++;
+    }
+    if (npHi < targetNetProfit - tol) continue;
+
+    l = 1e-12;
+    r = hi;
+    for (it = 0; it < 56; it++) {
+      m = (l + r) / 2;
+      if (simAt(m, shares).netProfit < targetNetProfit) l = m;
+      else r = m;
+    }
+    sim = simAt(r, shares);
+    diff = Math.abs(sim.netProfit - targetNetProfit);
+    score = diff * 1e9 + sim.grossAmount;
+    if (score < bestScore) {
+      bestScore = score;
+      best = {
+        sellPrice: r,
+        sellShares: shares,
+        remainingShares: maxShares - shares,
+        netProfit: sim.netProfit,
+        grossAmount: sim.grossAmount,
+        totalFees: sim.totalFees,
+        netAmount: sim.netAmount,
+        profitPercent: sim.profitPercent,
+      };
+    }
+  }
+
+  return best;
+}

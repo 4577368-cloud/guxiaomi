@@ -501,6 +501,33 @@ function scrollToReportAnchor(anchorId) {
   } catch (_) {}
 }
 
+/** 对比与异动：模板/页面已有「📌 对比上次变化…」，去掉模型重复输出的 # 标题 */
+function stripDuplicateDiffMarkdownHeadings(text) {
+  if (text == null || typeof text !== "string") return text;
+  var t = text.trim();
+  var kw = /对比上次|对比与异动|异动信号/;
+  for (var i = 0; i < 8; i++) {
+    var m = t.match(/^(#{1,3}\s*[^\n]+)\n*/);
+    if (!m) break;
+    var title = m[1].replace(/^#+\s*/, "");
+    if (kw.test(title)) t = t.slice(m[0].length).trim();
+    else break;
+  }
+  return t;
+}
+
+/** 分析师卡片顶栏已有角色与投资建议，去掉正文开头的「## 核心结论」 */
+function stripCoreConclusionHeading(text) {
+  if (text == null || typeof text !== "string") return text;
+  var t = text.trim();
+  for (var j = 0; j < 3; j++) {
+    var m2 = t.match(/^#{1,3}\s*核心结论\s*[^\n]*\n+/i);
+    if (!m2) break;
+    t = t.slice(m2[0].length).trim();
+  }
+  return t;
+}
+
 /** 表格行拆单元格：| a | b | */
 function splitTableCells(row) {
   return row
@@ -2767,7 +2794,11 @@ function AnalysisApp() {
                         </span>
                       </div>
                       <div className="report-markdown-block text-gray-700">
-                        {renderMarkdown(formatReportValue(r.核心分析))}
+                        {renderMarkdown(
+                          stripCoreConclusionHeading(
+                            formatReportValue(r.核心分析),
+                          ),
+                        )}
                       </div>
                       {r.核心要点 && r.核心要点.length > 0 && (
                         <ul className="list-disc pl-6 mt-2 space-y-1 text-gray-700 font-medium">
@@ -2828,7 +2859,9 @@ function AnalysisApp() {
               {activeTab === "diff" && (
                 <div className="report-markdown-block">
                   {renderMarkdown(
-                    formatReportValue(report.对比与异动) || "暂无",
+                    stripDuplicateDiffMarkdownHeadings(
+                      formatReportValue(report.对比与异动) || "暂无",
+                    ),
                   )}
                 </div>
               )}

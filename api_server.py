@@ -251,6 +251,7 @@ def _report_to_payload(report, md_content: str, html_content: str, base_name: st
         "操作建议": report.操作建议,
         "对比与异动": getattr(report, "对比与异动", "") or "",
         "数据快照补充": getattr(report, "快照补充说明", "") or "",
+        "数据快照系统指标": getattr(report, "数据快照系统指标表行", "") or "",
         "分析师报告": [
             {
                 "分析师姓名": r.分析师姓名,

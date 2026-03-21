@@ -321,6 +321,11 @@ function SellSimulationSection({
   const [targetProfit, setTargetProfit] = React.useState('');
   const [profitSimResult, setProfitSimResult] = React.useState(null);
 
+  const currencyLabel =
+    stock.market === 'US' ? '美元' : stock.market === 'CN' ? '人民币' : '港元';
+  const currencyHint =
+    stock.market === 'US' ? 'USD' : stock.market === 'CN' ? 'CNY' : 'HKD';
+
   const calculateSellForTargetProfit = (targetProfitAmount) => {
     if (!targetProfitAmount || targetProfitAmount <= 0 || stockAnalysis.totalShares === 0) {
       setProfitSimResult(null);
@@ -328,49 +333,11 @@ function SellSimulationSection({
     }
 
     const target = parseFloat(targetProfitAmount);
-    let bestResult = null;
-    let minDiff = Infinity;
-
-    // Try different combinations of sell price and shares
-    const currentPrice = stock.currentPrice || 0;
-    const maxShares = stockAnalysis.totalShares;
-    
-    // Start from minimum profitable price (break-even + small increment)
-    const minPrice = stockAnalysis.breakEvenPrice * 1.001;
-    const maxPrice = currentPrice * 1.5; // Up to 50% above current price
-    
-    // Iterate through possible prices and shares
-    for (let shares = 1; shares <= maxShares; shares++) {
-      for (let priceMultiplier = 1.0; priceMultiplier <= 1.5; priceMultiplier += 0.001) {
-        const sellPrice = currentPrice * priceMultiplier;
-        
-        if (sellPrice < minPrice) continue;
-        if (sellPrice > maxPrice) break;
-        
-        const sim = calculateSellSimulation(stock, sellPrice, shares, brokerChannel);
-        const diff = Math.abs(sim.netProfit - target);
-        
-        if (sim.netProfit >= target * 0.95 && diff < minDiff) {
-          minDiff = diff;
-          bestResult = {
-            sellPrice: sellPrice,
-            sellShares: shares,
-            netProfit: sim.netProfit,
-            grossAmount: sim.grossAmount,
-            totalFees: sim.totalFees,
-            netAmount: sim.netAmount,
-            profitPercent: sim.profitPercent,
-            remainingShares: maxShares - shares
-          };
-          
-          // If we found exact match or close enough, stop searching
-          if (diff < target * 0.01) break;
-        }
-      }
-      if (bestResult && minDiff < target * 0.01) break;
-    }
-
-    setProfitSimResult(bestResult);
+    const plan =
+      typeof findSellPlanForTargetNetProfit === 'function'
+        ? findSellPlanForTargetNetProfit(stock, stockAnalysis, brokerChannel, target)
+        : null;
+    setProfitSimResult(plan);
   };
 
   const handleProfitTargetSelect = (amount) => {
@@ -414,10 +381,13 @@ function SellSimulationSection({
 
       {/* Net Profit Target Simulation */}
       <div className="mb-4 p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg border border-purple-200">
-        <h5 className="text-sm font-semibold text-purple-900 mb-3 flex items-center gap-2">
+        <h5 className="text-sm font-semibold text-purple-900 mb-1 flex items-center gap-2">
           <div className="icon-target text-sm text-purple-600"></div>
-          按净盈利目标计算
+          净盈利目标 → 卖出规模
         </h5>
+        <p className="text-[11px] text-purple-800/90 leading-relaxed mb-3">
+          反推「该笔卖出」净盈利约等于目标时，需卖出的<strong>总价</strong>与<strong>股数/参考单价</strong>。持仓浮亏时必须在足够高的价位卖够量才能实现正净盈利，不是「随便卖一部分就净赚」。
+        </p>
         
         <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
@@ -431,32 +401,48 @@ function SellSimulationSection({
                     : 'bg-white text-purple-700 border border-purple-300 hover:bg-purple-100'
                 }`}
               >
-                HK${amount.toLocaleString()}
+                {stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}
+                {amount.toLocaleString()}
+                {stock.market === 'HK' ? ' 港元' : ''}
               </button>
             ))}
           </div>
           
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">自定义目标净盈利 (HKD)</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              自定义目标净盈利（{currencyLabel}，{currencyHint}）
+            </label>
             <input
               type="number"
               step="100"
               value={targetProfit}
               onChange={(e) => handleProfitTargetInput(e.target.value)}
               className="w-full px-3 py-2 text-sm border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-              placeholder="输入目标净盈利金额"
+              placeholder={'目标金额（' + currencyLabel + '）'}
             />
           </div>
 
           {profitSimResult ? (
             <div className="mt-3 p-3 bg-white rounded-lg border border-purple-300">
-              <div className="grid grid-cols-3 gap-3 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                <div className="col-span-2 sm:col-span-1">
+                  <span className="text-gray-600 block mb-1">卖出总价（毛）</span>
+                  <span className="font-bold text-purple-900 text-sm" dangerouslySetInnerHTML={{ __html: `${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(profitSimResult.grossAmount, 2)}` }} />
+                </div>
                 <div>
-                  <span className="text-gray-600 block mb-1">建议卖出价格</span>
+                  <span className="text-gray-600 block mb-1">实收净额</span>
+                  <span className="font-bold text-purple-900 text-sm" dangerouslySetInnerHTML={{ __html: `${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(profitSimResult.netAmount, 2)}` }} />
+                </div>
+                <div>
+                  <span className="text-gray-600 block mb-1">该笔净盈利</span>
+                  <span className={`font-bold text-sm ${profitSimResult.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`} dangerouslySetInnerHTML={{ __html: `${profitSimResult.netProfit >= 0 ? '+' : ''}${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(profitSimResult.netProfit, 2)}` }} />
+                </div>
+                <div>
+                  <span className="text-gray-600 block mb-1">参考卖出单价</span>
                   <span className="font-bold text-purple-900 text-sm" dangerouslySetInnerHTML={{ __html: `${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(profitSimResult.sellPrice, 3)}` }} />
                 </div>
                 <div>
-                  <span className="text-gray-600 block mb-1">建议卖出股数</span>
+                  <span className="text-gray-600 block mb-1">卖出股数</span>
                   <span className="font-bold text-purple-900 text-sm">{profitSimResult.sellShares.toLocaleString()}</span>
                 </div>
                 <div>
@@ -464,18 +450,17 @@ function SellSimulationSection({
                   <span className="font-medium text-blue-600 text-sm">{profitSimResult.remainingShares.toLocaleString()} 股</span>
                 </div>
                 <div>
-                  <span className="text-gray-600 block mb-1">预计净盈利</span>
-                  <span className="font-bold text-green-600 text-sm" dangerouslySetInnerHTML={{ __html: `+${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(profitSimResult.netProfit, 2)}` }} />
+                  <span className="text-gray-600 block mb-1">该笔收益率</span>
+                  <span className={`font-bold text-sm ${profitSimResult.profitPercent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {(profitSimResult.profitPercent >= 0 ? '+' : '') +
+                      (Number.isFinite(Number(profitSimResult.profitPercent))
+                        ? Number(profitSimResult.profitPercent)
+                        : 0
+                      ).toFixed(2)}
+                    %
+                  </span>
                 </div>
-                <div>
-                  <span className="text-gray-600 block mb-1">收益率</span>
-                  <span className="font-bold text-green-600 text-sm">+{(Number.isFinite(Number(profitSimResult.profitPercent)) ? Number(profitSimResult.profitPercent) : 0).toFixed(2)}%</span>
-                </div>
-                <div>
-                  <span className="text-gray-600 block mb-1">卖出总额</span>
-                  <span className="font-medium text-sm" dangerouslySetInnerHTML={{ __html: `${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(profitSimResult.grossAmount, 2)}` }} />
-                </div>
-                <div className="col-span-3">
+                <div className="col-span-2 sm:col-span-3">
                   <span className="text-gray-600 block mb-1">手续费</span>
                   <span className="font-medium text-orange-600 text-sm" dangerouslySetInnerHTML={{ __html: `${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(profitSimResult.totalFees, 2)}` }} />
                 </div>
@@ -483,7 +468,7 @@ function SellSimulationSection({
             </div>
           ) : targetProfit && (
             <div className="mt-3 p-3 bg-yellow-50 rounded-lg border border-yellow-300 text-xs text-yellow-800">
-              无法找到满足目标净盈利的卖出方案，请尝试降低目标金额或等待股价上涨
+              在当前费率与持仓下，无法在合理单价范围内凑出该净盈利目标；可调低目标、或等待价格上行后再算。
             </div>
           )}
         </div>

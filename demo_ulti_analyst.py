@@ -114,6 +114,37 @@ def _fmt_range_cn(low: float, high: float) -> str:
     return f"{_fmt_price(low)}～{_fmt_price(high)}"
 
 
+def _strip_md_headings_with_keywords(
+    text: str,
+    keywords: Tuple[str, ...],
+    *,
+    max_passes: int = 8,
+) -> str:
+    """去掉文首连续的 #/##/### 标题行（标题文本含任一 keyword 时），避免与页面或模板标题重复。"""
+    t = (text or "").strip()
+    for _ in range(max_passes):
+        m = re.match(r"^#{1,3}\s*([^\n]+)\n*", t)
+        if not m:
+            break
+        title = m.group(1).strip()
+        if any(kw in title for kw in keywords):
+            t = t[m.end() :].lstrip()
+            continue
+        break
+    return t
+
+
+def _strip_core_conclusion_heading(text: str) -> str:
+    """分析师正文：去掉开头的「核心结论」Markdown 标题（卡片顶栏已有角色与投资建议）。"""
+    t = (text or "").strip()
+    for _ in range(3):
+        m = re.match(r"^#{1,3}\s*核心结论\s*[^\n]*\n+", t, re.IGNORECASE)
+        if not m:
+            break
+        t = t[m.end() :].lstrip()
+    return t
+
+
 def _now_cn() -> datetime:
     """报告、行情时间戳用北京时间，避免 Vercel 等 UTC 环境比国内慢约 8 小时。"""
     if ZoneInfo is not None:
@@ -199,6 +230,8 @@ class FinalReport:
     对比与异动:str = ""  # 相对历史报告的变化与异动信号解读（有历史报告时填充）
     # 补充摘录合并后的盘口、流动性、每股指标等（写入报告「数据快照」扩展区）
     快照补充说明:str = ""
+    # 系统计算的区间/波动率/分位/技术指标等 Markdown 表行（与数据基准三列解耦）
+    数据快照系统指标表行:str = ""
 
 # ==================== 角色提示词库（增强版） ====================
 # 借鉴 TradingAgents：每位分析师只引用与本角色专业直接相关的数据，输出「本角色数据支撑」突出专业切入点，避免各板块重复堆砌相同数据。
@@ -224,7 +257,7 @@ ANALYST_PROMPTS = {
 • 全程使用简体中文,专业术语需附简要解释
 • 禁止出现英文词汇（股票代码除外）
 • 按指定结构输出,逻辑清晰;禁止输出思考过程、<think> 或 think 等标签内容
-• 必须包含「## 本角色数据支撑」小节：仅列 2～3 条由**所属板块、估值分位、总市值、九十日区间、行业/政策类风险**得出的结论，不得在此重复罗列人人皆可写的「最新价xx元」「市盈率xx倍」
+• 必须包含「## 本角色数据支撑」小节：列 3～5 条，须结合**上文系统行情块**中的估值分位、九十日区间、波动率等与**所属板块、总市值、行业/政策类风险**交叉解读，不得整篇只复述用户备注
 • 不要笼统说「趋势混合」「多空交织」，需给出细粒度、可操作的洞察与建议
 • 结合该股所属板块、近期大盘与个股走势分析
 
@@ -258,7 +291,7 @@ ANALYST_PROMPTS = {
 • 全程使用简体中文,专业术语需附简要解释
 • 禁止出现英文词汇（股票代码除外）
 • 按指定结构输出,逻辑清晰;禁止输出思考过程、<think> 或 think 等标签内容
-• 必须包含「## 本角色数据支撑」小节：仅列 2～3 条由**估值分位、九十日区间、波动率、增长/新业务相关风险**得出的结论（如估值与成长是否匹配、波动区间是否提供弹性），不得在此重复堆砌「最新价」「市盈率」等通用句
+• 必须包含「## 本角色数据支撑」小节：列 3～5 条，须显式引用**系统块**中的估值分位、九十日区间、波动率等，并与**增长/新业务相关风险**结合（如估值与成长是否匹配、波动区间是否提供弹性）
 • 不要笼统说「趋势混合」，需给出细粒度、可操作的成长与估值洞察
 • 区分短期催化和长期逻辑;结合板块与近期走势
 
@@ -292,7 +325,7 @@ ANALYST_PROMPTS = {
 • 全程使用简体中文,专业术语需附简要解释
 • 禁止出现英文词汇（股票代码除外）
 • 按指定结构输出,逻辑清晰;禁止输出思考过程、<think> 或 think 等标签内容
-• 必须包含「## 本角色数据支撑」小节：仅列 2～3 条由**风险信号、波动率、九十日高低、估值分位、市净率**得出的结论（如安全边际、下行空间、风险等级），不得在此重复堆砌「最新价」「市盈率」等通用句
+• 必须包含「## 本角色数据支撑」小节：列 3～5 条，须引用**系统块**的波动率、九十日区间上下沿、估值分位、市净率与**风险信号**（如安全边际、下行空间、风险等级）
 • 风险需量化（概率×影响）;不要笼统说「风险可控」，需给出细粒度、可验证的风险点与应对
 • 结合板块与市场环境
 
@@ -329,7 +362,7 @@ ANALYST_PROMPTS = {
 • 全程使用简体中文,专业术语需附简要解释
 • 禁止出现英文词汇（股票代码除外）
 • 按指定结构输出,逻辑清晰;禁止输出思考过程、<think> 或 think 等标签内容
-• 必须包含「## 本角色数据支撑」小节：仅列 2～3 条由**技术指标（均线/RSI/MACD/布林/区间）或当日价量（开盘/最高/最低/换手/量额）或研发与产品数据**得出的结论（如技术面信号、支撑压力、超买超卖、放量下跌/缩量整理），不得在此重复堆砌「最新价」「市盈率」等通用句
+• 必须包含「## 本角色数据支撑」小节：列 3～5 条，**至少两条**须直接引用**系统技术指标原文**（均线、RSI、区间等）或系统 90 日区间/波动率；可结合用户摘录中的价量数据，但不得仅用备注代替系统指标
 • 不要笼统说「趋势混合」，需给出细粒度、可操作的技术面或产品技术洞察
 
 【分析框架】
@@ -360,7 +393,7 @@ ANALYST_PROMPTS = {
 • 全程使用简体中文,专业术语需附简要解释
 • 禁止出现英文词汇（股票代码除外）
 • 按指定结构输出,逻辑清晰
-• 必须包含「## 本角色数据支撑」小节：仅列 2～3 条由**舆情/情绪相关风险信号或估值分位所反映的市场情绪**得出的结论，不得在此重复堆砌「最新价」「市盈率」
+• 必须包含「## 本角色数据支撑」小节：列 3～5 条，须结合**系统块**的估值分位、波动率或区间位置解读**市场情绪**，并引用舆情/情绪相关风险信号；不得脱离系统量化空谈情绪
 • 情绪判断需有数据或逻辑支撑；不要笼统说「情绪混合」，需给出细粒度洞察
 
 【分析框架】
@@ -1785,8 +1818,7 @@ class LLMClient:
 
     def _mock_response(self, system_prompt: str, user_prompt: str) -> str:
         """模拟响应"""
-        return """## 核心结论
-积极关注:估值合理,增长逻辑清晰
+        return """积极关注：估值合理，增长逻辑清晰。
 
 ## 数据解读
 • 当前价位处于 90 日中位数附近
@@ -1906,6 +1938,36 @@ def _security_context_label(sd: StockData) -> str:
     if _is_plausible_stock_display_name(n, c):
         return f"{n}（{c}）" if c else n
     return c or "未知证券"
+
+
+def _system_quantitative_block(sd: StockData, *, for_debate: bool = False) -> str:
+    """系统拉取的行情+估值分位+90 日统计+技术指标（与用户备注无关的量化基准）。"""
+    _rng90 = _fmt_range_cn(sd.九十日最低, sd.九十日最高)
+    tech = (sd.技术指标简述 or "").strip()
+    if not tech:
+        tech = (
+            "（当前数据源未返回均线/RSI/MACD 等明细，请基于 90 日区间、波动率与估值分位讨论价格位置与风险）"
+        )
+    lines = [
+        "【系统行情与技术指标（行情源自动计算，为量化事实基准；用户备注仅作交叉核对，不得用备注替代本块）】",
+        f"【最新价格】{_fmt_price(sd.最新价)}元（{sd.涨跌幅}）",
+        f"【估值】市盈率{_fmt_pe(sd.市盈率)}倍｜市净率{_fmt_pb(sd.市净率)}倍｜估值历史分位：{sd.估值分位}",
+        f"【90 日与波动】区间 {_rng90} 元｜波动率 {sd.波动率:.1f}%｜九十日均价 {_fmt_price(sd.九十日均价)} 元",
+        f"【技术指标原文】{tech}",
+    ]
+    if for_debate:
+        risks = ", ".join((sd.风险信号 or [])[:6])
+        if risks:
+            lines.append(f"【风险要点摘录】{risks}")
+    else:
+        lines.extend(
+            [
+                f"【总市值】{sd.总市值}",
+                f"【风险信号】{', '.join(sd.风险信号 or [])}",
+                f"【数据时间】{sd.数据时间}",
+            ]
+        )
+    return "\n".join(lines)
 
 
 def _analysis_report_title(sd: StockData) -> str:
@@ -2432,22 +2494,20 @@ def _supplement_context_hint(stock_data: StockData) -> str:
     if not has:
         return ""
     return (
-        "【数据分流与引用要求】上下文中若出现开盘/最高/最低/昨收、换手率、振幅、成交量/成交额、"
-        "52周高低、流通市值、总股本/流通股本、股息率、每股收益/每股净资产等："
-        "技术专家须解读当日价量与相对位置；风险分析师关注换手与成交异常及52周边界风险；"
-        "成长投资者结合每股收益等与市盈率谈匹配；市场专家结合市值体量与股本结构。"
-        "各角色勿复读同一句，但与己相关的数据不得视而不见。"
+        "【数据分流与引用要求】上文「系统行情与技术指标」中的 90 日区间、波动率、估值历史分位、均线/RSI 等为**优先引用**的量化基准；"
+        "用户摘录中的开盘/最高/最低/昨收、换手率、成交量额、52 周高低、股本/股息/每股指标等由技术专家侧重价量、风险分析师侧重异常与边界、成长投资者侧重每股与估值匹配、市场专家侧重体量与结构。"
+        "禁止仅用用户备注写完分析而完全不提系统技术指标与分位/区间。"
     )
 
 
-def _debate_supplement_block(stock_data: StockData, max_chars: int = 1200) -> str:
+def _debate_supplement_block(stock_data: StockData, max_chars: int = 900) -> str:
     s = (stock_data.用户补充指标 or "").strip()
     if not s:
         return ""
     if len(s) > max_chars:
         s = s[: max_chars - 1] + "…"
     return (
-        "\n【价量与基本面补充（论证时请至少 1～2 条呼应其中可验证事实）】\n"
+        "\n【用户补充摘录（次要；须与上文系统量化块对照，多头空头均应引用系统区间/波动率/分位或技术指标中的至少一项）】\n"
         f"{s}\n"
     )
 
@@ -2601,36 +2661,32 @@ class MultiAgentStockAnalyst:
         _rng90 = _fmt_range_cn(stock_data.九十日最低, stock_data.九十日最高)
         data_context = f"""【股票信息】{_security_context_label(stock_data)}
 {_date_constraint}
-【最新价格】{_fmt_price(stock_data.最新价)}元（{stock_data.涨跌幅}）
-【估值水平】市盈率{_fmt_pe(stock_data.市盈率)}倍｜市净率{_fmt_pb(stock_data.市净率)}倍｜{stock_data.估值分位}
-【90 日价格区间】{_rng90}元（波动率{stock_data.波动率:.1f}%）。全文写区间时必须带分隔符，使用「{_rng90}」或「{_fmt_price(stock_data.九十日最低)} 至 {_fmt_price(stock_data.九十日最高)}」；禁止写成无分隔的两个数连在一起（错误示例：把 80 元与 100 元写成 80100）。
-【总市值】{stock_data.总市值}
-【风险信号】{', '.join(stock_data.风险信号)}
-【数据时间】{stock_data.数据时间}"""
+{_system_quantitative_block(stock_data, for_debate=False)}
+【区间书写规范】全文写 90 日区间须带分隔符，使用「{_rng90}」或「{_fmt_price(stock_data.九十日最低)} 至 {_fmt_price(stock_data.九十日最高)}」；禁止无分隔连写（错误示例：80 与 100 写成 80100）。"""
         if (stock_data.数据溯源 or "").strip():
             data_context += f"\n【数据溯源】{stock_data.数据溯源.strip()}"
+        if stock_data.所属板块:
+            data_context += f"\n【所属板块】{stock_data.所属板块}"
+        if (stock_data.公司简介 or "").strip():
+            data_context += f"\n【公司主营业务与简介】{stock_data.公司简介.strip()}"
+        if stock_data.近期市场与板块简述:
+            data_context += f"\n【近期市场与板块】{stock_data.近期市场与板块简述}"
         if (stock_data.用户补充指标 or "").strip() or (
             stock_data.用户备注原文 or ""
         ).strip():
             uro = (stock_data.用户备注原文 or "").strip()
             if uro:
-                cap = 2200
+                cap = 1800
                 excerpt = uro if len(uro) <= cap else uro[:cap] + "…"
-                data_context += f"\n【行情与基本面补充原文（截取）】\n{excerpt}"
+                data_context += f"\n【用户备注原文（摘录；口径可能与系统行情不一致，须与上文「系统行情与技术指标」对照）】\n{excerpt}"
             ubi = (stock_data.用户补充指标 or "").strip()
             if ubi:
-                data_context += f"\n【结构化补充指标】\n{ubi}"
+                cap2 = 3500
+                ubi_show = ubi if len(ubi) <= cap2 else ubi[:cap2] + "…"
+                data_context += f"\n【用户结构化摘录（盘口/股本等补充；不可替代系统计算的区间、波动率、估值分位与技术指标原文）】\n{ubi_show}"
             _hint = _supplement_context_hint(stock_data)
             if _hint:
                 data_context += f"\n{_hint}"
-        if stock_data.所属板块:
-            data_context += f"\n【所属板块】{stock_data.所属板块}"
-        if (stock_data.公司简介 or "").strip():
-            data_context += f"\n【公司主营业务与简介】{stock_data.公司简介.strip()}"
-        if stock_data.技术指标简述:
-            data_context += f"\n【技术指标】{stock_data.技术指标简述}"
-        if stock_data.近期市场与板块简述:
-            data_context += f"\n【近期市场与板块】{stock_data.近期市场与板块简述}"
 
         # 本角色专属数据（突出专业切入点，避免各板块重复堆砌相同数据）
         role_data = config.get("本角色专属数据", "")
@@ -2639,7 +2695,8 @@ class MultiAgentStockAnalyst:
             role_data_block = f"""
 【本角色专属数据与输出要求】
 你应重点引用并深度解读的数据：{role_data}
-输出中**必须**包含「## 本角色数据支撑」小节：仅列 2～3 条由上述专属数据得出的结论或信号（每条为「数据 + 你的专业解读」）。禁止在该小节中堆砌人人皆可写的「最新价xx元」「市盈率xx倍」，以突出你的专业切入点、与其它分析师区分。"""
+【硬性要求】正文中须至少明确引用一项上文「系统行情与技术指标」中的量化事实（例如：均线位置或金叉/死叉、RSI 区间、90 日区间上下沿与现价相对位置、波动率高低、估值历史分位等），不得整篇只围绕用户备注发挥。
+输出中**必须**包含「## 本角色数据支撑」小节：列 3～5 条由上述专属数据与系统量化块共同支撑的结论（每条为「数据 + 你的专业解读」）。可一条写用户摘录、其余写系统指标/分位/区间，避免与其它角色完全同句复读即可。"""
 
         # 构建分析提示词
         prompt = f"""{data_context}
@@ -2650,14 +2707,13 @@ class MultiAgentStockAnalyst:
 {role_data_block}
 
 【输出结构】
-## 核心结论
-（1 句话明确观点:积极关注/谨慎观望/建议规避 + 核心理由）
+【开篇】第一自然段用 1 句话明确观点（积极关注/谨慎观望/建议规避 + 核心理由）。**不要**使用「## 核心结论」或任何单独的核心结论标题——界面卡片顶栏已展示角色名与投资建议，重复标题会造成版式重复。
 
 ## 数据解读
-（仅从本角色视角解读与你**专属数据**相关的 1～2 点，勿泛泛复述全部数据）
+（从本角色视角写 2～4 点：必须覆盖上文「系统行情与技术指标」中与己相关的量化项——如技术专家写均线/RSI/区间位置；成长/市场写估值分位与波动弹性；风险写波动率与区间边界风险等；可辅以用户摘录作验证，但不得仅用备注代替系统块）
 
 ## 本角色数据支撑
-（必填。仅 2～3 条，每条为「数据 + 专业解读」，只引用与你角色直接相关的数据，不得重复堆砌最新价/市盈率等通用句）
+（必填。3～5 条，每条为「数据 + 专业解读」；须出现至少一条直接引用系统块中的具体数字或区间表述）
 
 ## 角色视角分析
 （从{config['角色定位']}角度,列出 3 条核心观点）
@@ -2670,10 +2726,11 @@ class MultiAgentStockAnalyst:
 ## 置信程度
 （高/中高/中/偏低,并简述理由）
 
-【要求】全程简体中文，禁用英文，专业术语附解释。每条观点简洁不重复；数据支撑只突出本角色专业度，不与其它板块重复。输出中不要使用 ** 或 * 做加粗/强调，用自然段与标题层级（##）区分即可。"""
+【要求】全程简体中文，禁用英文，专业术语附解释。每条观点简洁；数据支撑突出本角色专业度，可与其它角色引用同一系统事实但解读角度须不同。输出中不要使用 ** 或 * 做加粗/强调，用自然段与标题层级（##）区分即可。"""
 
         # 调用 LLM
         analysis = self.llm.chat(config["系统提示词"], prompt)
+        analysis = _strip_core_conclusion_heading(analysis or "")
 
         # 解析响应
         recommendation = self._extract_recommendation(analysis)
@@ -2707,15 +2764,17 @@ class MultiAgentStockAnalyst:
 
             # 多头观点
             _deb_ex = _debate_supplement_block(stock_data)
+            _deb_quant = _system_quantitative_block(stock_data, for_debate=True)
             bull_prompt = f"""基于以下分析师观点,总结看涨理由:
 {summary}
 
-【股票数据】{_security_context_label(stock_data)}｜{_fmt_price(stock_data.最新价)}元｜市盈率{_fmt_pe(stock_data.市盈率)}倍
+【股票信息】{_security_context_label(stock_data)}
+{_deb_quant}
 {_deb_ex}
 {_date_note}
 
 请从增长机会、市场趋势、竞争优势等角度给出看涨论证。
-至少列出 3 个核心理由,每个需有数据支撑。"""
+至少列出 3 个核心理由；每条须引用上文系统量化块中的具体数据（如区间位置、波动率、估值分位、均线或 RSI 等至少一类），不得只复述用户摘录。"""
 
             bull_arg = self.llm.chat(DEBATE_PROMPTS["多头研究员"], bull_prompt)
 
@@ -2723,12 +2782,13 @@ class MultiAgentStockAnalyst:
             bear_prompt = f"""基于以下分析师观点,总结看跌理由:
 {summary}
 
-【股票数据】{_security_context_label(stock_data)}｜{_fmt_price(stock_data.最新价)}元｜市盈率{_fmt_pe(stock_data.市盈率)}倍
+【股票信息】{_security_context_label(stock_data)}
+{_deb_quant}
 {_deb_ex}
 {_date_note}
 
 请从风险因素、竞争威胁、市场挑战等角度给出看跌论证。
-至少列出 3 个核心理由,每个需有数据支撑。"""
+至少列出 3 个核心理由；每条须引用上文系统量化块中的具体数据（如区间位置、波动率、估值分位、均线或 RSI 等至少一类），不得只复述用户摘录。"""
 
             bear_arg = self.llm.chat(DEBATE_PROMPTS["空头研究员"], bear_prompt)
 
@@ -2740,12 +2800,15 @@ class MultiAgentStockAnalyst:
 
 【空头观点】
 {bear_arg}
+
+【系统量化事实（裁判须对照，不可无视）】
+{_deb_quant}
 {_deb_ex}
 {_date_note}
 
 请作为裁判,给出最终判断（看涨/看跌/中立）并说明理由。
 同时指出:1.双方共识点 2.核心分歧点 3.需要验证的关键变量
-若上文有价量/换手/成交摘录，裁判结论中可一句点明其是否支持或削弱某一方。"""
+裁判结论中须点名现价相对 90 日区间、波动率或估值分位中的至少一项，以体现多空力量与价格位置的关系。"""
 
             judge_decision = self.llm.chat(DEBATE_PROMPTS["裁判"], judge_prompt)
 
@@ -2811,14 +2874,31 @@ class MultiAgentStockAnalyst:
                     f"  - {(b[:52] + '…') if len(b) > 52 else b}" for b in bullets[:6]
                 )
 
-        # 生成融合摘要
+        # 生成融合摘要（系统量化与备注并列，避免模型与用户只看摘录）
         support_count = len([r for r in reports if r.投资建议 == rec_type])
+        _rng_snap = _fmt_range_cn(stock_data.九十日最低, stock_data.九十日最高)
+        _tech_one = (stock_data.技术指标简述 or "").replace("\n", " ").strip()
+        if len(_tech_one) > 160:
+            _tech_one = _tech_one[:160] + "…"
+        if not _tech_one:
+            _tech_one = "暂无简述"
         summary = f"""📊 融合分析摘要
 • 分析师共识:{support_count}/{len(reports)} 位分析师支持"{rec_type}"
 • 加权得分:{consensus_score:+.2f}（>+0.3 看好,<-0.3 谨慎）
 • 核心逻辑链:
 {chr(10).join(f'  {i+1}. {pt[0]}（置信度{pt[1]*100:.0f}%）' for i, pt in enumerate(top_points))}
-• 关键数据:{_fmt_price(stock_data.最新价)}元｜市盈率{_fmt_pe(stock_data.市盈率)}倍｜波动率{stock_data.波动率:.1f}%{key_extra}"""
+• 关键数据（系统行情）:{_fmt_price(stock_data.最新价)}元｜市盈率{_fmt_pe(stock_data.市盈率)}倍｜市净率{_fmt_pb(stock_data.市净率)}倍｜估值历史分位：{stock_data.估值分位}
+• 区间与波动: 90 日 {_rng_snap} 元｜波动率 {stock_data.波动率:.1f}%｜技术摘录：{_tech_one}{key_extra}"""
+
+        _tech_tbl = (stock_data.技术指标简述 or "暂无").replace("|", "｜")
+        if len(_tech_tbl) > 220:
+            _tech_tbl = _tech_tbl[:220] + "…"
+        数据快照系统指标表行 = (
+            f"| 估值历史分位 | {stock_data.估值分位} | 相对历史的 PE 位置 |\n"
+            f"| 90 日价格区间 | {_rng_snap} 元 | 支撑/压力与趋势参考 |\n"
+            f"| 波动率 | {stock_data.波动率:.1f}% | 波动环境 |\n"
+            f"| 技术指标简述 | {_tech_tbl} | 均线/RSI/MACD 等综合 |"
+        )
 
         # 操作建议
         position_suggestion = "15%-20%" if consensus_score > 0.3 else "5%-10%" if consensus_score > 0 else "暂不建仓"
@@ -2827,7 +2907,11 @@ class MultiAgentStockAnalyst:
         if _low_ref <= 0:
             _low_ref = stock_data.最新价 or 1.0
 
-        observe_kw = ["季度业绩、行业政策、竞争格局变化"]
+        observe_kw = [
+            "季度业绩、行业政策、竞争格局变化",
+            "90 日区间上下沿与波动率是否突破或假突破",
+            "估值历史分位与技术指标（均线、RSI 等）是否同向",
+        ]
         if sup:
             if any(k in sup for k in ("换手", "成交量", "成交额")):
                 observe_kw.insert(0, "成交量与换手率是否持续异常")
@@ -2861,6 +2945,7 @@ class MultiAgentStockAnalyst:
                 "关键观察": observe_str,
             },
             快照补充说明=sup,
+            数据快照系统指标表行=数据快照系统指标表行,
         )
 
     def _generate_changes_section(self, report: FinalReport, historical_summaries: List[str]) -> str:
@@ -2882,14 +2967,18 @@ class MultiAgentStockAnalyst:
 请用 2～4 段话完成「对比上次变化与异动信号」板块，要求：
 1. 与最近一次历史报告对比：数据（价格、估值）、结论、风险提示有何主要变化；
 2. 指出值得关注的异动信号（如估值拐点、建议转向、新风险等）；
-3. 全程简体中文，不输出思考过程，直接输出正文。"""
+3. 全程简体中文，不输出思考过程，直接输出正文。
+4. **禁止**输出「# / ## / ###」章节标题，**禁止**重复写「对比上次变化与异动信号」等标题（报告模板已带标题），请从第一段正文直接开始。"""
         try:
             out = self.llm.chat(
                 "你是一位投资研究编辑，负责撰写报告中的「对比上次变化与异动信号」小节，语言简练、信息明确。",
                 prompt,
                 temperature=0.3
             )
-            return (out or "").strip()
+            return _strip_md_headings_with_keywords(
+                (out or "").strip(),
+                ("对比上次", "对比与异动", "异动信号"),
+            )
         except Exception:
             return ""
 
@@ -3115,10 +3204,14 @@ class ReportExporter:
 ---
 """
         if getattr(report, "对比与异动", "").strip():
+            _diff_body = _strip_md_headings_with_keywords(
+                report.对比与异动.strip(),
+                ("对比上次", "对比与异动", "异动信号"),
+            )
             md += (
                 '<span id="对比与异动"></span>\n\n'
                 "## 📌 对比上次变化与异动信号\n\n"
-                + report.对比与异动.strip()
+                + _diff_body
                 + "\n\n---\n"
             )
         md += f"""
@@ -3135,6 +3228,9 @@ class ReportExporter:
 | 加权得分 | {report.加权得分:+.2f} | >+0.3 看好,<-0.3 谨慎 |
 
 """
+        _sys_rows = (getattr(report, "数据快照系统指标表行", None) or "").strip()
+        if _sys_rows:
+            md += _sys_rows + "\n\n"
         snap_extra = (getattr(report, "快照补充说明", None) or "").strip()
         if snap_extra:
             md += f"""
