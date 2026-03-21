@@ -16,7 +16,7 @@
 | 市场 | 拉取顺序（均成功则全部参与合并） | 分析前补强 `post_enrich` |
 |------|----------------------------------|-------------------------|
 | **A 股** | **腾讯财经** → **yfinance**（`.SS` / `.SZ`）→ **akshare** → **Baostock** | 合并后若仍缺简介/板块或 K 线退化，再按需调 yfinance 补强 |
-| **港股** | 有 Key：**Alpha Vantage** → **yfinance**（`.HK`）→ **腾讯财经**；无 Key 时无 AV 层 | 缺简介时补 yfinance 简介 |
+| **港股** | **腾讯财经** → **yfinance**（`.HK`）→ 有 Key 时 **Alpha Vantage**（补 OVERVIEW/板块） | 缺简介时补 yfinance 简介 |
 | **美股** | 有 Key：**Alpha Vantage** → **yfinance**；无 Key 时仅 yfinance | 缺简介时补 yfinance 简介 |
 
 ## 按市场的大致优先级（与上表一致，速查）
@@ -24,7 +24,7 @@
 | 市场 | 主路径 | 兜底 / 补强 |
 |------|--------|-------------|
 | **A 股** | 多源：**腾讯** → **yfinance** → **akshare** → **Baostock**（优先易通达源，后者补估值/简介） | `post_enrich` 仅在合并后仍有缺项或退化区间时补强 yfinance |
-| **港股** | 多源：**Alpha Vantage**（有 Key）→ **yfinance** → **腾讯** | 简介等由合并 + 必要时 `_try_yf_blurb_only` |
+| **港股** | 多源：**腾讯** → **yfinance** → **Alpha Vantage**（有 Key；避免 AV 报价占位抢占主价） | 简介/板块由合并与 AV 补强 |
 | **美股** | 多源：**Alpha Vantage**（有 Key）→ **yfinance** | 同上 |
 
 ## 常用免费 / 低门槛数据源

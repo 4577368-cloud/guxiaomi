@@ -522,7 +522,7 @@ def _parse_tencent_gtimg_quote_line(text: str) -> Dict[str, Any]:
 
 
 class StockDataService:
-    """股票数据获取服务。港股/美股优先使用 Alpha Vantage（若配置密钥），失败则用 yfinance 兜底。"""
+    """股票数据获取服务。A/港股多源合并；港股优先腾讯与 yfinance，AV 作补强；美股仍为 AV（有 Key）+ yfinance。"""
 
     def __init__(self, source: str = "akshare"):
         self.source = source
@@ -789,15 +789,15 @@ class StockDataService:
         return layers
 
     def _collect_layers_hk(self, code: str, days: int) -> List[tuple]:
-        """港股：Alpha Vantage（有 Key）→ yfinance → 腾讯财经。"""
+        """港股：腾讯财经 → yfinance → Alpha Vantage（有 Key）。
+
+        与 A 股一致优先易通达源；AV 的 Global Quote 常缺价或滞后，放最后作基本面补强，避免 0 元占位抢占主源。
+        """
         layers: List[tuple] = []
-        if self._av_key:
-            try:
-                layers.append(
-                    ("Alpha Vantage", self._get_av_stock_data(code, "港股", days)),
-                )
-            except Exception as e:
-                print(f"⚠️ [多源] Alpha Vantage 港股: {e}")
+        try:
+            layers.append(("腾讯财经", self._get_hk_stock_data_tencent(code, days)))
+        except Exception as e:
+            print(f"⚠️ [多源] 腾讯财经 港股: {e}")
         if HAS_YFINANCE:
             try:
                 yf_sym = self._normalize_hk_symbol(code)
@@ -806,10 +806,13 @@ class StockDataService:
                 )
             except Exception as e:
                 print(f"⚠️ [多源] yfinance 港股: {e}")
-        try:
-            layers.append(("腾讯财经", self._get_hk_stock_data_tencent(code, days)))
-        except Exception as e:
-            print(f"⚠️ [多源] 腾讯财经 港股: {e}")
+        if self._av_key:
+            try:
+                layers.append(
+                    ("Alpha Vantage", self._get_av_stock_data(code, "港股", days)),
+                )
+            except Exception as e:
+                print(f"⚠️ [多源] Alpha Vantage 港股: {e}")
         return layers
 
     def _collect_layers_us(self, code: str, days: int) -> List[tuple]:
@@ -833,7 +836,7 @@ class StockDataService:
         return layers
 
     def get_stock_info(self, code: str, market: str = "A 股", days: int = 90) -> StockData:
-        """多源按优先级拉取并合并：A 股 腾讯→yfinance→akshare→Baostock；港股 AV→yfinance→腾讯；美股 AV→yfinance。"""
+        """多源按优先级拉取并合并：A 股 腾讯→yfinance→akshare→Baostock；港股 腾讯→yfinance→AV；美股 AV→yfinance。"""
         try:
             m = (market or "").strip()
             if m == "A 股":
@@ -1547,6 +1550,17 @@ class StockDataService:
             volatility = (math.sqrt(sum((x - avg_90)**2 for x in closes) / len(closes)) / avg_90 * 100) if avg_90 else 0.0
         else:
             avg_90, high_90, low_90, volatility = price, price, price, 0.0
+
+        # Global Quote 对港股等常返回 0 或缺字段，用最近一日收盘价兜底；仍无效则抛错以免多源合并占主源
+        if closes and (price <= 0 or price != price):
+            try:
+                c0 = float(closes[0])
+                if c0 > 0 and c0 == c0:
+                    price = c0
+            except (TypeError, ValueError):
+                pass
+        if price <= 0 or price != price:
+            raise ValueError("Alpha Vantage 无有效现价（Quote 与日线均为空）")
 
         risk_flags = []
         if len(closes) < 15 or (high_90 > 0 and abs(high_90 - low_90) < 1e-5 * max(high_90, 1.0)):
