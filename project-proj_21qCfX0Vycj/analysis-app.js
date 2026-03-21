@@ -29,16 +29,70 @@ const POLL_INTERVAL_MS = 3000;
 /** 历史报告每页条数，与预测表「每页 10 条」一致；列表区最大高度对齐右侧表体 */
 const HISTORY_PAGE_SIZE = 10;
 
-/** 解析快照文件名 scr_p{pt}_t{tt}_s{st}_... */
+/** 解析快照文件名 scr_p{pt}_t{tt}_s{st}_p{page}_{时间戳}（page 为 Intellectia 列表页码） */
 function parseScreenerBaseName(baseName) {
   if (!baseName || typeof baseName !== "string") return null;
-  var m = /^scr_p(\d+)_t(\d+)_s(\d+)_/.exec(baseName);
+  var m = /^scr_p(\d+)_t(\d+)_s(\d+)_p(\d+)_/.exec(baseName);
+  if (m) {
+    return {
+      pt: parseInt(m[1], 10),
+      tt: parseInt(m[2], 10),
+      st: parseInt(m[3], 10),
+      page: parseInt(m[4], 10),
+    };
+  }
+  m = /^scr_p(\d+)_t(\d+)_s(\d+)_/.exec(baseName);
   if (!m) return null;
   return {
     pt: parseInt(m[1], 10),
     tt: parseInt(m[2], 10),
     st: parseInt(m[3], 10),
+    page: 1,
   };
+}
+
+/** 在已拉取的列表中找与当前日期、方向、资产、日周月、列表页码一致的快照（取同条件下最新一条） */
+function findScreenerSnapshotName(
+  items,
+  dateKey,
+  trendType,
+  symbolType,
+  periodTab,
+  page,
+) {
+  var best = null;
+  var bestAt = "";
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
+    var parsed = parseScreenerBaseName(item.base_name);
+    if (!parsed || parsed.tt !== trendType || parsed.st !== symbolType) continue;
+    if (parsed.pt !== periodTab) continue;
+    if (parsed.page !== page) continue;
+    if (savedAtToDateKey(item.saved_at) !== dateKey) continue;
+    var sa = String(item.saved_at || "");
+    if (!best || sa > bestAt) {
+      best = item.base_name;
+      bestAt = sa;
+    }
+  }
+  return best;
+}
+
+function hasScreenerSnapshotForPeriod(
+  items,
+  dateKey,
+  trendType,
+  symbolType,
+  periodTab,
+) {
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
+    var parsed = parseScreenerBaseName(item.base_name);
+    if (!parsed || parsed.tt !== trendType || parsed.st !== symbolType) continue;
+    if (parsed.pt !== periodTab) continue;
+    if (savedAtToDateKey(item.saved_at) === dateKey) return true;
+  }
+  return false;
 }
 
 function savedAtToDateKey(savedAt) {
@@ -69,6 +123,7 @@ function localDateKey() {
   return y + "-" + m + "-" + day;
 }
 
+/** 按日期汇总有哪些日/周/月快照（任一页即可）；cell 用 true 表示该周期已有数据 */
 function groupPredictionsByDate(items, trendType, symbolType) {
   var grouped = {};
   for (var i = 0; i < items.length; i++) {
@@ -79,7 +134,7 @@ function groupPredictionsByDate(items, trendType, symbolType) {
     if (!dk) continue;
     if (!grouped[dk]) grouped[dk] = { 0: null, 1: null, 2: null };
     var pt = parsed.pt;
-    if (grouped[dk][pt] == null) grouped[dk][pt] = item.base_name;
+    if (pt >= 0 && pt <= 2) grouped[dk][pt] = true;
   }
   var keys = Object.keys(grouped).sort(function (a, b) {
     return b.localeCompare(a);
@@ -439,11 +494,14 @@ function AnalysisApp() {
     } catch (_) {}
   };
 
-  // 恢复未完成的任务：有 job_id 时轮询；Serverless 多实例可能偶发 404，连续多次再清除
+  // 恢复未完成的任务：有 job_id 时轮询；Vercel 多实例下 status 常 404，线上更快放弃并提示
   React.useEffect(() => {
     if (!jobId) return;
     var consecutive404 = 0;
-    var max404BeforeClear = 15;
+    var isLocal =
+      (apiBase || "").indexOf("localhost") >= 0 ||
+      (apiBase || "").indexOf("127.0.0.1") >= 0;
+    var max404BeforeClear = isLocal ? 15 : 4;
     const poll = async () => {
       try {
         const res = await fetch(`${apiBase}/api/analyze/status/${jobId}`);
@@ -455,6 +513,11 @@ function AnalysisApp() {
               localStorage.removeItem(JOB_STORAGE_KEY);
               localStorage.removeItem(JOB_STORAGE_VERSION_KEY);
             } catch (_) {}
+            if (!isLocal) {
+              setError(
+                "云端未找到该分析任务（Vercel 轮询可能打到另一台实例）。请重新点击「开始分析」；推荐已部署「POST 同步返回结果」的后端，无需轮询。",
+              );
+            }
           }
           return;
         }
@@ -674,27 +737,39 @@ function AnalysisApp() {
         return;
       }
       setSelectedPredDateKey(function (prev) {
-        if (prev && predGrouped[prev]) return prev;
+        if (prev && predDateKeys.indexOf(prev) >= 0) return prev;
         return predDateKeys[0];
       });
     },
-    [predDateKeys, predGrouped],
+    [predDateKeys],
   );
 
   const currentPredSnapshotName = React.useMemo(
     function () {
-      if (!selectedPredDateKey || !predGrouped[selectedPredDateKey])
-        return null;
-      return predGrouped[selectedPredDateKey][predPeriodTab];
+      if (!selectedPredDateKey) return null;
+      return findScreenerSnapshotName(
+        predList,
+        selectedPredDateKey,
+        predParams.trend_type,
+        predParams.symbol_type,
+        predPeriodTab,
+        predParams.page,
+      );
     },
-    [selectedPredDateKey, predPeriodTab, predGrouped],
+    [
+      predList,
+      selectedPredDateKey,
+      predParams.trend_type,
+      predParams.symbol_type,
+      predParams.page,
+      predPeriodTab,
+    ],
   );
 
   React.useEffect(
     function () {
       if (!currentPredSnapshotName) {
         setPredDetail(null);
-        setPredRemoteTotal(null);
         return;
       }
       loadScreenerDetail(currentPredSnapshotName);
@@ -1548,7 +1623,13 @@ function AnalysisApp() {
               >
                 {x.l}
                 {selectedPredDateKey &&
-                  !predGrouped[selectedPredDateKey]?.[x.v] && (
+                  !hasScreenerSnapshotForPeriod(
+                    predList,
+                    selectedPredDateKey,
+                    predParams.trend_type,
+                    predParams.symbol_type,
+                    x.v,
+                  ) && (
                   <span className="block text-[10px] font-normal opacity-70 mt-0.5">
                     未获取
                   </span>

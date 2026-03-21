@@ -9,7 +9,9 @@
 
 **推荐：** 生产环境 **API** 仍优先部署在 Render / Railway / VPS 等；Vercel 以静态页 + `ANALYSIS_API_BASE` 指过去为主。
 
-**异步分析任务（job 轮询）在 Vercel 上的限制（已部分规避）：** 任务状态会写入 **`/tmp`**，轮询若打到**另一实例**会 **404**。当前实现：检测到 Vercel 运行时后，`POST /api/analyze` 会在**同一次请求内同步跑完分析**并直接返回 `result`（`sync: true`），前端不再依赖轮询。**代价：** 单次请求可能长达数分钟，需在 `vercel.json` 为 **`app.py` 配置 `maxDuration`**（已示例 300s），且受 **Vercel 套餐上限**约束（Hobby 默认较短，若仍超时需升级 Pro 或把 API 迁到常驻主机）。
+**异步分析任务（job 轮询）在 Vercel 上的限制（已部分规避）：** 任务状态会写入 **`/tmp`**，轮询若打到**另一实例**会 **404**。当前实现：检测到 Vercel 运行时后，`POST /api/analyze` 会在**同一次请求内同步跑完分析**并直接返回 `result`（`sync: true`），前端不再依赖轮询。**代价：** 单次请求可能长达数分钟。
+
+**勿**在 `vercel.json` 里写 `"functions": { "app.py": … }`：该字段只匹配 `api/` 等目录下的 Serverless 文件，FastAPI 整站打包为**单个函数**，会报「模式与 api 目录不匹配」导致部署失败。**延长执行时间：** 打开 Vercel → Project → **Settings** → **Functions** → **Function Max Duration**，调到套餐允许的上限（参见 [Vercel 文档：max duration](https://vercel.com/docs/functions/configuring-functions/duration)）。
 
 若坚持在 Vercel 上跑 FastAPI，需知：
 
