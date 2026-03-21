@@ -88,13 +88,36 @@
     /** Serverless 多实例下可能偶发 404，连续多次再放弃；旧任务 ID 最终仍会失效 */
     var consecutive404 = 0;
     var max404BeforeDrop = 15;
-    var intervalId = setInterval(function () {
+    var intervalId = null;
+    var stopped = false;
+
+    function cleanupListeners() {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('pageshow', onPageShow);
+    }
+
+    function stopAll() {
+      stopped = true;
+      if (intervalId != null) clearInterval(intervalId);
+      cleanupListeners();
+    }
+
+    function onVisible() {
+      if (document.visibilityState === 'visible') tick();
+    }
+
+    function onPageShow(e) {
+      if (e && e.persisted) tick();
+    }
+
+    function tick() {
+      if (stopped) return;
       fetch(apiBase + '/api/analyze/status/' + jobId)
         .then(function (res) {
           if (res.status === 404) {
             consecutive404++;
             if (consecutive404 >= max404BeforeDrop) {
-              clearInterval(intervalId);
+              stopAll();
               try { localStorage.removeItem(JOB_STORAGE_KEY); } catch (_) {}
               try { localStorage.removeItem(JOB_STORAGE_VERSION_KEY); } catch (_) {}
               return Promise.reject(new Error('NOT_FOUND'));
@@ -106,12 +129,12 @@
         })
         .then(function (data) {
           if (data.status === 'done') {
-            clearInterval(intervalId);
+            stopAll();
             try { localStorage.removeItem(JOB_STORAGE_KEY); } catch (_) {}
             try { localStorage.removeItem(JOB_STORAGE_VERSION_KEY); } catch (_) {}
             showNotifyModal('分析已完成', '报告已生成并保存，可点击「前往查看」打开分析页查看。', true);
           } else if (data.status === 'failed') {
-            clearInterval(intervalId);
+            stopAll();
             try { localStorage.removeItem(JOB_STORAGE_KEY); } catch (_) {}
             try { localStorage.removeItem(JOB_STORAGE_VERSION_KEY); } catch (_) {}
             showNotifyModal('分析失败', (data.error || '未知错误').trim(), false);
@@ -125,7 +148,12 @@
             );
           }
         });
-    }, POLL_INTERVAL_MS);
+    }
+
+    tick();
+    intervalId = setInterval(tick, POLL_INTERVAL_MS);
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('pageshow', onPageShow);
   }
 
   function startPollIfNeeded() {
@@ -148,4 +176,17 @@
   } else {
     startPollIfNeeded();
   }
+
+  /** 分析页同步返回结果时不会把 job_id 写入 localStorage，轮询脚本收不到完成态；由 analysis-app 发事件补通知 */
+  window.addEventListener('stock-analysis-complete', function (ev) {
+    try {
+      var d = (ev && ev.detail) || {};
+      if (!d.success) return;
+      var title = d.分析主题 ? String(d.分析主题).trim() : '';
+      if (title.length > 56) title = title.slice(0, 53) + '…';
+      var msg = '报告已生成并保存，可在本页摘要查看或打开历史列表。';
+      if (title) msg += '\n' + title;
+      showNotifyModal('分析已完成', msg, true);
+    } catch (_) {}
+  });
 })();

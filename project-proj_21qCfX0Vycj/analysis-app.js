@@ -925,6 +925,15 @@ function fetchWithTimeoutNoAbort(url, options, timeoutMs) {
   ]);
 }
 
+/** 分析完成时广播（同步直出结果时未写入 job_id，analysis-notify 轮询收不到；其它页也可监听） */
+function dispatchStockAnalysisComplete(detail) {
+  try {
+    window.dispatchEvent(
+      new CustomEvent("stock-analysis-complete", { detail: detail || {} }),
+    );
+  } catch (_) {}
+}
+
 function AnalysisApp() {
   const [apiBase, setApiBase] = React.useState(function () {
     try {
@@ -1090,6 +1099,14 @@ function AnalysisApp() {
     } catch (_) {}
   };
 
+  /** 与 jobId state 同步，供可见性/缓存恢复时轮询（避免闭包读到旧 id） */
+  const jobIdRef = React.useRef(jobId);
+  React.useEffect(function () {
+    jobIdRef.current = jobId;
+  }, [jobId]);
+  /** 连续 404 计数（多实例/切页时轮询可能短暂失败，用 ref 跨次轮询累计） */
+  const analyzeStatus404Ref = React.useRef(0);
+
   /** 拉取服务端列表并与 localStorage 合并；勿依赖 report，避免点开报告时整表重拉被空列表覆盖 */
   const refreshHistoryList = React.useCallback(
     async function (opts) {
@@ -1124,20 +1141,21 @@ function AnalysisApp() {
     [apiBase, refreshHistoryList],
   );
 
-  // 恢复未完成的任务：有 job_id 时轮询；Vercel 多实例下 status 常 404，线上更快放弃并提示
-  React.useEffect(() => {
-    if (!jobId) return;
-    var consecutive404 = 0;
-    var isLocal =
-      (apiBase || "").indexOf("localhost") >= 0 ||
-      (apiBase || "").indexOf("127.0.0.1") >= 0;
-    var max404BeforeClear = isLocal ? 15 : 4;
-    const poll = async () => {
+  /** 单次查询分析任务状态（后台线程/同步跑完后写入 _jobs；与页面是否在前台无关） */
+  const pollAnalyzeJobOnce = React.useCallback(
+    async function () {
+      var jid = jobIdRef.current;
+      if (!jid) return;
+      var isLocal =
+        (apiBase || "").indexOf("localhost") >= 0 ||
+        (apiBase || "").indexOf("127.0.0.1") >= 0;
+      var max404BeforeClear = isLocal ? 15 : 4;
       try {
-        const res = await fetch(`${apiBase}/api/analyze/status/${jobId}`);
+        const res = await fetch(`${apiBase}/api/analyze/status/${jid}`);
         if (res.status === 404) {
-          consecutive404++;
-          if (consecutive404 >= max404BeforeClear) {
+          analyzeStatus404Ref.current++;
+          if (analyzeStatus404Ref.current >= max404BeforeClear) {
+            analyzeStatus404Ref.current = 0;
             setJobId("");
             try {
               localStorage.removeItem(JOB_STORAGE_KEY);
@@ -1151,7 +1169,7 @@ function AnalysisApp() {
           }
           return;
         }
-        consecutive404 = 0;
+        analyzeStatus404Ref.current = 0;
         if (!res.ok) return;
         const data = await res.json();
         if (data.status === "done" && data.result) {
@@ -1168,6 +1186,11 @@ function AnalysisApp() {
             if (mergedDone) setHistoryList(mergedDone);
           } catch (_) {}
           void refreshHistoryList();
+          dispatchStockAnalysisComplete({
+            success: true,
+            base_name: data.result.base_name,
+            分析主题: data.result.分析主题,
+          });
         } else if (data.status === "failed") {
           setError(data.error || "分析失败");
           setJobId("");
@@ -1177,11 +1200,32 @@ function AnalysisApp() {
           } catch (_) {}
         }
       } catch (_) {}
+    },
+    [apiBase, refreshHistoryList],
+  );
+
+  // 有 job_id 时定时轮询；切走标签页/别的页面后回来时立刻补一轮（后台分析不会停，只是前端曾暂停问进度）
+  React.useEffect(() => {
+    if (!jobId) return;
+    analyzeStatus404Ref.current = 0;
+    void pollAnalyzeJobOnce();
+    const timer = setInterval(function () {
+      void pollAnalyzeJobOnce();
+    }, POLL_INTERVAL_MS);
+    var onVisible = function () {
+      if (document.visibilityState === "visible") void pollAnalyzeJobOnce();
     };
-    poll();
-    const timer = setInterval(poll, POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [jobId, apiBase, refreshHistoryList]);
+    var onPageShow = function (e) {
+      if (e && e.persisted) void pollAnalyzeJobOnce();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("pageshow", onPageShow);
+    return function () {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("pageshow", onPageShow);
+    };
+  }, [jobId, pollAnalyzeJobOnce]);
 
   const loadPredList = React.useCallback(async (opts) => {
     var initial = opts && opts.initial;
@@ -1262,9 +1306,7 @@ function AnalysisApp() {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (cached && cached.base_name) {
-          setPredError(
-            "服务端暂无该快照（可能换了实例或已清理 /tmp），已显示本机上次缓存",
-          );
+          setPredError("");
           return;
         }
         const d = j.detail;
@@ -1276,10 +1318,7 @@ function AnalysisApp() {
       cacheScreenerBody(baseName, j);
     } catch (e) {
       if (cached && cached.base_name) {
-        setPredError(
-          (e && e.message) ||
-            "网络异常，已显示本机缓存的预测快照",
-        );
+        setPredError("");
         return;
       }
       setPredError(e.message || "加载预测快照失败");
@@ -1532,8 +1571,8 @@ function AnalysisApp() {
         h === "127.0.0.1" ||
         /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h) ||
         /^\d{1,3}(\.\d{1,3}){3}$/.test(h);
-      /* 公网域名（含 vercel.app）：同步分析可能极久；局域网/本机 POST 很快返回 job_id */
-      var analyzePostTimeoutMs = isLanOrLocal ? 20000 : 360000;
+      /* 公网域名（含 vercel.app）：同步分析可能极久；本机 POST 也应留足余量（询价/网络慢时不应误判超时） */
+      var analyzePostTimeoutMs = isLanOrLocal ? 120000 : 360000;
       /** 与「添加股票」同源：在用户网络下拉腾讯/AlphaVantage，随 POST 带给服务端作合并首层（服务端常连不通行情） */
       var clientQuote = null;
       var noteFirstLine = (function (t) {
@@ -1565,20 +1604,24 @@ function AnalysisApp() {
       } catch (eq) {
         console.warn("分析前浏览器询价失败（将依赖服务端拉数）", eq);
       }
+      var analyzeBody = JSON.stringify({
+        stock_code: form.stock_code.trim(),
+        market: marketMap[form.market] || form.market,
+        user_data_notes: form.user_data_notes.trim() || null,
+        days: form.days,
+        use_mock: form.use_mock,
+        client_quote: clientQuote,
+      });
+      var analyzeFetchOpts = {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: analyzeBody,
+      };
+      /* 体积极小时允许 keepalive，降低用户立刻跳转导致 POST 被浏览器中断、拿不到 job_id 的概率（有 64KB 量级限制） */
+      if (analyzeBody.length < 55000) analyzeFetchOpts.keepalive = true;
       const res = await fetchWithTimeoutNoAbort(
         `${apiBase}/api/analyze`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            stock_code: form.stock_code.trim(),
-            market: marketMap[form.market] || form.market,
-            user_data_notes: form.user_data_notes.trim() || null,
-            days: form.days,
-            use_mock: form.use_mock,
-            client_quote: clientQuote,
-          }),
-        },
+        analyzeFetchOpts,
         analyzePostTimeoutMs,
       );
       if (!res.ok) {
@@ -1616,6 +1659,11 @@ function AnalysisApp() {
             if (mergedSync) setHistoryList(mergedSync);
           } catch (_) {}
           void refreshHistoryList();
+          dispatchStockAnalysisComplete({
+            success: true,
+            base_name: data.result.base_name,
+            分析主题: data.result.分析主题,
+          });
           return;
         }
         if (data.status === "failed") {
