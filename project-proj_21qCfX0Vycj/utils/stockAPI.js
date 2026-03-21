@@ -106,6 +106,106 @@ function convertCurrency(amount, fromMarket, toMarket = 'HK', exchangeRate = 7.7
 }
 
 // Format HK stock symbol to 5-digit format as required by BiYing API
+/**
+ * 拉取腾讯 qt.gtimg.cn 文本；优先 trickle 代理，失败则尝试直连（部分环境可跨域）。
+ */
+async function fetchGtimgQuoteText(apiUrl, signal) {
+  const proxyUrl = `https://proxy-api.trickle-app.host/?url=${encodeURIComponent(apiUrl)}`;
+  let proxyErr = null;
+  try {
+    const res = await fetch(proxyUrl, {
+      method: 'GET',
+      signal,
+      headers: { Accept: '*/*' },
+    });
+    if (res.ok) {
+      const text = await res.text();
+      if (text && text.length > 8 && /="/.test(text)) return text;
+    }
+    proxyErr = new Error(`代理响应异常 ${res.status}`);
+  } catch (e) {
+    proxyErr = e;
+  }
+  try {
+    const direct = await fetch(apiUrl, {
+      method: 'GET',
+      signal,
+      headers: { Accept: '*/*' },
+      mode: 'cors',
+    });
+    if (direct.ok) {
+      const text = await direct.text();
+      if (text && text.length > 8 && /="/.test(text)) {
+        console.warn('腾讯行情：代理不可用，已改用直连');
+        return text;
+      }
+    }
+  } catch (_) {
+    /* 浏览器 CORS 阻断时只能依赖代理 */
+  }
+  throw proxyErr || new Error('腾讯行情请求失败');
+}
+
+/**
+ * 解析 v_hk00700="..." / v_sh600000="..." 。
+ * 旧逻辑要求 split 后长度 ≥50，但实盘常仅 30～40 段，导致误报失败并落入模拟数据。
+ */
+function parseTencentGtimgLine(text) {
+  const match = text.match(/v_[a-zA-Z0-9_]+="([^"]*)"/);
+  if (!match || match[1] == null || match[1] === '') {
+    throw new Error('无法解析API响应数据');
+  }
+  const dataArray = match[1].split('~');
+  if (dataArray.length < 6) {
+    throw new Error('API返回数据字段不足');
+  }
+
+  const price = parseFloat(dataArray[3]) || 0;
+  const previousClose = parseFloat(dataArray[4]) || 0;
+  const open = parseFloat(dataArray[5]) || 0;
+  const volumeHands = parseFloat(dataArray[6]) || 0;
+
+  let high = dataArray.length > 33 ? parseFloat(dataArray[33]) || 0 : 0;
+  let low = dataArray.length > 34 ? parseFloat(dataArray[34]) || 0 : 0;
+  if (high <= 0 || low <= 0) {
+    const candidates = [price, open, previousClose].filter((x) => x > 0);
+    const mx = candidates.length ? Math.max(...candidates) : price;
+    const mn = candidates.length ? Math.min(...candidates) : price;
+    if (high <= 0) high = mx;
+    if (low <= 0) low = mn > 0 ? mn : price;
+  }
+
+  let changePercent =
+    dataArray.length > 32 && dataArray[32] !== ''
+      ? parseFloat(String(dataArray[32]).replace('%', '')) || 0
+      : 0;
+  if (
+    changePercent === 0 &&
+    previousClose > 0 &&
+    price > 0 &&
+    price !== previousClose
+  ) {
+    changePercent = ((price - previousClose) / previousClose) * 100;
+  }
+
+  const change = previousClose > 0 ? price - previousClose : 0;
+
+  if (isNaN(price) || price <= 0) {
+    throw new Error('返回数据中没有有效的价格信息');
+  }
+
+  return {
+    price,
+    open,
+    high,
+    low,
+    volumeHands,
+    previousClose,
+    change,
+    changePercent,
+  };
+}
+
 function formatHKStockSymbol(symbol) {
   try {
     if (!symbol) {
@@ -278,68 +378,34 @@ async function getHKStockPrice(symbol) {
     // Use Tencent Finance API - format: hk + stock code
     const fullSymbol = `hk${hkStockCode}`;
     const apiUrl = `https://qt.gtimg.cn/q=${fullSymbol}`;
-    const proxyUrl = `https://proxy-api.trickle-app.host/?url=${encodeURIComponent(apiUrl)}`;
-    
+
     console.log(`格式化后的港股代码: ${hkStockCode}`);
     console.log(`腾讯财经API URL: ${apiUrl}`);
-    
-    const response = await fetch(proxyUrl, {
-      method: 'GET',
-      signal: controller.signal,
-      headers: {
-        'Accept': '*/*'
-      }
-    });
-    
+
+    const text = await fetchGtimgQuoteText(apiUrl, controller.signal);
     clearTimeout(timeoutId);
-    
-    console.log(`腾讯财经API响应状态: ${response.status}`);
-    
-    if (!response.ok) {
-      throw new Error(`网络响应异常: ${response.status}`);
-    }
-    
-    const text = await response.text();
+
     console.log(`腾讯财经API响应: ${text.substring(0, 200)}`);
-    
-    // Parse Tencent Finance response format
-    // Format: v_${fullSymbol}="51~股票名称~股票代码~当前价格~涨跌~涨跌%~成交量(手)~成交额(万)~...~今开~最高~最低~...";
-    const match = text.match(/="(.+)"/);
-    if (!match || !match[1]) {
-      throw new Error('无法解析API响应数据');
-    }
-    
-    const dataArray = match[1].split('~');
-    if (dataArray.length < 50) {
-      throw new Error('API返回数据不完整');
-    }
-    
-    const price = parseFloat(dataArray[3]) || 0;   // Current price (index 3)
-    const previousClose = parseFloat(dataArray[4]) || 0;  // Previous close (index 4)
-    const open = parseFloat(dataArray[5]) || 0;    // Open price (index 5)
-    const high = parseFloat(dataArray[33]) || 0;   // High price (index 33)
-    const low = parseFloat(dataArray[34]) || 0;    // Low price (index 34)
-    const volume = parseFloat(dataArray[6]) || 0;  // Volume in hands (index 6)
-    const changePercent = parseFloat(dataArray[32]) || 0;  // Change percent (index 32)
-    const change = previousClose > 0 ? price - previousClose : 0;
-    
-    console.log(`解析的港股数据: price=${price}, previousClose=${previousClose}, changePercent=${changePercent}`);
-    
-    if (isNaN(price) || price <= 0) {
-      throw new Error('返回数据中没有有效的价格信息');
-    }
-    
+
+    const parsed = parseTencentGtimgLine(text);
+    const { price, previousClose, open, high, low, volumeHands, change, changePercent } =
+      parsed;
+
+    console.log(
+      `解析的港股数据: price=${price}, previousClose=${previousClose}, changePercent=${changePercent}`,
+    );
+
     return {
       price: Math.round(price * 1000) / 1000,
       open: Math.round(open * 1000) / 1000,
       high: Math.round(high * 1000) / 1000,
       low: Math.round(low * 1000) / 1000,
-      volume: Math.floor(volume * 100), // Convert from hands to shares
+      volume: Math.floor(volumeHands * 100),
       previousClose: Math.round(previousClose * 1000) / 1000,
       change: Math.round(change * 1000) / 1000,
       changePercent: Math.round(changePercent * 100) / 100,
       symbol: hkStockCode,
-      market: 'HK'
+      market: 'HK',
     };
     
   } catch (error) {
@@ -440,69 +506,34 @@ async function getCNStockPrice(symbol) {
     
     console.log(`A股代码格式化: ${symbol} -> ${fullSymbol}`);
     
-    // Use Tencent Finance API with proxy
     const apiUrl = `https://qt.gtimg.cn/q=${fullSymbol}`;
-    const proxyUrl = `https://proxy-api.trickle-app.host/?url=${encodeURIComponent(apiUrl)}`;
-    
+
     console.log(`使用腾讯财经API: ${apiUrl}`);
-    
-    const response = await fetch(proxyUrl, {
-      method: 'GET',
-      signal: controller.signal,
-      headers: {
-        'Accept': '*/*'
-      }
-    });
-    
+
+    const text = await fetchGtimgQuoteText(apiUrl, controller.signal);
     clearTimeout(timeoutId);
-    
-    console.log(`腾讯财经API响应状态: ${response.status}`);
-    
-    if (!response.ok) {
-      throw new Error(`网络响应异常: ${response.status}`);
-    }
-    
-    const text = await response.text();
+
     console.log(`腾讯财经API响应: ${text.substring(0, 200)}`);
-    
-    // Parse Tencent Finance response format
-    // Format: v_${fullSymbol}="51~股票名称~股票代码~当前价格~涨跌~涨跌%~成交量(手)~成交额(万)~...~今开~最高~最低~...";
-    const match = text.match(/="(.+)"/);
-    if (!match || !match[1]) {
-      throw new Error('无法解析API响应数据');
-    }
-    
-    const dataArray = match[1].split('~');
-    if (dataArray.length < 50) {
-      throw new Error('API返回数据不完整');
-    }
-    
-    const price = parseFloat(dataArray[3]) || 0;   // Current price (index 3)
-    const previousClose = parseFloat(dataArray[4]) || 0;  // Previous close (index 4)
-    const open = parseFloat(dataArray[5]) || 0;    // Open price (index 5)
-    const high = parseFloat(dataArray[33]) || 0;   // High price (index 33)
-    const low = parseFloat(dataArray[34]) || 0;    // Low price (index 34)
-    const volume = parseFloat(dataArray[6]) || 0;  // Volume in hands (index 6)
-    const changePercent = parseFloat(dataArray[32]) || 0;  // Change percent (index 32)
-    const change = previousClose > 0 ? price - previousClose : 0;
-    
-    console.log(`解析的A股数据: price=${price}, previousClose=${previousClose}, changePercent=${changePercent}`);
-    
-    if (isNaN(price) || price <= 0) {
-      throw new Error('返回数据中没有有效的价格信息');
-    }
-    
+
+    const parsed = parseTencentGtimgLine(text);
+    const { price, previousClose, open, high, low, volumeHands, change, changePercent } =
+      parsed;
+
+    console.log(
+      `解析的A股数据: price=${price}, previousClose=${previousClose}, changePercent=${changePercent}`,
+    );
+
     return {
       price: Math.round(price * 100) / 100,
       open: Math.round(open * 100) / 100,
       high: Math.round(high * 100) / 100,
       low: Math.round(low * 100) / 100,
-      volume: Math.floor(volume * 100), // Convert from hands to shares
+      volume: Math.floor(volumeHands * 100),
       previousClose: Math.round(previousClose * 100) / 100,
       change: Math.round(change * 100) / 100,
       changePercent: Math.round(changePercent * 100) / 100,
       symbol: cnStockCode,
-      market: 'CN'
+      market: 'CN',
     };
     
   } catch (error) {

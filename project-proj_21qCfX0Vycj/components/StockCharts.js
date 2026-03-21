@@ -6,9 +6,18 @@ function StockCharts({ stock }) {
   const priceTrendChartInstance = React.useRef(null);
   const backtestChartInstance = React.useRef(null);
   const [effectiveHistory, setEffectiveHistory] = React.useState([]);
-  const [windowStart, setWindowStart] = React.useState(0);
   const [activeTab, setActiveTab] = React.useState('charts'); // charts / backtest
   const windowSize = 30;
+
+  /** 图表固定展示最近 windowSize 天（去掉无效滑块，避免与 effect 依赖不同步） */
+  const sliceLastWindow = React.useCallback(
+    (arr) => {
+      if (!arr || !arr.length) return [];
+      const start = Math.max(0, arr.length - windowSize);
+      return arr.slice(start);
+    },
+    [windowSize],
+  );
 
   const getPersistedHistory = () => {
     try {
@@ -136,11 +145,8 @@ function StockCharts({ stock }) {
       console.log('[StockCharts] fallback to persisted history', nonEmpty.length);
     }
 
-    const finalHistory = (nonEmpty.length > 0 ? nonEmpty : []);
+    const finalHistory = nonEmpty.length > 0 ? nonEmpty : [];
     setEffectiveHistory(finalHistory);
-
-    const maxStart = Math.max(0, finalHistory.length - windowSize);
-    setWindowStart(maxStart);
   }, [stock.symbol, stock.market, stock.priceHistory]);
 
   React.useEffect(() => {
@@ -151,10 +157,7 @@ function StockCharts({ stock }) {
         dailyProfitChartInstance.current.destroy();
       }
 
-      // 通过 windowStart 控制窗口，无需每次只保留最近30天
-      const maxStart = Math.max(0, effectiveHistory.length - windowSize);
-      const safeStart = Math.min(windowStart, maxStart);
-      const displayData = effectiveHistory.slice(safeStart, safeStart + windowSize);
+      const displayData = sliceLastWindow(effectiveHistory);
 
       const dates = displayData.map(item => item.date);
       const profits = displayData.map(item => item.dailyProfit || 0);
@@ -218,7 +221,7 @@ function StockCharts({ stock }) {
         dailyProfitChartInstance.current.destroy();
       }
     };
-  }, [stock.priceHistory, stock.market]);
+  }, [effectiveHistory, stock.market, sliceLastWindow]);
 
   React.useEffect(() => {
     if (priceTrendChartRef.current && effectiveHistory && effectiveHistory.length > 0) {
@@ -228,9 +231,7 @@ function StockCharts({ stock }) {
         priceTrendChartInstance.current.destroy();
       }
 
-      const maxStart = Math.max(0, effectiveHistory.length - windowSize);
-      const safeStart = Math.min(windowStart, maxStart);
-      const displayData = effectiveHistory.slice(safeStart, safeStart + windowSize);
+      const displayData = sliceLastWindow(effectiveHistory);
 
       const dates = displayData.map(item => item.date);
       const prices = displayData.map(item => item.price);
@@ -329,7 +330,7 @@ function StockCharts({ stock }) {
         priceTrendChartInstance.current.destroy();
       }
     };
-  }, [stock.priceHistory, stock.market]);
+  }, [effectiveHistory, stock.market, sliceLastWindow, stock.positionEventHistory]);
 
   React.useEffect(() => {
     if (activeTab !== 'backtest') return;
@@ -453,23 +454,6 @@ function StockCharts({ stock }) {
             <div style={{ height: '200px' }}>
               <canvas ref={priceTrendChartRef}></canvas>
             </div>
-          </div>
-
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-600">显示窗口: {windowSize} 天</span>
-              {effectiveHistory.length > windowSize && (
-                <span className="text-xs text-gray-500">{effectiveHistory[windowStart]?.date || '-'} 到 {effectiveHistory[Math.min(windowStart + windowSize - 1, effectiveHistory.length - 1)]?.date || '-'}</span>
-              )}
-            </div>
-            <input
-              type="range"
-              min="0"
-              max={Math.max(0, effectiveHistory.length - windowSize)}
-              value={windowStart}
-              className="w-full"
-              onChange={(e) => setWindowStart(Number(e.target.value))}
-            />
           </div>
         </>
       ) : (

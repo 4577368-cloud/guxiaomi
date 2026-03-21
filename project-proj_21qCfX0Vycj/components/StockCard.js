@@ -4,7 +4,9 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
       ? { positions: [], ...stockProp, positions: Array.isArray(stockProp.positions) ? stockProp.positions : [] }
       : null;
     const [showPositionForm, setShowPositionForm] = React.useState(false);
-    const [brokerChannel, setBrokerChannel] = React.useState(stock.brokerChannel || 'futu');
+    const [brokerChannel, setBrokerChannel] = React.useState(
+      (stockProp && stockProp.brokerChannel) || "futu",
+    );
     const [sellSimulations, setSellSimulations] = React.useState([]);
     const [showFeeModal, setShowFeeModal] = React.useState(false);
     const [editingPosition, setEditingPosition] = React.useState(null);
@@ -175,6 +177,14 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
     const [isRefreshingPrice, setIsRefreshingPrice] = React.useState(false);
     const [isRefreshingIndicators, setIsRefreshingIndicators] = React.useState(false);
     const [isFetchingHistory, setIsFetchingHistory] = React.useState(false);
+
+    if (!stock) {
+      return (
+        <div className="card border border-amber-100 bg-amber-50/40 p-4 text-sm text-amber-900">
+          无效的股票数据（缺少 id），请删除该卡片后重新添加。
+        </div>
+      );
+    }
 
     const handleFetchHistory30 = async () => {
       if (!stock || typeof onUpdate !== 'function') return;
@@ -404,8 +414,6 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
       setSellSimulations(prev => prev.filter(sim => sim.id !== id));
     };
 
-    if (!stock) return null;
-
     const marketStr = stock.market === 'US' ? '美股' : stock.market === 'HK' ? '港股' : 'A股';
     const keywords = Array.isArray(stock.keywords) ? stock.keywords : [];
     const newsUrl = 'news.html?code=' + encodeURIComponent(stock.symbol) + '&market=' + encodeURIComponent(marketStr) + (stock.name ? '&name=' + encodeURIComponent(stock.name) : '') + (keywords.length ? '&keywords=' + encodeURIComponent(keywords.join(',')) : '');
@@ -519,6 +527,14 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
     );
   } catch (error) {
     console.error('StockCard component error:', error);
-    return null;
+    var sym = (stockProp && stockProp.symbol) || '—';
+    return (
+      <div className="card border border-amber-200 bg-amber-50/60 p-4 text-sm text-amber-900">
+        <p className="font-medium">该股票卡片渲染异常（{sym}）</p>
+        <p className="text-xs text-amber-800/90 mt-1">
+          可尝试刷新页面；若持续出现请查看控制台报错。
+        </p>
+      </div>
+    );
   }
 }

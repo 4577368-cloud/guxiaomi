@@ -1541,31 +1541,48 @@ function AnalysisApp() {
           </div>
         </div>
         {error && <p className="mt-2 text-red-600 text-sm">{error}</p>}
-        <div className="mt-5 flex flex-wrap items-center gap-3">
-          <button
-            className="btn btn-primary shrink-0"
-            onClick={runAnalysis}
-            disabled={analyzing}
-          >
-            {jobId
-              ? "分析进行中…"
-              : analysisSubmitting
-                ? "分析中，请稍候（云端可能需数分钟）…"
-                : "开始分析"}
-          </button>
-          {analyzing && (
+        <div className="mt-5 flex flex-col gap-2 items-start">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={stopAnalysis}
-              className="btn btn-secondary"
+              className={
+                "btn btn-primary shrink-0 w-auto max-w-full " +
+                (analyzing ? "btn-analyze-busy" : "")
+              }
+              onClick={runAnalysis}
+              disabled={analyzing}
+              title={
+                analyzing
+                  ? "云端分析可能需数分钟，可切换页面后再回来查看历史列表"
+                  : undefined
+              }
             >
-              停止分析
+              {jobId || analysisSubmitting ? (
+                <span className="inline-flex items-center gap-2">
+                  <span
+                    className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-white/35 border-t-white animate-spin"
+                    aria-hidden
+                  />
+                  <span>{jobId ? "分析进行中…" : "分析中…"}</span>
+                </span>
+              ) : (
+                "开始分析"
+              )}
             </button>
-          )}
+            {analyzing && (
+              <button
+                type="button"
+                onClick={stopAnalysis}
+                className="btn btn-secondary btn-xs shrink-0"
+              >
+                停止
+              </button>
+            )}
+          </div>
           {analyzing && (
-            <span className="text-sm text-amber-700">
-              您可先浏览其他页面，稍后返回本页查看结果。报告将自动保存到历史列表。
-            </span>
+            <p className="text-[11px] md:text-xs text-slate-500 leading-snug max-w-md pl-0.5">
+              云端可能较慢；可先去其他页面，完成后在历史报告里查看。
+            </p>
           )}
         </div>
         </div>

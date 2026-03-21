@@ -15,15 +15,18 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-gray-900 mb-4">Something went wrong</h1>
-            <p className="text-gray-600 mb-4">We're sorry, but something unexpected happened.</p>
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+          <div className="text-center max-w-md">
+            <h1 className="text-xl font-bold text-gray-900 mb-2">页面渲染出错</h1>
+            <p className="text-gray-600 text-sm mb-4">
+              可点击刷新重试。若反复出现，请打开开发者工具查看控制台报错。
+            </p>
             <button
+              type="button"
               onClick={() => window.location.reload()}
-              className="btn btn-black"
+              className="btn btn-primary"
             >
-              Reload Page
+              刷新页面
             </button>
           </div>
         </div>
@@ -35,7 +38,6 @@ class ErrorBoundary extends React.Component {
 }
 
 function App() {
-  try {
     const [portfolio, setPortfolio] = React.useState([]);
     const [capitalPool, setCapitalPool] = React.useState({ usd: 0, hkd: 0, cny: 0 });
     const [showAddModal, setShowAddModal] = React.useState(false);
@@ -85,9 +87,10 @@ function App() {
   }
 
   const loadInitialData = async () => {
+    let normalized = [];
     try {
       const localPortfolio = loadPortfolio();
-      const normalized = (Array.isArray(localPortfolio) ? localPortfolio : []).map(stock => {
+      normalized = (Array.isArray(localPortfolio) ? localPortfolio : []).map(stock => {
         const persistedHistory = window.loadStockPriceHistory ? window.loadStockPriceHistory(stock.symbol, stock.market) : [];
 
         // 合并本次存储与 localStorage 历史，优先保留本次已存在日期数据
@@ -114,12 +117,18 @@ function App() {
         savePortfolio(normalized);
       }
       setPortfolio(normalized);
-
-      // 启动当日首访增量更新
-      await refreshTodayHistoryForPortfolio(normalized);
     } catch (e) {
       console.error('加载组合失败', e);
       setPortfolio([]);
+      normalized = [];
+    }
+    // 与「读本地组合」分离：增量更新失败不应清空已有持仓
+    if (normalized.length > 0) {
+      try {
+        await refreshTodayHistoryForPortfolio(normalized);
+      } catch (e) {
+        console.warn('启动当日行情增量更新失败（已保留本地组合）', e);
+      }
     }
     try {
       const savedCapital = loadCapitalPool();
@@ -190,51 +199,68 @@ function App() {
     const handleRefreshAll = async () => {
       setIsRefreshing(true);
       console.log('开始批量刷新所有股票价格和技术指标...');
-      
       const updatedPortfolio = [];
-      
-      for (const stock of portfolio) {
-        try {
-          console.log(`正在刷新股票 ${stock.symbol} 的价格...`);
-          const priceData = await getStockPrice(stock.symbol, stock.market);
-          
-          let indicators = stock.technicalIndicators;
-          
-          // Fetch technical indicators for HK and CN stocks
-          if (stock.market === 'HK' || stock.market === 'CN') {
-            try {
-              console.log(`正在获取 ${stock.symbol} 的技术指标...`);
-              indicators = await getHistoricalDataAndIndicators(stock.symbol, stock.market);
-              console.log(`${stock.symbol} 技术指标获取成功:`, indicators);
-            } catch (error) {
-              console.error(`获取 ${stock.symbol} 技术指标失败:`, error);
+      try {
+        for (const stock of portfolio) {
+          try {
+            console.log(`正在刷新股票 ${stock.symbol} 的价格...`);
+            const priceData = await getStockPrice(stock.symbol, stock.market);
+
+            let indicators = stock.technicalIndicators;
+
+            if (stock.market === 'HK' || stock.market === 'CN') {
+              try {
+                console.log(`正在获取 ${stock.symbol} 的技术指标...`);
+                indicators = await getHistoricalDataAndIndicators(stock.symbol, stock.market);
+                console.log(`${stock.symbol} 技术指标获取成功:`, indicators);
+              } catch (error) {
+                console.error(`获取 ${stock.symbol} 技术指标失败:`, error);
+              }
             }
+
+            const priceHistory = updateStockPriceHistory(stock, priceData.price, priceData.previousClose);
+
+            updatedPortfolio.push({
+              ...stock,
+              currentPrice: priceData.price,
+              marketData: priceData,
+              technicalIndicators: indicators,
+              priceHistory: priceHistory
+            });
+
+            console.log(`${stock.symbol} 价格更新成功: ${priceData.price}`);
+          } catch (error) {
+            console.error(`获取股票 ${stock.symbol} 价格失败:`, error);
+            updatedPortfolio.push(stock);
           }
-          
-          const priceHistory = updateStockPriceHistory(stock, priceData.price, priceData.previousClose);
-          
-          updatedPortfolio.push({
-            ...stock,
-            currentPrice: priceData.price,
-            marketData: priceData,
-            technicalIndicators: indicators,
-            priceHistory: priceHistory
-          });
-          
-          console.log(`${stock.symbol} 价格更新成功: ${priceData.price}`);
-        } catch (error) {
-          console.error(`获取股票 ${stock.symbol} 价格失败:`, error);
-          updatedPortfolio.push(stock);
         }
+
+        setPortfolio(updatedPortfolio);
+        savePortfolio(updatedPortfolio);
+        console.log('批量刷新完成');
+      } catch (e) {
+        console.error('批量刷新异常', e);
+      } finally {
+        setIsRefreshing(false);
       }
-      
-      setPortfolio(updatedPortfolio);
-      savePortfolio(updatedPortfolio);
-      setIsRefreshing(false);
-      console.log('批量刷新完成');
     };
 
-    const portfolioSummary = calculatePortfolioSummary(portfolio);
+    const portfolioSummary = React.useMemo(() => {
+      try {
+        return calculatePortfolioSummary(portfolio);
+      } catch (e) {
+        console.error('汇总计算失败', e);
+        return {
+          stockCount: portfolio.length,
+          totalCost: 0,
+          totalValue: 0,
+          totalProfit: 0,
+          totalProfitPercent: 0,
+          profitableStocks: 0,
+          losingStocks: 0
+        };
+      }
+    }, [portfolio]);
 
     return (
       <>
@@ -381,10 +407,6 @@ function App() {
         </div>
       </>
     );
-  } catch (error) {
-    console.error('App component error:', error);
-    return null;
-  }
 }
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
