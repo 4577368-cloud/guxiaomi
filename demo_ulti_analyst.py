@@ -585,8 +585,9 @@ class StockDataService:
             )
             if need_yf:
                 self._enrich_cn_with_yfinance(sd, days)
-        elif not (sd.公司简介 or "").strip() and m in ("港股", "美股") and HAS_YFINANCE:
-            self._try_yf_blurb_only(sd, code, m)
+        elif m in ("港股", "美股") and HAS_YFINANCE:
+            if not (sd.公司简介 or "").strip() or not (sd.所属板块 or "").strip():
+                self._try_yf_blurb_only(sd, code, m)
 
     def _try_yf_blurb_only(self, sd: StockData, code: str, market: str) -> None:
         try:
@@ -597,8 +598,13 @@ class StockDataService:
             )
             inf = yf.Ticker(sym).info or {}
             b = (inf.get("longBusinessSummary") or inf.get("description") or "").strip()
-            if b:
+            if b and not (sd.公司简介 or "").strip():
                 sd.公司简介 = b[:2200]
+            sec = (inf.get("sector") or "").strip()
+            ind = (inf.get("industry") or "").strip()
+            combo = "/".join(x for x in (sec, ind) if x)
+            if combo and not (sd.所属板块 or "").strip():
+                sd.所属板块 = combo
         except Exception:
             pass
 
@@ -627,6 +633,66 @@ class StockDataService:
     @staticmethod
     def _is_mock_sd(sd: StockData) -> bool:
         return (sd.股票名称 or "").startswith("【行情不可用")
+
+    @staticmethod
+    def _client_quote_valid(cq: Any) -> bool:
+        """前端随分析请求附带的本机腾讯/美股行情；拒绝 mock 或异常数值。"""
+        if not cq or not isinstance(cq, dict):
+            return False
+        if cq.get("is_mock") is True:
+            return False
+        try:
+            p = float(cq.get("price"))
+            return 0 < p < 1e12 and p == p
+        except (TypeError, ValueError):
+            return False
+
+    def _stock_data_from_client_quote(
+        self,
+        code: str,
+        market: str,
+        cq: Dict[str, Any],
+    ) -> StockData:
+        """由浏览器拉取的即时价构造一层 StockData，插入多源合并链最前，主价优先于服务器失败场景。"""
+        price = float(cq["price"])
+        raw_cp = cq.get("change_percent")
+        try:
+            cpf = float(raw_cp) if raw_cp is not None else 0.0
+        except (TypeError, ValueError):
+            cpf = 0.0
+        change = f"{cpf:+.2f}%"
+        nm = (cq.get("name") or "").strip() or (code or "").strip() or "股票"
+        hi = round(price * 1.12, 6)
+        lo = round(price * 0.88, 6)
+        if hi <= lo:
+            hi, lo = round(price * 1.02, 6), round(price * 0.98, 6)
+        avg = (hi + lo + price) / 3.0
+        vol_est = abs(hi - lo) / max(price, 1e-9) * 8.0
+        return StockData(
+            股票名称=nm,
+            股票代码=(code or "").strip(),
+            所属市场=market,
+            最新价=round(price, 4) if market != "A 股" else round(price, 2),
+            涨跌幅=change,
+            总市值="暂无",
+            市盈率=None,
+            市净率=None,
+            九十日均价=float(avg),
+            九十日最高=float(hi),
+            九十日最低=float(lo),
+            波动率=float(min(vol_est, 80.0)),
+            数据时间=_fmt_now_cn(),
+            风险信号=[
+                "ℹ️ 最新价与涨跌幅来自**本页浏览器**拉取的行情（与用户添加股票同源）；"
+                "90 日区间等为基于现价的粗略占位，定量以券商软件为准；服务端仍会尝试合并多源以补简介与板块。",
+            ],
+            估值分位="暂无数据",
+            所属板块="",
+            技术指标简述="（浏览器快照仅含现价；完整 K 线由服务端或其它数据源补强）",
+            近期市场与板块简述="请结合当前年度及近期大盘与板块走势、该股近期走势综合分析。",
+            公司简介="",
+            数据溯源="浏览器行情（用户侧网络）",
+        )
 
     @staticmethod
     def _copy_sd(sd: StockData) -> StockData:
@@ -835,8 +901,14 @@ class StockDataService:
                 print(f"⚠️ [多源] yfinance 美股: {e}")
         return layers
 
-    def get_stock_info(self, code: str, market: str = "A 股", days: int = 90) -> StockData:
-        """多源按优先级拉取并合并：A 股 腾讯→yfinance→akshare→Baostock；港股 腾讯→yfinance→AV；美股 AV→yfinance。"""
+    def get_stock_info(
+        self,
+        code: str,
+        market: str = "A 股",
+        days: int = 90,
+        client_quote: Optional[Dict[str, Any]] = None,
+    ) -> StockData:
+        """多源按优先级拉取并合并；若带 client_quote（浏览器腾讯价），插入链首，缓解服务端连不通行情源的问题。"""
         try:
             m = (market or "").strip()
             if m == "A 股":
@@ -847,6 +919,14 @@ class StockDataService:
                 layers = self._collect_layers_us(code, days)
             else:
                 return self._mock_stock_data(code, m or market)
+            if self._client_quote_valid(client_quote):
+                layers.insert(
+                    0,
+                    (
+                        "浏览器行情",
+                        self._stock_data_from_client_quote(code, m, client_quote),
+                    ),
+                )
             if not layers:
                 return self._mock_stock_data(code, market)
             merged = self._merge_layers(layers, m, code, days)
@@ -1734,7 +1814,8 @@ class MultiAgentStockAnalyst:
     def analyze(self, stock_code: str, stock_name: str = None,
                 market: str = "A 股", days: int = 90,
                 selected_analysts: List[str] = None,
-                reports_dir: Optional[Path] = None) -> FinalReport:
+                reports_dir: Optional[Path] = None,
+                client_quote: Optional[Dict[str, Any]] = None) -> FinalReport:
         """执行完整分析流程。reports_dir 若提供，会加载该股票最近 3 份报告并生成「对比与异动」板块。"""
 
         print("\n" + "═"*60)
@@ -1743,7 +1824,9 @@ class MultiAgentStockAnalyst:
 
         # 步骤 1: 获取股票数据
         print(f"\n📊 步骤 1: 获取 {stock_code} 市场数据...")
-        stock_data = self.data_service.get_stock_info(stock_code, market, days)
+        stock_data = self.data_service.get_stock_info(
+            stock_code, market, days, client_quote=client_quote,
+        )
         if stock_name:
             stock_data.股票名称 = stock_name
         self.data_service.post_enrich_stock_data(stock_data, stock_code, market, days)

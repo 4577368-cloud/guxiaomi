@@ -2,6 +2,13 @@
 
 分析报告由 `demo_ulti_analyst.py` 中 `StockDataService.get_stock_info`（**多源并行拉取 + 合并**）、`post_enrich_stock_data`（仅补缺）拉取数据；前端刷新价格见 `project-proj_21qCfX0Vycj/utils/stockAPI.js`。
 
+### 为什么「添加股票有价、生成报告却行情/行业不可用」？
+
+- **添加股票 / 持仓卡片**：在**用户浏览器**里请求腾讯 `qt.gtimg`（可走 Trickle 等代理），走的是**你的网络**。
+- **生成报告**：在**服务器**（如 Vercel）上跑 `get_stock_info`，走的是**机房出口**，常被墙或超时，与浏览器不是同一条链路。
+
+**已做桥接**：分析页 `analysis.html` 已加载 `utils/stockAPI.js`，点击分析前会先 `getStockPrice`，把**非 mock** 的现价与涨跌幅随 `POST /api/analyze` 的 **`client_quote`** 发给后端；`get_stock_info` 将其作为 **`浏览器行情`** 插入多源链**最前**，主定价优先，并与服务端各源合并补简介/板块。若仍缺板块，港股/美股会额外尝试 yfinance `info` 补 **sector/industry**。
+
 ## 多源合并与校验（`get_stock_info`）
 
 同一标的会按下面顺序**尽量拉全各源**，再合并为一条 `StockData`：

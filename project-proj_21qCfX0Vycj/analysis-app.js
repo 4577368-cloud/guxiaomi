@@ -1271,6 +1271,32 @@ function AnalysisApp() {
         /^\d{1,3}(\.\d{1,3}){3}$/.test(h);
       /* 公网域名（含 vercel.app）：同步分析可能极久；局域网/本机 POST 很快返回 job_id */
       var analyzePostTimeoutMs = isLanOrLocal ? 20000 : 360000;
+      /** 与「添加股票」同源：在用户网络下拉腾讯/AlphaVantage，随 POST 带给服务端作合并首层（服务端常连不通行情） */
+      var clientQuote = null;
+      try {
+        if (typeof getStockPrice === "function") {
+          var stockApiMkt =
+            form.market === "港股"
+              ? "HK"
+              : form.market === "美股"
+                ? "US"
+                : "CN";
+          var pq = await getStockPrice(form.stock_code.trim(), stockApiMkt);
+          if (pq && pq.isMock !== true && Number(pq.price) > 0) {
+            clientQuote = {
+              price: Number(pq.price),
+              change_percent:
+                pq.changePercent != null && !Number.isNaN(Number(pq.changePercent))
+                  ? Number(pq.changePercent)
+                  : undefined,
+              name: (form.stock_name || "").trim() || undefined,
+              is_mock: false,
+            };
+          }
+        }
+      } catch (eq) {
+        console.warn("分析前浏览器询价失败（将依赖服务端拉数）", eq);
+      }
       const res = await fetchWithTimeoutNoAbort(
         `${apiBase}/api/analyze`,
         {
@@ -1282,6 +1308,7 @@ function AnalysisApp() {
             stock_name: form.stock_name.trim() || null,
             days: form.days,
             use_mock: form.use_mock,
+            client_quote: clientQuote,
           }),
         },
         analyzePostTimeoutMs,

@@ -93,6 +93,8 @@
 <body>
     <div id="root"></div>
     <script src="env.js"></script>
+    <!-- 与持仓页同源：浏览器拉腾讯行情；生成报告时随请求带给后端，缓解 Vercel 服务端连不通 gtimg -->
+    <script src="utils/stockAPI.js"></script>
     <script type="text/babel" src="analysis-app.js"></script>
     <script src="analysis-notify.js"></script>
 </body>

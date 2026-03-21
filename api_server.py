@@ -44,7 +44,7 @@ if _env_file.is_file():
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse
 from typing import Optional, List, Dict, Any
 
@@ -173,12 +173,22 @@ def _market_norm(m: str) -> str:
     return "A 股"
 
 
+class ClientQuotePayload(BaseModel):
+    """分析页浏览器用 stockAPI 拉到的现价（与添加股票同源）；服务端连不通腾讯时作合并首层。"""
+
+    price: float = Field(..., gt=0, lt=1e12)
+    change_percent: Optional[float] = None
+    name: Optional[str] = None
+    is_mock: bool = False
+
+
 class AnalyzeRequest(BaseModel):
     stock_code: str
     market: str = "A 股"
     stock_name: Optional[str] = None
     days: int = 90
     use_mock: bool = False
+    client_quote: Optional[ClientQuotePayload] = None
 
 
 class ChatRequest(BaseModel):
@@ -277,6 +287,9 @@ def _run_analyze_task(job_id: str, req: AnalyzeRequest):
         )
         market = _market_norm(req.market)
         analyst = MultiAgentStockAnalyst(use_real_llm=not req.use_mock, debate_rounds=1)
+        cq_dict = None
+        if req.client_quote and not req.client_quote.is_mock:
+            cq_dict = req.client_quote.model_dump(exclude_none=False)
         report = analyst.analyze(
             stock_code=req.stock_code.strip(),
             stock_name=req.stock_name.strip() if req.stock_name else None,
@@ -284,6 +297,7 @@ def _run_analyze_task(job_id: str, req: AnalyzeRequest):
             days=req.days,
             selected_analysts=None,
             reports_dir=REPORTS_DIR,
+            client_quote=cq_dict,
         )
         base_name = report_base_name(market, req.stock_code, with_time=True)
         md_path = REPORTS_DIR / f"{base_name}.md"
