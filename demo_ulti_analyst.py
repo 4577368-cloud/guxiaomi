@@ -3106,6 +3106,25 @@ def _clean_snippet_for_rec(s: str, max_len: int = 96) -> str:
     return t[: max_len - 1] + "…"
 
 
+def _final_rec_one_reason(s: str, max_len: int = 58) -> str:
+    """最终建议用的一句话理由：优先取「解读」后内容，弱化已在报告其它处出现的长数据枚举。"""
+    if not s:
+        return ""
+    t = " ".join(str(s).replace("\r", " ").split()).strip()
+    if "解读：" in t:
+        t = t.split("解读：", 1)[-1].strip()
+    elif "数据：" in t and "解读：" not in t:
+        # 仅有「数据：…」时取第一句结论性尾巴，避免复述整段区间数字
+        chunk = t.split("数据：", 1)[-1]
+        if "。" in chunk:
+            segs = [x.strip() for x in chunk.split("。") if x.strip()]
+            t = segs[-1] if segs else chunk
+        else:
+            t = chunk
+    t = t.strip().strip("`*#•- ")
+    return _clean_snippet_for_rec(t, max_len)
+
+
 def _first_debate_judge_snippet(debate_rounds: List[DebateRound], max_len: int = 128) -> str:
     """取最后一轮裁判结论中第一条有信息量的行。"""
     if not debate_rounds:
@@ -3124,57 +3143,44 @@ def _build_final_recommendation_text(
     debate_rounds: List[DebateRound],
     observe_str: str,
 ) -> str:
-    """生成完整、可执行的最终建议段落（避免「见下方」「关键变量」等空泛表述）。"""
-    judge = _first_debate_judge_snippet(debate_rounds)
-    p0 = _clean_snippet_for_rec(top_points[0][0]) if top_points else ""
-    p1 = _clean_snippet_for_rec(top_points[1][0]) if len(top_points) > 1 else ""
+    """一至两句收束：结论态度 + 一条最简理由（或裁判一句），不重复报告正文与数据表。"""
+    judge = _first_debate_judge_snippet(debate_rounds, max_len=52)
+    r0 = _final_rec_one_reason(top_points[0][0]) if top_points else ""
+    r1 = _final_rec_one_reason(top_points[1][0]) if len(top_points) > 1 else ""
+
+    def _two_lines(head: str, reason: str, alt: str) -> str:
+        head = head.rstrip("。")
+        reason = (reason or "").strip()
+        alt = (alt or "").strip()
+        if reason:
+            return f"{head}。{reason}".rstrip("。") + "。"
+        if alt:
+            return f"{head}。{_clean_snippet_for_rec(alt, 56)}".rstrip("。") + "。"
+        return f"{head}。"
 
     if rec_type == "积极":
-        parts = [
-            "综合多位分析师的加权结果，当前整体更偏「积极关注」，并非单一指标拍脑袋结论。",
-        ]
-        if p0:
-            parts.append(f"主要偏多依据可概括为：{p0}。")
-        if p1:
-            parts.append(f"可交叉验证的补充逻辑：{p1}。")
-        if judge:
-            parts.append(f"多空辩论归纳：{judge}。")
-        parts.append(
-            "请结合下方各角色完整论述、数据快照中的价格与估值，并阅读风险提示后再决定仓位与买卖时机。",
-        )
-        return "".join(parts)
+        return _two_lines("加权后建议「积极关注」", r0 or r1, judge)
 
     if rec_type == "谨慎":
-        parts = [
-            "综合加权后风险与偏空因素权重更高，建议「保持谨慎」，不宜盲目加仓或追高。",
-        ]
-        if p0:
-            parts.append(f"需优先消化的风险或疑虑包括：{p0}。")
-        if p1:
-            parts.append(f"此外请关注：{p1}。")
-        if judge:
-            parts.append(f"辩论结论摘要：{judge}。")
-        parts.append(
-            "若后续数据证伪上述担忧或风险显著收敛，可再结合操作建议中的价位与观察项重新评估。",
-        )
-        return "".join(parts)
+        return _two_lines("加权后建议「保持谨慎」", r0 or r1, judge)
 
-    # 观望
-    obs = (observe_str or "").strip() or "后续财报与指引、行业政策与竞争格局、主要价格与估值区间是否突破"
-    parts = [
-        "综合加权后多空得分接近，未形成强烈一致方向，建议「观望等待」，避免仓促加减仓。",
-    ]
-    parts.append(
-        f"此处「关键变量」指后续最影响判断的信息类别，本报告建议你重点跟踪：{obs}。",
-    )
-    if p0:
-        parts.append(f"当前讨论中较突出的分歧或中性焦点示例：{p0}。")
-    if judge:
-        parts.append(f"辩论归纳：{judge}。")
-    parts.append(
-        "待上述变量更清晰、或分析师共识抬升后，再择机行动通常更合适。",
-    )
-    return "".join(parts)
+    # 观望：两句内收束，观察项只保留前两项以免堆砌
+    obs = (observe_str or "").strip()
+    if obs and "、" in obs:
+        obs_short = "、".join(obs.split("、")[:2]) + "等"
+    elif obs:
+        obs_short = _clean_snippet_for_rec(obs, 32)
+    else:
+        obs_short = ""
+    extra = r0 or r1 or judge
+    head_w = "加权后建议「观望等待」"
+    if obs_short and extra:
+        return f"{head_w}：{_clean_snippet_for_rec(extra, 52)}（可先跟{obs_short}）。"
+    if extra:
+        return _two_lines(head_w, extra, "")
+    if obs_short:
+        return f"{head_w}，可先跟{obs_short}。"
+    return f"{head_w}。"
 
 
 # ==================== 报告导出器 ====================
