@@ -29,6 +29,137 @@ const POLL_INTERVAL_MS = 3000;
 /** 历史报告每页条数，与预测表「每页 10 条」一致；列表区最大高度对齐右侧表体 */
 const HISTORY_PAGE_SIZE = 10;
 
+/** 浏览器端历史列表缓存（Vercel 无持久盘时服务端列表常为空；且勿在 report 变化时整表重拉以免被空结果覆盖） */
+const HISTORY_LIST_CACHE_KEY = "analysis_reports_list_cache_v1";
+const REPORT_BODY_PREFIX = "analysis_report_body_v1:";
+const REPORT_BODY_INDEX_KEY = "analysis_report_body_index_v1";
+const MAX_CACHED_REPORT_BODIES = 20;
+const MAX_LIST_CACHE = 200;
+
+function loadHistoryListCache() {
+  try {
+    var raw = localStorage.getItem(HISTORY_LIST_CACHE_KEY);
+    if (!raw) return [];
+    var j = JSON.parse(raw);
+    return Array.isArray(j) ? j : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveHistoryListCache(items) {
+  try {
+    localStorage.setItem(
+      HISTORY_LIST_CACHE_KEY,
+      JSON.stringify((items || []).slice(0, MAX_LIST_CACHE)),
+    );
+  } catch (_) {}
+}
+
+/** 合并服务端与本地缓存；服务端为空时仍保留本地条目（解决刷新/切实例后列表被清空） */
+function mergeHistoryListItems(serverItems, cachedItems) {
+  var map = {};
+  var i;
+  var k;
+  for (i = 0; i < (cachedItems || []).length; i++) {
+    var c = cachedItems[i];
+    k = c && c.base_name;
+    if (k) map[k] = Object.assign({}, c);
+  }
+  for (i = 0; i < (serverItems || []).length; i++) {
+    var s = serverItems[i];
+    k = s && s.base_name;
+    if (k) map[k] = Object.assign({}, map[k] || {}, s);
+  }
+  var out = Object.keys(map).map(function (key) {
+    return map[key];
+  });
+  out.sort(function (a, b) {
+    return String(b.generated_at || "").localeCompare(
+      String(a.generated_at || ""),
+    );
+  });
+  return out;
+}
+
+function listItemFromReportPayload(r) {
+  if (!r || !r.base_name) return null;
+  var ga = (r.生成时间 && String(r.生成时间).trim()) || "";
+  if (!ga) {
+    ga = new Date().toISOString().slice(0, 16).replace("T", " ");
+  }
+  return {
+    base_name: r.base_name,
+    generated_at: ga,
+    stock_code: (r.stock_code || "").toUpperCase(),
+    market: r.market || "",
+  };
+}
+
+function cacheReportBody(baseName, payload) {
+  if (!baseName || !payload) return;
+  try {
+    var json = JSON.stringify(payload);
+    if (json.length > 3.5 * 1024 * 1024) return;
+    localStorage.setItem(REPORT_BODY_PREFIX + baseName, json);
+    var idx = JSON.parse(localStorage.getItem(REPORT_BODY_INDEX_KEY) || "[]");
+    if (!Array.isArray(idx)) idx = [];
+    idx = idx.filter(function (x) {
+      return x !== baseName;
+    });
+    idx.unshift(baseName);
+    while (idx.length > MAX_CACHED_REPORT_BODIES) {
+      var rem = idx.pop();
+      try {
+        localStorage.removeItem(REPORT_BODY_PREFIX + rem);
+      } catch (_) {}
+    }
+    localStorage.setItem(REPORT_BODY_INDEX_KEY, JSON.stringify(idx));
+  } catch (_) {
+    try {
+      var idx2 = JSON.parse(localStorage.getItem(REPORT_BODY_INDEX_KEY) || "[]");
+      if (Array.isArray(idx2) && idx2.length > 1) {
+        var drop = idx2.pop();
+        localStorage.removeItem(REPORT_BODY_PREFIX + drop);
+        localStorage.setItem(REPORT_BODY_INDEX_KEY, JSON.stringify(idx2));
+      }
+    } catch (_) {}
+  }
+}
+
+function getCachedReportBody(baseName) {
+  if (!baseName) return null;
+  try {
+    var raw = localStorage.getItem(REPORT_BODY_PREFIX + baseName);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (_) {
+    return null;
+  }
+}
+
+function removeCachedReportBody(baseName) {
+  if (!baseName) return;
+  try {
+    localStorage.removeItem(REPORT_BODY_PREFIX + baseName);
+    var idx = JSON.parse(localStorage.getItem(REPORT_BODY_INDEX_KEY) || "[]");
+    if (Array.isArray(idx)) {
+      idx = idx.filter(function (x) {
+        return x !== baseName;
+      });
+      localStorage.setItem(REPORT_BODY_INDEX_KEY, JSON.stringify(idx));
+    }
+  } catch (_) {}
+}
+
+function upsertHistoryFromPayload(payload) {
+  var item = listItemFromReportPayload(payload);
+  if (!item) return;
+  var merged = mergeHistoryListItems([item], loadHistoryListCache());
+  saveHistoryListCache(merged);
+  return merged;
+}
+
 /** 解析快照文件名 scr_p{pt}_t{tt}_s{st}_p{page}_{时间戳}（page 为 Intellectia 列表页码） */
 function parseScreenerBaseName(baseName) {
   if (!baseName || typeof baseName !== "string") return null;
@@ -497,6 +628,39 @@ function AnalysisApp() {
     } catch (_) {}
   };
 
+  /** 拉取服务端列表并与 localStorage 合并；勿依赖 report，避免点开报告时整表重拉被空列表覆盖 */
+  const refreshHistoryList = React.useCallback(
+    async function (opts) {
+      var initial = opts && opts.initial;
+      if (initial) setHistoryLoading(true);
+      try {
+        var cached = loadHistoryListCache();
+        var res = await fetch(`${apiBase}/api/reports/list`);
+        var data = await res.json().catch(function () {
+          return {};
+        });
+        var serverItems =
+          data.ok && Array.isArray(data.items) ? data.items : [];
+        var merged = mergeHistoryListItems(serverItems, cached);
+        saveHistoryListCache(merged);
+        setHistoryList(merged);
+      } catch (_) {
+        var fallback = loadHistoryListCache();
+        setHistoryList(fallback);
+      } finally {
+        if (initial) setHistoryLoading(false);
+      }
+    },
+    [apiBase],
+  );
+
+  React.useEffect(
+    function () {
+      refreshHistoryList({ initial: true });
+    },
+    [apiBase, refreshHistoryList],
+  );
+
   // 恢复未完成的任务：有 job_id 时轮询；Vercel 多实例下 status 常 404，线上更快放弃并提示
   React.useEffect(() => {
     if (!jobId) return;
@@ -535,6 +699,12 @@ function AnalysisApp() {
             localStorage.removeItem(JOB_STORAGE_KEY);
             localStorage.removeItem(JOB_STORAGE_VERSION_KEY);
           } catch (_) {}
+          try {
+            cacheReportBody(data.result.base_name, data.result);
+            var mergedDone = upsertHistoryFromPayload(data.result);
+            if (mergedDone) setHistoryList(mergedDone);
+          } catch (_) {}
+          void refreshHistoryList();
         } else if (data.status === "failed") {
           setError(data.error || "分析失败");
           setJobId("");
@@ -548,19 +718,7 @@ function AnalysisApp() {
     poll();
     const timer = setInterval(poll, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [jobId, apiBase]);
-
-  // 加载历史报告列表
-  React.useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch(`${apiBase}/api/reports/list`);
-        const data = await res.json();
-        if (data.ok && Array.isArray(data.items)) setHistoryList(data.items);
-      } catch (_) {}
-      setHistoryLoading(false);
-    })();
-  }, [report, apiBase]); // 新报告产生后刷新列表
+  }, [jobId, apiBase, refreshHistoryList]);
 
   const loadPredList = React.useCallback(async () => {
     setPredListLoading(true);
@@ -909,6 +1067,12 @@ function AnalysisApp() {
             localStorage.removeItem(JOB_STORAGE_KEY);
             localStorage.removeItem(JOB_STORAGE_VERSION_KEY);
           } catch (_) {}
+          try {
+            cacheReportBody(data.result.base_name, data.result);
+            var mergedSync = upsertHistoryFromPayload(data.result);
+            if (mergedSync) setHistoryList(mergedSync);
+          } catch (_) {}
+          void refreshHistoryList();
           return;
         }
         if (data.status === "failed") {
@@ -956,9 +1120,39 @@ function AnalysisApp() {
         {},
         REPORT_FETCH_TIMEOUT_MS,
       );
-      if (!res.ok)
+      if (!res.ok) {
+        if (res.status === 404) {
+          var fromCache = getCachedReportBody(baseName);
+          if (fromCache) {
+            setReport(fromCache);
+            setActiveTab("summary");
+            setSelectedStockCode(
+              fromCache.stock_code
+                ? String(fromCache.stock_code).toUpperCase()
+                : "",
+            );
+            setChatMessages(
+              loadChatHistoryFromStorage(
+                fromCache.stock_code || "",
+                fromCache.market || "",
+              ),
+            );
+            window.setTimeout(function () {
+              var el = document.getElementById("report-reading-panel");
+              if (el)
+                el.scrollIntoView({ behavior: "smooth", block: "start" });
+            }, 80);
+            return;
+          }
+        }
         throw new Error(res.status === 404 ? "报告不存在" : "加载失败");
+      }
       const data = await res.json();
+      try {
+        cacheReportBody(data.base_name || baseName, data);
+        var mergedLoad = upsertHistoryFromPayload(data);
+        if (mergedLoad) setHistoryList(mergedLoad);
+      } catch (_) {}
       setReport(data);
       setActiveTab("summary");
       setSelectedStockCode(
@@ -1004,10 +1198,13 @@ function AnalysisApp() {
         setError(j.detail || "删除失败");
         return;
       }
+      removeCachedReportBody(baseName);
       setHistoryList(function (prev) {
-        return prev.filter(function (it) {
+        var next = prev.filter(function (it) {
           return it.base_name !== baseName;
         });
+        saveHistoryListCache(next);
+        return next;
       });
       if (report && (report.base_name || "") === baseName) {
         setReport(null);

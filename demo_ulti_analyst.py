@@ -92,12 +92,17 @@ def _fmt_price(p: float) -> str:
     return f"{round(p, 2)}" if p is not None and p == p else "N/A"
 
 def _fmt_pe(pe: Optional[float]) -> str:
-    """市盈率保留 2 位小数，None 返回 N/A"""
+    """市盈率保留 2 位小数；None/非正返回 N/A（美股部分标的 yfinance 无 trailingPE 时由调用方用 EPS 推算）"""
     return f"{round(pe, 2)}" if pe is not None and pe == pe and pe > 0 else "N/A"
 
 def _fmt_pb(pb: Optional[float]) -> str:
     """市净率保留 2 位小数，None 返回 N/A"""
     return f"{round(pb, 2)}" if pb is not None and pb == pb and pb > 0 else "N/A"
+
+
+def _fmt_range_cn(low: float, high: float) -> str:
+    """90 日等价格区间：统一为「低～高」，避免模型写成 80100 这类连读"""
+    return f"{_fmt_price(low)}～{_fmt_price(high)}"
 
 @dataclass
 class StockData:
@@ -485,7 +490,7 @@ class StockDataService:
                 if len(close_prices) >= 20:
                     sma5 = float(close_prices[-5:].mean())
                     sma20 = float(close_prices[-20:].mean())
-                    技术指标简述_a = f"5日均线{round(sma5, 2)}；20日均线{round(sma20, 2)}；近{n}日区间{round(low_90, 2)}-{round(high_90, 2)}"
+                    技术指标简述_a = f"5日均线{round(sma5, 2)}；20日均线{round(sma20, 2)}；近{n}日区间{_fmt_range_cn(low_90, high_90)}元"
             else:
                 avg_90 = price
                 high_90 = price
@@ -633,7 +638,7 @@ class StockDataService:
         if len(closes) >= 20:
             sma5 = float(df["close"].iloc[-5:].mean())
             sma20 = float(df["close"].iloc[-20:].mean())
-            技术指标简述_a = f"5日均线{round(sma5, 2)}；20日均线{round(sma20, 2)}；近{n}日区间{round(low_90, 2)}-{round(high_90, 2)}"
+            技术指标简述_a = f"5日均线{round(sma5, 2)}；20日均线{round(sma20, 2)}；近{n}日区间{_fmt_range_cn(low_90, high_90)}元"
         else:
             技术指标简述_a = ""
 
@@ -661,7 +666,7 @@ class StockDataService:
         )
 
     def _normalize_hk_symbol(self, code: str) -> str:
-        """港股代码转为 yfinance 格式（4 位），如 03690.HK / 00700 -> 3690.HK / 0700.HK"""
+        """港股代码转为 yfinance 格式：5 位内数字左补零后去前导零再格式化为 4 位（如 01810→1810.HK，00700→0700.HK）"""
         code = code.strip().upper().replace(" ", "")
         if ".HK" in code:
             num_str = code.split(".")[0]
@@ -670,7 +675,11 @@ class StockDataService:
         else:
             return f"{code}.HK" if not code.endswith(".HK") else code
         num_str = num_str.lstrip("0") or "0"
-        return f"{int(num_str):04d}.HK"
+        n = int(num_str, 10)
+        # 港股常见 4 位代码；09618 等扩展码 int 后仍唯一对应 yfinance
+        if n <= 99999:
+            return f"{n:04d}.HK"
+        return f"{n}.HK"
 
     def _normalize_us_symbol(self, code: str) -> str:
         """美股代码清理，保留主代码"""
@@ -713,15 +722,27 @@ class StockDataService:
             else:
                 market_cap = "暂无"
 
-            # 市盈率：优先使用 trailingPE，若为 None（亏损或无盈利数据）则尝试 forwardPE
+            # 市盈率：trailingPE → forwardPE → 用现价/trailingEps 推算（AAPL 等常缺 trailingPE）
             pe_raw = info.get("trailingPE")
             if pe_raw is None or pe_raw == 0:
-                # 尝试使用 forward PE
                 pe_raw = info.get("forwardPE")
             try:
                 pe = float(pe_raw) if pe_raw is not None else None
             except (TypeError, ValueError):
                 pe = None
+            if pe is not None and pe < 0:
+                pe = None
+            if (pe is None or pe <= 0) and price and price > 0:
+                for eps_key in ("trailingEps", "epsTrailingTwelveMonths", "forwardEps"):
+                    eps_v = info.get(eps_key)
+                    if eps_v is not None:
+                        try:
+                            eps_f = float(eps_v)
+                            if eps_f > 0:
+                                pe = price / eps_f
+                                break
+                        except (TypeError, ValueError, ZeroDivisionError):
+                            pass
             
             # 市净率
             pb_raw = info.get("priceToBook")
@@ -757,7 +778,11 @@ class StockDataService:
                 else:
                     pe_percentile = "高估区间（历史前 30%）"
             elif pe is None and info.get("forwardPE") is not None:
-                pe_percentile = f"暂无历史PE，预期PE {info.get('forwardPE'):.1f} 倍"
+                try:
+                    fp = float(info.get("forwardPE"))
+                    pe_percentile = f"暂无历史PE，预期PE {fp:.1f} 倍" if fp > 0 else "暂无数据（公司尚未盈利）"
+                except (TypeError, ValueError):
+                    pe_percentile = "暂无数据（公司尚未盈利）"
             else:
                 pe_percentile = "暂无数据（公司尚未盈利）"
 
@@ -812,7 +837,9 @@ class StockDataService:
             if rsi is not None and pd.notna(rsi):
                 parts.append(f"RSI(14){round(rsi, 1)}")
             recent = close.iloc[-min(30, len(close)):]
-            parts.append(f"近30日区间{round(recent.min(), 2)}-{round(recent.max(), 2)}")
+            parts.append(
+                f"近30日区间{_fmt_range_cn(float(recent.min()), float(recent.max()))}元"
+            )
             return "；".join(parts)
         except Exception:
             return ""
@@ -931,7 +958,7 @@ class StockDataService:
         if len(closes) >= 20:
             sma5 = sum(closes[-5:]) / 5
             sma20 = sum(closes[-20:]) / 20
-            技术指标简述 = f"5日均线{round(sma5, 2)}；20日均线{round(sma20, 2)}；近{len(closes)}日区间{round(low_90, 2)}-{round(high_90, 2)}"
+            技术指标简述 = f"5日均线{round(sma5, 2)}；20日均线{round(sma20, 2)}；近{len(closes)}日区间{_fmt_range_cn(low_90, high_90)}元"
         else:
             技术指标简述 = ""
 
@@ -957,23 +984,26 @@ class StockDataService:
         )
 
     def _mock_stock_data(self, code: str, market: str) -> StockData:
-        """模拟数据（用于测试）"""
+        """仅在真实行情不可用时使用；名称必须与用户输入代码一致，禁止写死某只股票。"""
+        c = (code or "").strip() or "未知代码"
         return StockData(
-            股票名称="03690",
-            股票代码=code,
+            股票名称=f"【行情不可用·占位】{c}",
+            股票代码=c,
             所属市场=market,
-            最新价=100.0,
-            涨跌幅="+1.5%",
-            总市值="1000 亿",
-            市盈率=25.0,
-            市净率=5.0,
-            九十日均价=95.0,
-            九十日最高=120.0,
-            九十日最低=80.0,
-            波动率=15.0,
+            最新价=0.0,
+            涨跌幅="N/A",
+            总市值="N/A",
+            市盈率=None,
+            市净率=None,
+            九十日均价=0.0,
+            九十日最高=0.0,
+            九十日最低=0.0,
+            波动率=0.0,
             数据时间=datetime.now().strftime("%Y 年%m 月%d日 %H:%M"),
-            风险信号=["✅ 模拟数据,仅供参考"],
-            估值分位="合理区间"
+            风险信号=[
+                "⚠️ 未能获取真实行情（网络、yfinance 或 Alpha Vantage 等）；以下为占位，不可作为投资依据",
+            ],
+            估值分位="暂无数据",
         )
 
 # ==================== LLM 客户端 ====================
@@ -1140,11 +1170,12 @@ class MultiAgentStockAnalyst:
         _year = _now.year
         _date_constraint = f"【当前日期】{_now.strftime('%Y年%m月%d日')}（{_year}年）。严禁在分析中将 2023、2024 等过往年份当作「当前」或「近期」；不得引用旧年份数据作为当前依据；若必须提历史须明确标注「历史（某年）」。"
 
+        _rng90 = _fmt_range_cn(stock_data.九十日最低, stock_data.九十日最高)
         data_context = f"""【股票信息】{stock_data.股票名称}（{stock_data.股票代码}）
 {_date_constraint}
 【最新价格】{_fmt_price(stock_data.最新价)}元（{stock_data.涨跌幅}）
-【估值水平】市盈率{_fmt_pe(stock_data.市盈率)}倍｜市净率{round(stock_data.市净率, 2)}倍｜{stock_data.估值分位}
-【90 日区间】{_fmt_price(stock_data.九十日最低)} ~ {_fmt_price(stock_data.九十日最高)}元（波动率{stock_data.波动率:.1f}%）
+【估值水平】市盈率{_fmt_pe(stock_data.市盈率)}倍｜市净率{_fmt_pb(stock_data.市净率)}倍｜{stock_data.估值分位}
+【90 日价格区间】{_rng90}元（波动率{stock_data.波动率:.1f}%）。全文写区间时必须带分隔符，使用「{_rng90}」或「{_fmt_price(stock_data.九十日最低)} 至 {_fmt_price(stock_data.九十日最高)}」；禁止写成无分隔的两个数连在一起（错误示例：把 80 元与 100 元写成 80100）。
 【总市值】{stock_data.总市值}
 【风险信号】{', '.join(stock_data.风险信号)}
 【数据时间】{stock_data.数据时间}"""
@@ -1335,6 +1366,9 @@ class MultiAgentStockAnalyst:
         # 操作建议
         position_suggestion = "15%-20%" if consensus_score > 0.3 else "5%-10%" if consensus_score > 0 else "暂不建仓"
 
+        _low_ref = stock_data.九十日最低 or stock_data.最新价 or 0.0
+        if _low_ref <= 0:
+            _low_ref = stock_data.最新价 or 1.0
         return FinalReport(
             分析主题=f"{stock_data.股票名称}（{stock_data.股票代码}）投资价值分析",
             股票代码=stock_data.股票代码,
@@ -1350,8 +1384,8 @@ class MultiAgentStockAnalyst:
             风险提示=stock_data.风险信号,
             操作建议={
                 "仓位建议": position_suggestion,
-                "关注价位": f"{stock_data.九十日最低*0.95:.1f}元以下分批布局",
-                "止损参考": f"有效跌破{stock_data.九十日最低*0.9:.1f}元重新评估",
+                "关注价位": f"{_low_ref * 0.95:.2f}元以下分批布局",
+                "止损参考": f"有效跌破{_low_ref * 0.9:.2f}元重新评估",
                 "关键观察": "季度业绩、行业政策、竞争格局变化"
             }
         )
