@@ -21,6 +21,10 @@ const API_BASE_FALLBACK =
       ? location.origin
       : "");
 const JOB_STORAGE_KEY = "analysis_job_id";
+const FRONTEND_VERSION =
+  window.ANALYSIS_FRONTEND_VERSION || "";
+const JOB_STORAGE_VERSION_KEY =
+  "analysis_job_id_frontend_version";
 const POLL_INTERVAL_MS = 3000;
 
 function formatReportValue(val) {
@@ -266,7 +270,28 @@ function AnalysisApp() {
   });
   const [jobId, setJobId] = React.useState(() => {
     try {
-      return localStorage.getItem(JOB_STORAGE_KEY) || "";
+      var stored = localStorage.getItem(JOB_STORAGE_KEY) || "";
+      var storedV = localStorage.getItem(JOB_STORAGE_VERSION_KEY) || "";
+      if (!stored) return "";
+      if (FRONTEND_VERSION) {
+        if (storedV !== FRONTEND_VERSION) {
+          try {
+            localStorage.removeItem(JOB_STORAGE_KEY);
+          } catch (_) {}
+          return "";
+        }
+      } else {
+        // 如果前端版本未注入，保守起见也要求本地有匹配版本
+        if (storedV) {
+          // no-op
+        } else {
+          try {
+            localStorage.removeItem(JOB_STORAGE_KEY);
+          } catch (_) {}
+          return "";
+        }
+      }
+      return stored;
     } catch (_) {
       return "";
     }
@@ -323,6 +348,7 @@ function AnalysisApp() {
     setError("");
     try {
       localStorage.removeItem(JOB_STORAGE_KEY);
+      localStorage.removeItem(JOB_STORAGE_VERSION_KEY);
     } catch (_) {}
   };
 
@@ -340,6 +366,7 @@ function AnalysisApp() {
             setJobId("");
             try {
               localStorage.removeItem(JOB_STORAGE_KEY);
+              localStorage.removeItem(JOB_STORAGE_VERSION_KEY);
             } catch (_) {}
           }
           return;
@@ -353,12 +380,14 @@ function AnalysisApp() {
           setJobId("");
           try {
             localStorage.removeItem(JOB_STORAGE_KEY);
+            localStorage.removeItem(JOB_STORAGE_VERSION_KEY);
           } catch (_) {}
         } else if (data.status === "failed") {
           setError(data.error || "分析失败");
           setJobId("");
           try {
             localStorage.removeItem(JOB_STORAGE_KEY);
+            localStorage.removeItem(JOB_STORAGE_VERSION_KEY);
           } catch (_) {}
         }
       } catch (_) {}
@@ -592,6 +621,10 @@ function AnalysisApp() {
       setJobId(data.job_id);
       try {
         localStorage.setItem(JOB_STORAGE_KEY, data.job_id);
+        localStorage.setItem(
+          JOB_STORAGE_VERSION_KEY,
+          FRONTEND_VERSION || "",
+        );
       } catch (_) {}
     } catch (e) {
       const msg =

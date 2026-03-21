@@ -4,6 +4,8 @@
  */
 (function () {
   var JOB_STORAGE_KEY = 'analysis_job_id';
+  var FRONTEND_VERSION = window.ANALYSIS_FRONTEND_VERSION || '';
+  var JOB_STORAGE_VERSION_KEY = 'analysis_job_id_frontend_version';
   var POLL_INTERVAL_MS = 3000;
 
   function getApiBase() {
@@ -94,6 +96,7 @@
             if (consecutive404 >= max404BeforeDrop) {
               clearInterval(intervalId);
               try { localStorage.removeItem(JOB_STORAGE_KEY); } catch (_) {}
+              try { localStorage.removeItem(JOB_STORAGE_VERSION_KEY); } catch (_) {}
               return Promise.reject(new Error('NOT_FOUND'));
             }
             return Promise.reject(new Error('TRANSIENT_404'));
@@ -105,10 +108,12 @@
           if (data.status === 'done') {
             clearInterval(intervalId);
             try { localStorage.removeItem(JOB_STORAGE_KEY); } catch (_) {}
+            try { localStorage.removeItem(JOB_STORAGE_VERSION_KEY); } catch (_) {}
             showNotifyModal('分析已完成', '报告已生成并保存，可点击「前往查看」打开分析页查看。', true);
           } else if (data.status === 'failed') {
             clearInterval(intervalId);
             try { localStorage.removeItem(JOB_STORAGE_KEY); } catch (_) {}
+            try { localStorage.removeItem(JOB_STORAGE_VERSION_KEY); } catch (_) {}
             showNotifyModal('分析失败', (data.error || '未知错误').trim(), false);
           }
         })
@@ -126,7 +131,15 @@
   function startPollIfNeeded() {
     try {
       var jobId = localStorage.getItem(JOB_STORAGE_KEY);
-      if (jobId && jobId.trim()) pollJob(jobId.trim());
+      if (jobId && jobId.trim()) {
+        var storedV = localStorage.getItem(JOB_STORAGE_VERSION_KEY) || '';
+        if (FRONTEND_VERSION && storedV !== FRONTEND_VERSION) {
+          try { localStorage.removeItem(JOB_STORAGE_KEY); } catch (_) {}
+          try { localStorage.removeItem(JOB_STORAGE_VERSION_KEY); } catch (_) {}
+          return;
+        }
+        pollJob(jobId.trim());
+      }
     } catch (_) {}
   }
 
