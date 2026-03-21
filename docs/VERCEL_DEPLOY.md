@@ -11,7 +11,8 @@
 
 若坚持在 Vercel 上跑 FastAPI，需知：
 
-- 构建依赖：`vercel.json` 中 `installCommand` 为 `pip install -r requirements.txt`。
+- **不要**在 `vercel.json` 里写 `installCommand: pip install -r requirements.txt`。Vercel 构建机的 Python 由 **`uv` 管理**（PEP 668），直接 `pip install` 会报错「外部管理环境」。应 **省略 `installCommand`**，由平台用 **`uv` 自动根据 `requirements.txt` 安装依赖**。
+- 若必须自定义安装，可尝试：`uv pip install -r requirements.txt`（以 Vercel 当前文档为准）。
 - 入口文件：根目录 **`app.py`**（`from api_server import app`），满足官方要求的 `app` 变量名。
 
 **结论（理想架构）：** Vercel 托管 **页面**；**同一套 API** 更稳妥地放在支持常驻进程 + 持久盘（或对象存储）的平台，例如：
