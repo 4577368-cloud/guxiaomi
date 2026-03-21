@@ -79,6 +79,12 @@
               box-shadow: 0 0 24px rgba(34, 211, 238, 0.20);
             }
             .input-field { @apply w-full min-h-[2.75rem] px-3.5 py-2 text-base border border-slate-200/90 rounded-lg bg-white/80 focus:ring-2 focus:ring-[var(--primary-color)] focus:border-blue-400/60; }
+            /* 备注框：正文与其它输入同为 text-base，占位符略小更协调 */
+            .input-field-notes::placeholder {
+              font-size: 0.75rem;
+              line-height: 1.35;
+              color: rgb(148 163 184);
+            }
             .input-field-compact { @apply min-h-9 py-1.5 text-sm; }
             .report-markdown blockquote { @apply border-l-4 border-blue-300 pl-3 my-2 text-gray-600; }
             .report-markdown-block .report-markdown { @apply text-[15px] leading-relaxed; }
@@ -86,6 +92,9 @@
             .report-markdown-block .report-markdown h3 { @apply text-lg font-semibold text-gray-800 mt-3 mb-1; }
             .report-markdown-block .report-markdown p { @apply my-1.5; }
             .report-markdown-block .report-markdown ul { @apply my-2 pl-6 space-y-0.5; }
+            /* 报告内遗留 <details>：隐藏默认三角，与自定义 summary 样式一致 */
+            .report-markdown details summary { list-style: none; }
+            .report-markdown details summary::-webkit-details-marker { display: none; }
         }
     </style>
     <link rel="icon" href="https://app.trickle.so/storage/app/46bdde6b-ce0a-436d-9861-f705820c2391.png">

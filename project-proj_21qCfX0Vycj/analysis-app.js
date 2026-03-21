@@ -493,11 +493,102 @@ function stripMarkdown(s) {
     .trim();
 }
 
-// 将 Markdown 渲染为带样式的 React 节点（标题、加粗、列表、重点数字）
+function scrollToReportAnchor(anchorId) {
+  if (!anchorId) return;
+  try {
+    var el = document.getElementById(anchorId);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (_) {}
+}
+
+/** 表格行拆单元格：| a | b | */
+function splitTableCells(row) {
+  return row
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map(function (c) {
+      return c.trim();
+    });
+}
+
+function isTableSeparatorRow(line) {
+  var t = (line || "").trim().replace(/\s/g, "");
+  return /^\|?[\-:|]+\|?$/.test(t) && t.indexOf("-") >= 0;
+}
+
+/**
+ * 将 Markdown 渲染为 React（目录链接、锚点、引用、简单表格、遗留的 <details>）
+ */
 function renderMarkdown(text) {
   if (text == null || typeof text !== "string") return null;
   var raw = text.trim();
   if (!raw) return null;
+
+  var chunks = [];
+  var detRe =
+    /<details>\s*[\r\n]*\s*<summary>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/gi;
+  var last = 0;
+  var m;
+  while ((m = detRe.exec(raw)) !== null) {
+    if (m.index > last) chunks.push({ t: "md", s: raw.slice(last, m.index) });
+    chunks.push({ t: "det", sum: m[1].trim(), body: m[2].trim() });
+    last = detRe.lastIndex;
+  }
+  if (last < raw.length) chunks.push({ t: "md", s: raw.slice(last) });
+  if (!chunks.length) chunks.push({ t: "md", s: raw });
+
+  var partKey = 0;
+  function nextPartKey() {
+    return "mdpart-" + partKey++;
+  }
+  var children = [];
+  for (var ci = 0; ci < chunks.length; ci++) {
+    var ch = chunks[ci];
+    if (ch.t === "det") {
+      children.push(
+        React.createElement(
+          "details",
+          {
+            key: nextPartKey(),
+            className:
+              "my-3 rounded-lg border border-slate-200 bg-white shadow-sm",
+          },
+          React.createElement(
+            "summary",
+            {
+              className:
+                "cursor-pointer select-none px-3 py-2 font-semibold text-gray-900 bg-slate-50 rounded-lg hover:bg-slate-100 list-none",
+            },
+            ch.sum,
+          ),
+          React.createElement(
+            "div",
+            { className: "px-3 py-3 text-gray-700 border-t border-slate-100" },
+            renderMarkdown(ch.body),
+          ),
+        ),
+      );
+      continue;
+    }
+    var innerNodes = renderMarkdownPlain(ch.s);
+    if (innerNodes && innerNodes.length) {
+      for (var ni = 0; ni < innerNodes.length; ni++) {
+        children.push(
+          React.cloneElement(innerNodes[ni], { key: nextPartKey() }),
+        );
+      }
+    }
+  }
+  return React.createElement(
+    "div",
+    { className: "report-markdown space-y-0" },
+    children,
+  );
+}
+
+function renderMarkdownPlain(raw) {
   var lines = raw.split(/\r?\n/);
   var out = [];
   var key = 0;
@@ -506,8 +597,53 @@ function renderMarkdown(text) {
   }
   function parseInline(line) {
     var segs = [];
-    var rest = line;
+    var rest = String(line);
     while (rest.length) {
+      var mlink = /^\[([^\]]*)\]\(([^)]+)\)/.exec(rest);
+      if (mlink) {
+        var lab = mlink[1];
+        var href = (mlink[2] || "").trim();
+        if (/^#/.test(href)) {
+          var id = href.slice(1);
+          try {
+            id = decodeURIComponent(id);
+          } catch (_) {}
+          segs.push(
+            React.createElement(
+              "a",
+              {
+                key: nextKey(),
+                href: href,
+                className:
+                  "text-blue-600 hover:text-blue-800 underline underline-offset-2 cursor-pointer",
+                onClick: function (e) {
+                  e.preventDefault();
+                  scrollToReportAnchor(id);
+                },
+              },
+              lab || id,
+            ),
+          );
+        } else if (/^https?:\/\//i.test(href)) {
+          segs.push(
+            React.createElement(
+              "a",
+              {
+                key: nextKey(),
+                href: href,
+                target: "_blank",
+                rel: "noopener noreferrer",
+                className: "text-blue-600 hover:underline",
+              },
+              lab || href,
+            ),
+          );
+        } else {
+          segs.push(mlink[0]);
+        }
+        rest = rest.slice(mlink[0].length);
+        continue;
+      }
       var bold = /^\*\*([^*]+)\*\*/.exec(rest);
       if (bold) {
         segs.push(
@@ -569,6 +705,8 @@ function renderMarkdown(text) {
   var listItems = [];
   function flushList() {
     if (listItems.length) {
+      var copy = listItems.slice();
+      listItems = [];
       out.push(
         React.createElement(
           "ul",
@@ -576,7 +714,7 @@ function renderMarkdown(text) {
             key: nextKey(),
             className: "list-disc pl-6 my-2 space-y-1 text-gray-700",
           },
-          listItems.map(function (li, i) {
+          copy.map(function (li) {
             return React.createElement(
               "li",
               { key: nextKey() },
@@ -585,13 +723,30 @@ function renderMarkdown(text) {
           }),
         ),
       );
-      listItems = [];
     }
     inList = false;
   }
-  for (var i = 0; i < lines.length; i++) {
+
+  var i = 0;
+  while (i < lines.length) {
     var line = lines[i];
     var trimmed = line.trim();
+    var spanM = /^<span\s+id=(["'])([^"']+)\1[^>]*>\s*<\/span>\s*$/i.exec(
+      trimmed,
+    );
+    if (spanM) {
+      flushList();
+      out.push(
+        React.createElement("span", {
+          key: nextKey(),
+          id: spanM[2],
+          className: "block h-0 scroll-mt-24",
+          "aria-hidden": true,
+        }),
+      );
+      i++;
+      continue;
+    }
     if (/^##\s+/.test(line)) {
       flushList();
       out.push(
@@ -600,27 +755,138 @@ function renderMarkdown(text) {
           {
             key: nextKey(),
             className:
-              "text-xl font-bold text-gray-900 mt-4 mb-2 pb-1 border-b border-gray-200",
+              "text-xl font-bold text-gray-900 mt-4 mb-2 pb-1 border-b border-gray-200 scroll-mt-20",
           },
           trimmed.replace(/^##\s+/, ""),
         ),
       );
-    } else if (/^###\s+/.test(line)) {
+      i++;
+      continue;
+    }
+    if (/^###\s+/.test(line)) {
       flushList();
       out.push(
         React.createElement(
           "h3",
           {
             key: nextKey(),
-            className: "text-lg font-semibold text-gray-800 mt-3 mb-1",
+            className:
+              "text-lg font-semibold text-gray-800 mt-3 mb-1 scroll-mt-20",
           },
           trimmed.replace(/^###\s+/, ""),
         ),
       );
-    } else if (/^[-*•]\s+/.test(trimmed) || /^\d+\.\s+/.test(trimmed)) {
+      i++;
+      continue;
+    }
+    if (/^---+$/.test(trimmed) || /^\*{3,}$/.test(trimmed)) {
+      flushList();
+      out.push(
+        React.createElement("hr", {
+          key: nextKey(),
+          className: "my-4 border-slate-200",
+        }),
+      );
+      i++;
+      continue;
+    }
+    if (/^>\s?/.test(line)) {
+      flushList();
+      out.push(
+        React.createElement(
+          "blockquote",
+          {
+            key: nextKey(),
+            className:
+              "border-l-4 border-blue-300 pl-3 my-2 text-gray-700 bg-slate-50/90 py-2 pr-2 rounded-r",
+          },
+          parseInline(trimmed.replace(/^>\s?/, "")),
+        ),
+      );
+      i++;
+      continue;
+    }
+    if (/^\|/.test(trimmed) && trimmed.indexOf("|", 1) >= 0) {
+      var nextL = i + 1 < lines.length ? lines[i + 1].trim() : "";
+      if (nextL && isTableSeparatorRow(nextL)) {
+        flushList();
+        var headerCells = splitTableCells(trimmed);
+        i += 2;
+        var body = [];
+        while (i < lines.length) {
+          var tl = lines[i].trim();
+          if (!/^\|/.test(tl) || tl.indexOf("|", 1) < 0) break;
+          if (isTableSeparatorRow(tl)) {
+            i++;
+            continue;
+          }
+          body.push(splitTableCells(tl));
+          i++;
+        }
+        out.push(
+          React.createElement(
+            "div",
+            { key: nextKey(), className: "my-3 overflow-x-auto" },
+            React.createElement(
+              "table",
+              {
+                className:
+                  "min-w-full text-sm border border-slate-200 rounded-lg overflow-hidden",
+              },
+              React.createElement(
+                "thead",
+                { className: "bg-slate-100" },
+                React.createElement(
+                  "tr",
+                  null,
+                  headerCells.map(function (h, hi) {
+                    return React.createElement(
+                      "th",
+                      {
+                        key: nextKey(),
+                        className:
+                          "text-left px-3 py-2 font-semibold text-gray-800 border-b border-slate-200",
+                      },
+                      parseInline(h),
+                    );
+                  }),
+                ),
+              ),
+              React.createElement(
+                "tbody",
+                null,
+                body.map(function (row) {
+                  return React.createElement(
+                    "tr",
+                    { key: nextKey(), className: "border-b border-slate-100" },
+                    row.map(function (cell) {
+                      return React.createElement(
+                        "td",
+                        {
+                          key: nextKey(),
+                          className: "px-3 py-2 text-gray-700 align-top",
+                        },
+                        parseInline(cell),
+                      );
+                    }),
+                  );
+                }),
+              ),
+            ),
+          ),
+        );
+        continue;
+      }
+    }
+    if (/^[-*•]\s+/.test(trimmed) || /^\d+\.\s+/.test(trimmed)) {
       inList = true;
-      listItems.push(trimmed.replace(/^[-*•]\s+/, "").replace(/^\d+\.\s+/, ""));
-    } else if (trimmed) {
+      listItems.push(
+        trimmed.replace(/^[-*•]\s+/, "").replace(/^\d+\.\s+/, ""),
+      );
+      i++;
+      continue;
+    }
+    if (trimmed) {
       flushList();
       out.push(
         React.createElement(
@@ -632,13 +898,10 @@ function renderMarkdown(text) {
     } else {
       flushList();
     }
+    i++;
   }
   flushList();
-  return React.createElement(
-    "div",
-    { className: "report-markdown space-y-0" },
-    out,
-  );
+  return out;
 }
 const REPORT_FETCH_TIMEOUT_MS = 15000; // 加载报告 15 秒
 
@@ -728,7 +991,7 @@ function AnalysisApp() {
       stock_code: p.get("code") || "",
       market: market,
       days: 90,
-      stock_name: p.get("name") || "",
+      user_data_notes: p.get("name") || "",
       use_mock: false,
     };
   });
@@ -1273,6 +1536,11 @@ function AnalysisApp() {
       var analyzePostTimeoutMs = isLanOrLocal ? 20000 : 360000;
       /** 与「添加股票」同源：在用户网络下拉腾讯/AlphaVantage，随 POST 带给服务端作合并首层（服务端常连不通行情） */
       var clientQuote = null;
+      var noteFirstLine = (function (t) {
+        if (!t || !String(t).trim()) return "";
+        var line = String(t).split(/\r?\n/)[0].trim();
+        return line.length > 80 ? line.slice(0, 80) : line;
+      })(form.user_data_notes);
       try {
         if (typeof getStockPrice === "function") {
           var stockApiMkt =
@@ -1289,7 +1557,7 @@ function AnalysisApp() {
                 pq.changePercent != null && !Number.isNaN(Number(pq.changePercent))
                   ? Number(pq.changePercent)
                   : undefined,
-              name: (form.stock_name || "").trim() || undefined,
+              name: noteFirstLine || undefined,
               is_mock: false,
             };
           }
@@ -1305,7 +1573,7 @@ function AnalysisApp() {
           body: JSON.stringify({
             stock_code: form.stock_code.trim(),
             market: marketMap[form.market] || form.market,
-            stock_name: form.stock_name.trim() || null,
+            user_data_notes: form.user_data_notes.trim() || null,
             days: form.days,
             use_mock: form.use_mock,
             client_quote: clientQuote,
@@ -1794,37 +2062,20 @@ function AnalysisApp() {
               <option value="美股">美股</option>
             </select>
           </div>
-          <div>
+          <div className="md:col-span-2">
             <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
-              历史天数
+              备注（可选）
             </label>
-            <input
-              type="number"
-              className="input-field"
-              value={form.days}
+            <textarea
+              className="input-field input-field-notes min-h-[5.5rem] resize-y overflow-y-auto max-h-72 py-2 leading-normal"
+              rows={4}
+              value={form.user_data_notes}
               onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  days: parseInt(e.target.value, 10) || 90,
-                }))
+                setForm((f) => ({ ...f, user_data_notes: e.target.value }))
               }
-              min={30}
-              max={365}
+              placeholder="行情/市值等摘录，可长文粘贴；与接口行情合并补缺"
               disabled={analyzing}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
-              股票名称（可选）
-            </label>
-            <input
-              className="input-field"
-              value={form.stock_name}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, stock_name: e.target.value }))
-              }
-              placeholder="公司/证券简称（可选）"
-              disabled={analyzing}
+              title="支持大量文字；框内可滚动，也可向下拖拽拉高"
             />
           </div>
         </div>

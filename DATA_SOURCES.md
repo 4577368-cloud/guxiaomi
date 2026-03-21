@@ -9,6 +9,8 @@
 
 **已做桥接**：分析页 `analysis.html` 已加载 `utils/stockAPI.js`，点击分析前会先 `getStockPrice`，把**非 mock** 的现价与涨跌幅随 `POST /api/analyze` 的 **`client_quote`** 发给后端；`get_stock_info` 将其作为 **`浏览器行情`** 插入多源链**最前**，主定价优先，并与服务端各源合并补简介/板块。若仍缺板块，港股/美股会额外尝试 yfinance `info` 补 **sector/industry**。
 
+**补充栏（`user_data_notes`）**：分析页多行输入对应 `POST /api/analyze` 的该字段。服务端在 `get_stock_info` 之后执行 **`_apply_user_data_notes`**：保存原文至 `StockData.用户备注原文`（内部字段名），用正则提取规整「键：值」类中文，若开启真实 LLM 则再整理杂乱/OCR 文本；合并写入标准字段时**以接口与浏览器已有有效行情为准**，仅补缺。`数据溯源` 仅简短标注「补充字段（规则/模型归并）」；`风险信号` 用中性表述提示注意时效与口径，**报告正文不强调数据来源标签**，以保持阅读连贯。
+
 ## 多源合并与校验（`get_stock_info`）
 
 同一标的会按下面顺序**尽量拉全各源**，再合并为一条 `StockData`：

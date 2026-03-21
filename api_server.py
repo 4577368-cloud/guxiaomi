@@ -185,7 +185,8 @@ class ClientQuotePayload(BaseModel):
 class AnalyzeRequest(BaseModel):
     stock_code: str
     market: str = "A 股"
-    stock_name: Optional[str] = None
+    stock_name: Optional[str] = None  # 兼容旧版；优先使用 user_data_notes
+    user_data_notes: Optional[str] = None  # 补充栏：可粘贴行情/基本面摘录，服务端规则/LLM 并入 StockData
     days: int = 90
     use_mock: bool = False
     client_quote: Optional[ClientQuotePayload] = None
@@ -249,6 +250,7 @@ def _report_to_payload(report, md_content: str, html_content: str, base_name: st
         "风险提示": report.风险提示,
         "操作建议": report.操作建议,
         "对比与异动": getattr(report, "对比与异动", "") or "",
+        "数据快照补充": getattr(report, "快照补充说明", "") or "",
         "分析师报告": [
             {
                 "分析师姓名": r.分析师姓名,
@@ -290,14 +292,17 @@ def _run_analyze_task(job_id: str, req: AnalyzeRequest):
         cq_dict = None
         if req.client_quote and not req.client_quote.is_mock:
             cq_dict = req.client_quote.model_dump(exclude_none=False)
+        udn = (req.user_data_notes or "").strip() or None
+        sn = (req.stock_name or "").strip() or None
         report = analyst.analyze(
             stock_code=req.stock_code.strip(),
-            stock_name=req.stock_name.strip() if req.stock_name else None,
+            stock_name=sn,
             market=market,
             days=req.days,
             selected_analysts=None,
             reports_dir=REPORTS_DIR,
             client_quote=cq_dict,
+            user_data_notes=udn,
         )
         base_name = report_base_name(market, req.stock_code, with_time=True)
         md_path = REPORTS_DIR / f"{base_name}.md"
@@ -310,7 +315,13 @@ def _run_analyze_task(job_id: str, req: AnalyzeRequest):
         payload = _report_to_payload(report, md_content, html_content, base_name)
         payload["stock_code"] = req.stock_code.strip()
         payload["market"] = market
-        payload["stock_name"] = (req.stock_name or "").strip()
+        theme = (payload.get("分析主题") or "").strip()
+        if "（" in theme:
+            payload["stock_name"] = theme.split("（")[0].strip()
+        elif req.stock_name:
+            payload["stock_name"] = (req.stock_name or "").strip()
+        else:
+            payload["stock_name"] = ""
         json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         with _jobs_lock:
             _jobs[job_id]["status"] = "done"

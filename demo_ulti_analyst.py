@@ -153,6 +153,10 @@ class StockData:
     公司简介:str = ""
     # 多源合并记录，如「akshare → Baostock → 腾讯财经 → yfinance（合并：…）」
     数据溯源:str = ""
+    # 表单补充栏粘贴的原文（截断存储；对外展示不强调来源）
+    用户备注原文:str = ""
+    # 经模型/规则从补充文本提取、未全部并入标准字段的要点（供分析师上下文）
+    用户补充指标:str = ""
 
 @dataclass
 class AnalystReport:
@@ -193,6 +197,8 @@ class FinalReport:
     风险提示:List[str] = field(default_factory=list)
     操作建议:Dict[str, str] = field(default_factory=dict)
     对比与异动:str = ""  # 相对历史报告的变化与异动信号解读（有历史报告时填充）
+    # 补充摘录合并后的盘口、流动性、每股指标等（写入报告「数据快照」扩展区）
+    快照补充说明:str = ""
 
 # ==================== 角色提示词库（增强版） ====================
 # 借鉴 TradingAgents：每位分析师只引用与本角色专业直接相关的数据，输出「本角色数据支撑」突出专业切入点，避免各板块重复堆砌相同数据。
@@ -200,7 +206,7 @@ ANALYST_PROMPTS = {
     "市场专家": {
         "角色名称": "市场专家",
         "角色定位": "行业周期与竞争格局分析师",
-        "本角色专属数据": "所属板块、总市值、估值分位、九十日区间（趋势与周期位置）、风险信号中与行业/政策相关项。通用数据如最新价、市盈率仅可在结论中顺带 1 处，不作为你板块的数据支撑重点。",
+        "本角色专属数据": "所属板块、总市值、流通市值（若有）、估值分位、九十日区间（趋势与周期位置）、总股本/流通股本（若有，体量与筹码结构）、风险信号中与行业/政策相关项。通用数据如最新价、市盈率仅可在结论中顺带 1 处，不作为你板块的数据支撑重点。",
         "系统提示词": """你是一位资深市场分析师,拥有 15 年以上行业研究经验。
 
 【专业能力】
@@ -234,7 +240,7 @@ ANALYST_PROMPTS = {
     "成长投资者": {
         "角色名称": "成长投资者",
         "角色定位": "高增长机会挖掘师",
-        "本角色专属数据": "估值分位、九十日区间（空间与弹性）、波动率（成长股波动特征）、风险信号中与增长/新业务相关项。市盈率/市净率仅作为「估值与成长匹配」时引用 1 处，不作为本角色数据支撑的重复项。",
+        "本角色专属数据": "估值分位、九十日区间（空间与弹性）、波动率（成长股波动特征）、每股收益与股息率（若有，用于盈利质量与再投资/回报假设）、风险信号中与增长/新业务相关项。市盈率/市净率仅作为「估值与成长匹配」时引用 1 处，不作为本角色数据支撑的重复项。",
         "系统提示词": """你是一位专注于成长股投资的分析师,擅长发现高增长机会。
 
 【专业能力】
@@ -268,7 +274,7 @@ ANALYST_PROMPTS = {
     "风险分析师": {
         "角色名称": "风险分析师",
         "角色定位": "风险识别与安全边际评估师",
-        "本角色专属数据": "风险信号（全文）、波动率、九十日最高/最低（安全边际与回撤空间）、估值分位、市净率（资产质量）。最新价/市盈率仅可在结论中顺带 1 处，不作为本角色数据支撑的重复项。",
+        "本角色专属数据": "风险信号（全文）、波动率、九十日最高/最低（安全边际与回撤空间）、估值分位、市净率（资产质量）、换手率与成交量/成交额（若有，流动性冲击、异常放量缩量）、52周高低位置（若有，贴近边界的尾部风险）。最新价/市盈率仅可在结论中顺带 1 处，不作为本角色数据支撑的重复项。",
         "系统提示词": """你是一位保守型风险分析师,擅长识别潜在风险和陷阱。
 
 【专业能力】
@@ -302,7 +308,7 @@ ANALYST_PROMPTS = {
     "技术专家": {
         "角色名称": "技术专家",
         "角色定位": "产品技术与研发能力评估师 + 技术面指标解读",
-        "本角色专属数据": "技术指标简述（均线、RSI、MACD、布林带、区间等）、所属板块（技术/研发行业时）、估值分位（技术型企业估值）。若提供技术指标，须从技术面解读其含义（如均线支撑/压力、RSI 超买超卖、区间突破），不得只复述数字。最新价/市盈率仅可在结论中顺带 1 处。",
+        "本角色专属数据": "技术指标简述（均线、RSI、MACD、布林带、区间等）、开盘/最高/最低/昨收及换手率、成交量、成交额（若有，**当日K线与量价关系**，须解读实体与影线、振幅、放量缩量含义）、52周高低（若有，当前价相对位置）、所属板块（技术/研发行业时）、估值分位（技术型企业估值）。若提供技术指标，须从技术面解读其含义，不得只复述数字。最新价/市盈率仅可在结论中顺带 1 处。",
         "系统提示词": """你是一位技术领域专家，兼具（1）产品技术与研发能力评估、（2）技术面指标解读（借鉴专业交易分析框架）。
 
 【专业能力】
@@ -323,7 +329,7 @@ ANALYST_PROMPTS = {
 • 全程使用简体中文,专业术语需附简要解释
 • 禁止出现英文词汇（股票代码除外）
 • 按指定结构输出,逻辑清晰;禁止输出思考过程、<think> 或 think 等标签内容
-• 必须包含「## 本角色数据支撑」小节：仅列 2～3 条由**技术指标（均线/RSI/MACD/布林/区间）或研发与产品数据**得出的结论（如技术面信号、支撑压力、超买超卖），不得在此重复堆砌「最新价」「市盈率」等通用句
+• 必须包含「## 本角色数据支撑」小节：仅列 2～3 条由**技术指标（均线/RSI/MACD/布林/区间）或当日价量（开盘/最高/最低/换手/量额）或研发与产品数据**得出的结论（如技术面信号、支撑压力、超买超卖、放量下跌/缩量整理），不得在此重复堆砌「最新价」「市盈率」等通用句
 • 不要笼统说「趋势混合」，需给出细粒度、可操作的技术面或产品技术洞察
 
 【分析框架】
@@ -337,7 +343,7 @@ ANALYST_PROMPTS = {
     "社交舆情": {
         "角色名称": "社交舆情专家",
         "角色定位": "市场情绪与品牌口碑分析师",
-        "本角色专属数据": "风险信号中与舆情/情绪相关项、所属板块（用于理解受众）。若无单独舆情数据，则从风险信号与估值分位中解读市场情绪（如估值分位反映的市场乐观/悲观）。不得重复堆砌最新价、市盈率等通用数据。",
+        "本角色专属数据": "风险信号中与舆情/情绪相关项、所属板块（用于理解受众）。若有涨跌幅与成交额/换手率，可映射短期情绪热度与分歧。若无单独舆情数据，则从风险信号与估值分位中解读市场情绪（如估值分位反映的市场乐观/悲观）。不得重复堆砌最新价、市盈率等通用数据。",
         "系统提示词": """你是一位社交媒体和舆情分析专家,擅长分析公众情绪和口碑（借鉴新闻与舆情研究框架）。
 
 【专业能力】
@@ -1800,6 +1806,296 @@ class LLMClient:
 ## 置信程度
 85%（数据完整,逻辑清晰）"""
 
+
+def _parse_json_object_from_llm(text: str) -> Optional[Dict[str, Any]]:
+    """从模型输出中解析 JSON 对象。"""
+    if not text or not isinstance(text, str):
+        return None
+    t = text.strip()
+    if "```" in t:
+        m = re.search(r"```(?:json)?\s*([\s\S]*?)```", t, re.IGNORECASE)
+        if m:
+            t = m.group(1).strip()
+    try:
+        obj = json.loads(t)
+        return obj if isinstance(obj, dict) else None
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def _safe_float_note(x: Any) -> Optional[float]:
+    if x is None:
+        return None
+    if isinstance(x, (int, float)):
+        if x == x and -1e15 < x < 1e15:
+            return float(x)
+        return None
+    s = str(x).strip().replace(",", "")
+    if not s or s.lower() in ("null", "none", "n/a", "—", "-"):
+        return None
+    s = re.sub(r"[^\d.\-+eE]", "", s)
+    if not s:
+        return None
+    try:
+        v = float(s)
+        return v if v == v else None
+    except ValueError:
+        return None
+
+
+def try_parse_user_notes_regex(notes: str) -> Dict[str, Any]:
+    """对规整「键：值」类中文粘贴做轻量提取（无 LLM 时兜底）。"""
+    d: Dict[str, Any] = {}
+    if not notes or not isinstance(notes, str):
+        return d
+    text = notes.replace("\r\n", "\n")
+
+    def first_float(pat: str) -> Optional[float]:
+        m = re.search(pat, text, re.MULTILINE)
+        if not m:
+            return None
+        return _safe_float_note(m.group(1))
+
+    def first_str(pat: str) -> Optional[str]:
+        m = re.search(pat, text, re.MULTILINE)
+        if not m:
+            return None
+        s = (m.group(1) or "").strip()
+        return s if s else None
+
+    lp = first_float(r"(?:收盘价|最新价)[：:\s]*([\d,.\s]+)\s*元?")
+    if lp is None:
+        lp = first_float(r"(?:现价|当前价)[：:\s]*([\d,.\s]+)")
+    if lp is not None and lp > 0:
+        d["last_price"] = lp
+
+    ch = first_str(r"涨跌幅[：:\s]*([+-]?[\d.]+\s*%|[+-]?[\d.]+%?)")
+    if not ch:
+        ch = first_str(
+            r"(?:涨跌额\s*/\s*涨跌幅|涨跌幅)[：:\s]*[^\n]*?([+-]?[\d.]+\s*%)",
+        )
+    if ch and "%" not in ch:
+        fv = _safe_float_note(ch)
+        if fv is not None:
+            ch = f"{fv:+.2f}%"
+    if ch:
+        d["change_pct"] = ch
+
+    mcap = first_str(r"总市值[：:\s]*([^\n]+)")
+    if mcap:
+        d["total_mcap_str"] = mcap[:120]
+
+    pe = first_float(r"市盈率(?:（TTM）|\(TTM\)|\s*TTM)?[：:\s]*([\d,.\s]+)\s*倍?")
+    if pe is None:
+        pe = first_float(r"市盈率[：:\s]*([\d,.\s]+)\s*倍?")
+    if pe is not None and pe > 0:
+        d["pe_ttm"] = pe
+
+    pb = first_float(r"市净率(?:（PB）|\(PB\))?[：:\s]*([\d,.\s]+)\s*倍?")
+    if pb is None:
+        pb = first_float(r"市净率[：:\s]*([\d,.\s]+)\s*倍?")
+    if pb is not None and pb > 0:
+        d["pb"] = pb
+
+    op = first_float(r"开盘[：:\s/]*([\d,.\s]+)\s*元?")
+    hi = first_float(r"最高[：:\s/]*([\d,.\s]+)\s*元?")
+    lo = first_float(r"最低[：:\s/]*([\d,.\s]+)\s*元?")
+    pc = first_float(r"昨收[：:\s]*([\d,.\s]+)\s*元?")
+    for k, v in (("open", op), ("high", hi), ("low", lo), ("prev_close", pc)):
+        if v is not None and v > 0:
+            d[k] = v
+
+    w52h = first_float(
+        r"52\s*周\s*最高[：:\s/]*([\d,.\s]+)",
+    ) or first_float(r"52周最高[：:\s/]*([\d,.\s]+)")
+    w52l = first_float(
+        r"52\s*周\s*最低[：:\s/]*([\d,.\s]+)",
+    ) or first_float(r"52周最低[：:\s/]*([\d,.\s]+)")
+    if w52h is not None and w52h > 0:
+        d["week52_high"] = w52h
+    if w52l is not None and w52l > 0:
+        d["week52_low"] = w52l
+
+    to = first_str(r"换手率[：:\s]*([^\n%]+%?)")
+    if to:
+        d["turnover_rate"] = to[:40]
+
+    vol = first_str(r"成交量[：:\s]*([^\n]+)")
+    if vol:
+        d["volume_summary"] = vol[:80]
+    amt = first_str(r"成交额[：:\s]*([^\n]+)")
+    if amt:
+        d["amount_summary"] = amt[:80]
+
+    nm = first_str(r"股票名称[：:\s]*([^\n]+)")
+    if nm:
+        d["stock_name"] = nm.strip()[:80]
+
+    return d
+
+
+def _extract_user_notes_with_llm(
+    llm: "LLMClient",
+    notes: str,
+    code: str,
+    market: str,
+) -> Optional[Dict[str, Any]]:
+    """调用 LLM 将杂乱/规整粘贴整理为 JSON（键名英文）。"""
+    sys_p = (
+        "你是金融数据整理助手，只做提取与归一，不做投资建议。"
+        "输出必须是**单个 JSON 对象**，不要 markdown 代码围栏以外的文字。"
+        "无法确定的字段用 null；数字字段不要带单位字符串。"
+    )
+    user_p = f"""股票代码（表单）:{code}，市场:{market}。
+
+用户粘贴如下（可能含乱码、重复、OCR 噪声，请合理推断）：
+---
+{notes[:10000]}
+---
+
+请输出 JSON，键名**仅限英文**（可省略整键）：
+- stock_name: 字符串，证券简称或「公司名（代码）」
+- last_price: 数字，主币种现价
+- change_pct: 字符串，如 "-4.21%"
+- total_mcap_str: 字符串，总市值带单位如「1405.05 亿元」
+- pe_ttm: 数字，市盈率 TTM
+- pb: 数字，市净率
+- open, high, low, prev_close: 数字，开高低昨收
+- turnover_rate: 字符串，换手率
+- volume_summary, amount_summary: 字符串，成交量/额摘要
+- week52_high, week52_low: 数字
+- float_mcap, total_shares, float_shares: 字符串，流通市值/总股本/流通股本
+- eps, bps, dividend_yield: 字符串或数字，每股收益/每股净资产/股息率
+- extra: 字符串，其它重要事实一句汇总
+
+规则：明显噪声字符可忽略；相互矛盾的数取与「收盘价/最新价」上下文最一致的一组。"""
+    raw = llm.chat(sys_p, user_p, temperature=0.15)
+    return _parse_json_object_from_llm(raw or "")
+
+
+def merge_user_notes_dict_into_stock_data(sd: StockData, d: Dict[str, Any]) -> None:
+    """将整理结果并入 StockData：补充摘录优先填补接口侧空缺或占位行情。"""
+    if not d:
+        return
+
+    sn = d.get("stock_name")
+    if isinstance(sn, str) and sn.strip():
+        s = sn.strip()[:80]
+        if not sd.股票名称 or (sd.股票名称 or "").startswith("【行情不可用"):
+            sd.股票名称 = s
+
+    lp = _safe_float_note(d.get("last_price"))
+    if lp is not None and lp > 0 and (sd.最新价 or 0) <= 0:
+        sd.最新价 = float(lp)
+
+    ch = d.get("change_pct")
+    if isinstance(ch, str) and ch.strip():
+        s = ch.strip()
+        if "%" not in s:
+            fv = _safe_float_note(s)
+            if fv is not None:
+                s = f"{fv:+.2f}%"
+        if not (sd.涨跌幅 or "").strip():
+            sd.涨跌幅 = s
+
+    tm = d.get("total_mcap_str")
+    if isinstance(tm, str) and tm.strip():
+        bad = ("", "暂无", "N/A", "暂无（腾讯源）", "暂无（腾讯源无总市值）")
+        if (not sd.总市值) or sd.总市值 in bad:
+            sd.总市值 = tm.strip()[:120]
+
+    pe = _safe_float_note(d.get("pe_ttm"))
+    if pe is not None and pe > 0:
+        if sd.市盈率 is None or (sd.市盈率 or 0) <= 0:
+            sd.市盈率 = float(pe)
+
+    pb = _safe_float_note(d.get("pb"))
+    if pb is not None and pb > 0:
+        if sd.市净率 is None or (sd.市净率 or 0) <= 0:
+            sd.市净率 = float(pb)
+
+    # 用 52 周或 OHLC 补强 90 日区间（仅当原区间退化或全为 0）
+    hi_c = _safe_float_note(d.get("week52_high")) or _safe_float_note(d.get("high"))
+    lo_c = _safe_float_note(d.get("week52_low")) or _safe_float_note(d.get("low"))
+    if hi_c and lo_c and hi_c > 0 and lo_c > 0 and hi_c >= lo_c:
+        if (
+            sd.九十日最高 <= 0
+            or sd.九十日最低 <= 0
+            or abs(sd.九十日最高 - sd.九十日最低) < 1e-6 * max(sd.九十日最高, 1)
+        ):
+            sd.九十日最高 = float(hi_c)
+            sd.九十日最低 = float(lo_c)
+            _lp = _safe_float_note(d.get("last_price"))
+            sd.九十日均价 = float(
+                (hi_c + lo_c + max(sd.最新价 or 0, _lp or 0)) / 3.0,
+            )
+
+    lines: List[str] = []
+    for label, key in (
+        ("开盘", "open"),
+        ("最高", "high"),
+        ("最低", "low"),
+        ("昨收", "prev_close"),
+        ("52周高", "week52_high"),
+        ("52周低", "week52_low"),
+        ("换手率", "turnover_rate"),
+        ("成交量", "volume_summary"),
+        ("成交额", "amount_summary"),
+        ("流通市值", "float_mcap"),
+        ("总股本", "total_shares"),
+        ("流通股本", "float_shares"),
+        ("每股收益", "eps"),
+        ("每股净资产", "bps"),
+        ("股息率", "dividend_yield"),
+    ):
+        v = d.get(key)
+        if v is None or v == "":
+            continue
+        if isinstance(v, (int, float)) and v == v:
+            lines.append(f"- {label}：{v}")
+        else:
+            s = str(v).strip()
+            if s and s.lower() != "null":
+                lines.append(f"- {label}：{s[:200]}")
+    ex = d.get("extra")
+    if isinstance(ex, str) and ex.strip():
+        lines.append(f"- 其它：{ex.strip()[:800]}")
+        if lines:
+            block = "\n".join(lines)
+            if (sd.用户补充指标 or "").strip():
+                sd.用户补充指标 = (sd.用户补充指标.strip() + "\n" + block).strip()
+            else:
+                sd.用户补充指标 = block
+
+
+def _supplement_context_hint(stock_data: StockData) -> str:
+    """有补充摘录/结构化指标时，提示各分析师如何分流引用价量与每股数据。"""
+    has = (stock_data.用户补充指标 or "").strip() or (
+        stock_data.用户备注原文 or ""
+    ).strip()
+    if not has:
+        return ""
+    return (
+        "【数据分流与引用要求】上下文中若出现开盘/最高/最低/昨收、换手率、成交量/成交额、"
+        "52周高低、流通市值、总股本/流通股本、股息率、每股收益/每股净资产等："
+        "技术专家须解读当日价量与相对位置；风险分析师关注换手与成交异常及52周边界风险；"
+        "成长投资者结合每股收益等与市盈率谈匹配；市场专家结合市值体量与股本结构。"
+        "各角色勿复读同一句，但与己相关的数据不得视而不见。"
+    )
+
+
+def _debate_supplement_block(stock_data: StockData, max_chars: int = 1200) -> str:
+    s = (stock_data.用户补充指标 or "").strip()
+    if not s:
+        return ""
+    if len(s) > max_chars:
+        s = s[: max_chars - 1] + "…"
+    return (
+        "\n【价量与基本面补充（论证时请至少 1～2 条呼应其中可验证事实）】\n"
+        f"{s}\n"
+    )
+
+
 # ==================== 多智能体分析师 ====================
 class MultiAgentStockAnalyst:
     """多智能体股票分析师"""
@@ -1811,11 +2107,52 @@ class MultiAgentStockAnalyst:
         self.data_service = StockDataService()
         self.analyst_configs = ANALYST_PROMPTS
 
+    def _apply_user_data_notes(
+        self,
+        stock_data: StockData,
+        notes: str,
+        stock_code: str,
+        market: str,
+    ) -> None:
+        """保存补充栏原文，经规则/LLM 提取后并入 StockData（补缺，不覆盖已有有效行情）。"""
+        max_len = 12000
+        raw = notes if len(notes) <= max_len else notes[:max_len]
+        stock_data.用户备注原文 = raw
+
+        reg = try_parse_user_notes_regex(raw)
+        llm_d: Optional[Dict[str, Any]] = None
+        if self.use_real_llm:
+            try:
+                llm_d = _extract_user_notes_with_llm(
+                    self.llm, raw, stock_code, market,
+                )
+            except Exception:
+                llm_d = None
+
+        merged: Dict[str, Any] = dict(reg)
+        if isinstance(llm_d, dict):
+            for k, v in llm_d.items():
+                if v is not None and v != "":
+                    merged[k] = v
+
+        merge_user_notes_dict_into_stock_data(stock_data, merged)
+
+        hint = "部分指标来自补充摘录，请注意时效与口径，以官方披露为准。"
+        rs = list(stock_data.风险信号 or [])
+        if hint not in rs:
+            rs.append(hint)
+            stock_data.风险信号 = rs
+
+        trace = "补充字段（规则/模型归并）"
+        prev = (stock_data.数据溯源 or "").strip()
+        stock_data.数据溯源 = f"{prev}；{trace}" if prev else trace
+
     def analyze(self, stock_code: str, stock_name: str = None,
                 market: str = "A 股", days: int = 90,
                 selected_analysts: List[str] = None,
                 reports_dir: Optional[Path] = None,
-                client_quote: Optional[Dict[str, Any]] = None) -> FinalReport:
+                client_quote: Optional[Dict[str, Any]] = None,
+                user_data_notes: Optional[str] = None) -> FinalReport:
         """执行完整分析流程。reports_dir 若提供，会加载该股票最近 3 份报告并生成「对比与异动」板块。"""
 
         print("\n" + "═"*60)
@@ -1827,8 +2164,15 @@ class MultiAgentStockAnalyst:
         stock_data = self.data_service.get_stock_info(
             stock_code, market, days, client_quote=client_quote,
         )
-        if stock_name:
-            stock_data.股票名称 = stock_name
+        if user_data_notes and user_data_notes.strip():
+            self._apply_user_data_notes(
+                stock_data,
+                user_data_notes.strip(),
+                stock_code,
+                market,
+            )
+        elif stock_name and stock_name.strip():
+            stock_data.股票名称 = stock_name.strip()
         self.data_service.post_enrich_stock_data(stock_data, stock_code, market, days)
 
         data_summary = f"{stock_data.股票名称}（{stock_code}）｜{_fmt_price(stock_data.最新价)}元｜{stock_data.涨跌幅}｜市盈率{_fmt_pe(stock_data.市盈率)}倍"
@@ -1889,6 +2233,20 @@ class MultiAgentStockAnalyst:
 【数据时间】{stock_data.数据时间}"""
         if (stock_data.数据溯源 or "").strip():
             data_context += f"\n【数据溯源】{stock_data.数据溯源.strip()}"
+        if (stock_data.用户补充指标 or "").strip() or (
+            stock_data.用户备注原文 or ""
+        ).strip():
+            uro = (stock_data.用户备注原文 or "").strip()
+            if uro:
+                cap = 2200
+                excerpt = uro if len(uro) <= cap else uro[:cap] + "…"
+                data_context += f"\n【行情与基本面补充原文（截取）】\n{excerpt}"
+            ubi = (stock_data.用户补充指标 or "").strip()
+            if ubi:
+                data_context += f"\n【结构化补充指标】\n{ubi}"
+            _hint = _supplement_context_hint(stock_data)
+            if _hint:
+                data_context += f"\n{_hint}"
         if stock_data.所属板块:
             data_context += f"\n【所属板块】{stock_data.所属板块}"
         if (stock_data.公司简介 or "").strip():
@@ -1972,11 +2330,12 @@ class MultiAgentStockAnalyst:
             _date_note = f"【时效】当前为 {_year} 年，勿将 2023、2024 等旧年份当作当前或近期引用。"
 
             # 多头观点
+            _deb_ex = _debate_supplement_block(stock_data)
             bull_prompt = f"""基于以下分析师观点,总结看涨理由:
 {summary}
 
 【股票数据】{stock_data.股票名称}｜{_fmt_price(stock_data.最新价)}元｜市盈率{_fmt_pe(stock_data.市盈率)}倍
-
+{_deb_ex}
 {_date_note}
 
 请从增长机会、市场趋势、竞争优势等角度给出看涨论证。
@@ -1989,7 +2348,7 @@ class MultiAgentStockAnalyst:
 {summary}
 
 【股票数据】{stock_data.股票名称}｜{_fmt_price(stock_data.最新价)}元｜市盈率{_fmt_pe(stock_data.市盈率)}倍
-
+{_deb_ex}
 {_date_note}
 
 请从风险因素、竞争威胁、市场挑战等角度给出看跌论证。
@@ -2005,11 +2364,12 @@ class MultiAgentStockAnalyst:
 
 【空头观点】
 {bear_arg}
-
+{_deb_ex}
 {_date_note}
 
 请作为裁判,给出最终判断（看涨/看跌/中立）并说明理由。
-同时指出:1.双方共识点 2.核心分歧点 3.需要验证的关键变量"""
+同时指出:1.双方共识点 2.核心分歧点 3.需要验证的关键变量
+若上文有价量/换手/成交摘录，裁判结论中可一句点明其是否支持或削弱某一方。"""
 
             judge_decision = self.llm.chat(DEBATE_PROMPTS["裁判"], judge_prompt)
 
@@ -2066,6 +2426,19 @@ class MultiAgentStockAnalyst:
 
         top_points = sorted(all_points, key=lambda x: x[1], reverse=True)[:5]
 
+        sup = (stock_data.用户补充指标 or "").strip()
+        key_extra = ""
+        if sup:
+            bullets = [
+                ln.strip()[2:].strip()
+                for ln in sup.split("\n")
+                if ln.strip().startswith("- ")
+            ]
+            if bullets:
+                key_extra = "\n• 盘面与估值摘录：\n" + "\n".join(
+                    f"  - {(b[:52] + '…') if len(b) > 52 else b}" for b in bullets[:6]
+                )
+
         # 生成融合摘要
         support_count = len([r for r in reports if r.投资建议 == rec_type])
         summary = f"""📊 融合分析摘要
@@ -2073,7 +2446,7 @@ class MultiAgentStockAnalyst:
 • 加权得分:{consensus_score:+.2f}（>+0.3 看好,<-0.3 谨慎）
 • 核心逻辑链:
 {chr(10).join(f'  {i+1}. {pt[0]}（置信度{pt[1]*100:.0f}%）' for i, pt in enumerate(top_points))}
-• 关键数据:{_fmt_price(stock_data.最新价)}元｜市盈率{_fmt_pe(stock_data.市盈率)}倍｜波动率{stock_data.波动率:.1f}%"""
+• 关键数据:{_fmt_price(stock_data.最新价)}元｜市盈率{_fmt_pe(stock_data.市盈率)}倍｜波动率{stock_data.波动率:.1f}%{key_extra}"""
 
         # 操作建议
         position_suggestion = "15%-20%" if consensus_score > 0.3 else "5%-10%" if consensus_score > 0 else "暂不建仓"
@@ -2081,6 +2454,17 @@ class MultiAgentStockAnalyst:
         _low_ref = stock_data.九十日最低 or stock_data.最新价 or 0.0
         if _low_ref <= 0:
             _low_ref = stock_data.最新价 or 1.0
+
+        observe_kw = ["季度业绩、行业政策、竞争格局变化"]
+        if sup:
+            if any(k in sup for k in ("换手", "成交量", "成交额")):
+                observe_kw.insert(0, "成交量与换手率是否持续异常")
+            if "52" in sup and "周" in sup:
+                observe_kw.append("52周相对位置与突破有效性")
+            if "股息" in sup or "每股收益" in sup or "每股净资产" in sup:
+                observe_kw.append("每股盈利与回报/资产质量变化")
+        observe_str = "、".join(observe_kw[:5])
+
         return FinalReport(
             分析主题=f"{stock_data.股票名称}（{stock_data.股票代码}）投资价值分析",
             股票代码=stock_data.股票代码,
@@ -2098,8 +2482,9 @@ class MultiAgentStockAnalyst:
                 "仓位建议": position_suggestion,
                 "关注价位": f"{_low_ref * 0.95:.2f}元以下分批布局",
                 "止损参考": f"有效跌破{_low_ref * 0.9:.2f}元重新评估",
-                "关键观察": "季度业绩、行业政策、竞争格局变化"
-            }
+                "关键观察": observe_str,
+            },
+            快照补充说明=sup,
         )
 
     def _generate_changes_section(self, report: FinalReport, historical_summaries: List[str]) -> str:
@@ -2277,6 +2662,8 @@ class ReportExporter:
 
 ---
 
+<span id="摘要"></span>
+
 ## 📊 核心摘要
 
 {report.融合摘要}
@@ -2286,14 +2673,15 @@ class ReportExporter:
 ---
 """
         if getattr(report, "对比与异动", "").strip():
-            md += """
-## 📌 对比上次变化与异动信号
-
-""" + report.对比与异动.strip() + """
-
----
-"""
+            md += (
+                '<span id="对比与异动"></span>\n\n'
+                "## 📌 对比上次变化与异动信号\n\n"
+                + report.对比与异动.strip()
+                + "\n\n---\n"
+            )
         md += f"""
+<span id="数据"></span>
+
 ## 📈 数据快照
 
 | 指标 | 数值 | 说明 |
@@ -2304,7 +2692,20 @@ class ReportExporter:
 | 共识程度 | {report.共识程度*100:.0f}% | 分析师一致性 |
 | 加权得分 | {report.加权得分:+.2f} | >+0.3 看好,<-0.3 谨慎 |
 
----
+"""
+        snap_extra = (getattr(report, "快照补充说明", None) or "").strip()
+        if snap_extra:
+            md += f"""
+### 盘口、流动性与每股指标
+
+下列多为**当日或近期快照**，与主行情合并；分析正文已按角色分工引用。
+
+{snap_extra}
+
+"""
+        md += """---
+
+<span id="分析师"></span>
 
 ## 👥 分析师观点
 
@@ -2319,9 +2720,12 @@ class ReportExporter:
 
         md += "\n"
 
-        # 分析师详细分析
+        # 分析师详细分析（锚点 id 与目录 [姓名](#姓名) 一致）
         for r in report.分析师报告:
-            md += f"""### 🧑‍💼 {r.分析师姓名}
+            an = (r.分析师姓名 or "").strip().replace('"', "")
+            md += f"""<span id="{an}"></span>
+
+### 🧑‍💼 {r.分析师姓名}
 
 **角色定位**:{r.角色定位}
 
@@ -2341,13 +2745,14 @@ class ReportExporter:
 
 """
 
-        # 辩论部分
-        md += f"""## 💬 多空辩论
+        # 辩论部分（纯 Markdown，避免前端简易渲染器把 <details> 当原文显示）
+        md += """<span id="辩论"></span>
+
+## 💬 多空辩论
 
 """
         for d in report.辩论轮次:
-            md += f"""<details>
-<summary>🔄 第 {d.轮次编号} 轮辩论</summary>
+            md += f"""### 🔄 第 {d.轮次编号} 轮辩论
 
 **🟢 多头观点**:
 > {d.多头观点}
@@ -2358,12 +2763,14 @@ class ReportExporter:
 **⚖️ 裁判结论**:
 > {d.裁判结论}
 
-</details>
+---
 
 """
 
         # 操作建议
-        md += f"""## 🎯 操作建议
+        md += f"""<span id="建议"></span>
+
+## 🎯 操作建议
 
 | 项目 | 建议 |
 |------|------|
@@ -2373,6 +2780,8 @@ class ReportExporter:
 | 关键观察 | {report.操作建议.get('关键观察', '暂无')} |
 
 ---
+
+<span id="风险"></span>
 
 ## ⚠️ 风险提示
 
