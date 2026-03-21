@@ -13,6 +13,22 @@ import uuid
 from pathlib import Path
 from datetime import datetime
 
+try:
+    from zoneinfo import ZoneInfo
+    _TZ_SH = ZoneInfo("Asia/Shanghai")
+except Exception:
+    _TZ_SH = None
+
+
+def _report_list_generated_at(data: dict, mtime: float) -> str:
+    """列表展示时间：优先用报告 JSON 内「生成时间」（已与北京时间一致），否则用文件 mtime 转上海时区。"""
+    g = (data or {}).get("生成时间")
+    if isinstance(g, str) and g.strip():
+        return g.strip()
+    if _TZ_SH is not None:
+        return datetime.fromtimestamp(mtime, tz=_TZ_SH).strftime("%Y-%m-%d %H:%M")
+    return datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
+
 _GUX_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(_GUX_ROOT))
 
@@ -366,6 +382,7 @@ def api_reports_list():
             base_name = f.stem
             stock_code = ''
             market = ''
+            data: Dict[str, Any] = {}
             try:
                 data = json.loads(f.read_text(encoding='utf-8'))
                 stock_code = (data.get('stock_code') or '').strip().upper() if data.get('stock_code') else ''
@@ -380,13 +397,16 @@ def api_reports_list():
                     market = inf_mkt
             items.append({
                 "base_name": base_name,
-                "generated_at": datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M"),
+                "generated_at": _report_list_generated_at(data, mtime),
                 "stock_code": stock_code,
-                "market": market
+                "market": market,
+                "_mtime": mtime,
             })
         except OSError:
             continue
-    items.sort(key=lambda x: x["generated_at"], reverse=True)
+    items.sort(key=lambda x: x.get("_mtime") or 0, reverse=True)
+    for it in items:
+        it.pop("_mtime", None)
     return {"ok": True, "items": items}
 
 

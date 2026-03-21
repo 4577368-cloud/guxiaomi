@@ -25,6 +25,11 @@ from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field, fields
 from datetime import datetime
 from pathlib import Path
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    ZoneInfo = None  # type: ignore[misc, assignment]
 import markdown
 
 # ==================== 依赖检查 ====================
@@ -107,6 +112,21 @@ def _fmt_pb(pb: Optional[float]) -> str:
 def _fmt_range_cn(low: float, high: float) -> str:
     """90 日等价格区间：统一为「低～高」，避免模型写成 80100 这类连读"""
     return f"{_fmt_price(low)}～{_fmt_price(high)}"
+
+
+def _now_cn() -> datetime:
+    """报告、行情时间戳用北京时间，避免 Vercel 等 UTC 环境比国内慢约 8 小时。"""
+    if ZoneInfo is not None:
+        try:
+            return datetime.now(ZoneInfo("Asia/Shanghai"))
+        except Exception:
+            pass
+    return datetime.now()
+
+
+def _fmt_now_cn() -> str:
+    return _now_cn().strftime("%Y 年%m 月%d日 %H:%M")
+
 
 @dataclass
 class StockData:
@@ -621,14 +641,17 @@ class StockDataService:
     def _pick_primary_layer(
         self, layers: List[tuple],
     ) -> tuple:
-        """(name, sd)：优先首个非占位且有现价的数据源。"""
-        for name, sd in layers:
-            if not self._is_mock_sd(sd) and (sd.最新价 or 0) > 0:
-                return name, sd
-        for name, sd in layers:
-            if not self._is_mock_sd(sd):
-                return name, sd
-        return layers[0]
+        """(name, sd)：在「非占位」层中按数据源顺序，优先第一条现价>0 的层。
+
+        避免 akshare 等失败时吞异常返回「未知+0 元」仍排在腾讯/yfinance 之前占主源。
+        """
+        non_mock = [(n, s) for n, s in layers if not self._is_mock_sd(s)]
+        if not non_mock:
+            return layers[0]
+        with_price = [(n, s) for n, s in non_mock if (s.最新价 or 0) > 0]
+        if with_price:
+            return with_price[0]
+        return non_mock[0]
 
     def _merge_layers(
         self,
@@ -707,28 +730,31 @@ class StockDataService:
             "K 线区间在主源退化时由次优源替换；现价/高点差异已写入风险信号"
         )
         out.所属市场 = market
+        # 主源无现价但后续层有有效价时补齐（双保险）
+        if (out.最新价 or 0) <= 0 and not self._is_mock_sd(out):
+            for name, sd in layers:
+                if name == p_name or self._is_mock_sd(sd):
+                    continue
+                if (sd.最新价 or 0) > 0:
+                    out.最新价 = float(sd.最新价)
+                    if (sd.涨跌幅 or "").strip():
+                        out.涨跌幅 = sd.涨跌幅
+                    if (sd.数据时间 or "").strip():
+                        out.数据时间 = sd.数据时间
+                    self._append_risk_unique(
+                        out,
+                        f"ℹ️ 主源「{p_name}」无有效现价，已采用「{name}」的现价/涨跌幅",
+                    )
+                    break
         return out
 
     def _collect_layers_a(self, code: str, days: int) -> List[tuple]:
-        """A 股：akshare → Baostock → 腾讯财经 → yfinance（.SS/.SZ）。"""
-        layers: List[tuple] = []
-        if HAS_AKSHARE:
-            from concurrent.futures import ThreadPoolExecutor
+        """A 股：腾讯财经 → yfinance → akshare → Baostock。
 
-            with ThreadPoolExecutor(max_workers=1) as ex:
-                fut = ex.submit(self._get_a_stock_data, code, days)
-                try:
-                    layers.append(("akshare", fut.result(timeout=30)))
-                except Exception as e:
-                    if "TimeoutError" in type(e).__name__ or "timeout" in str(e).lower():
-                        raise RuntimeError(
-                            "A股 akshare 获取超时(30秒)，请检查网络或稍后重试",
-                        ) from e
-                    print(f"⚠️ [多源] akshare A股: {e}")
-        try:
-            layers.append(("Baostock", self._get_a_stock_data_baostock(code, days)))
-        except Exception as e:
-            print(f"⚠️ [多源] Baostock A股: {e}")
+        与前端刷新同源优先，便于海外/Vercel；akshare/Baostock 补总市值、PE、简介等。
+        akshare 超时仅跳过该层，不因单源拖死整次请求。
+        """
+        layers: List[tuple] = []
         try:
             layers.append(("腾讯财经", self._get_a_stock_data_tencent(code, days)))
         except Exception as e:
@@ -742,6 +768,24 @@ class StockDataService:
                 )
             except Exception as e:
                 print(f"⚠️ [多源] yfinance A股: {e}")
+        if HAS_AKSHARE:
+            from concurrent.futures import ThreadPoolExecutor
+
+            with ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(self._get_a_stock_data, code, days)
+                try:
+                    layers.append(("akshare", fut.result(timeout=30)))
+                except Exception as e:
+                    if "TimeoutError" in type(e).__name__ or "timeout" in str(e).lower():
+                        print(
+                            "⚠️ [多源] akshare A股 超时(30秒)，已跳过（其它源已拉取则仍可用）",
+                        )
+                    else:
+                        print(f"⚠️ [多源] akshare A股: {e}")
+        try:
+            layers.append(("Baostock", self._get_a_stock_data_baostock(code, days)))
+        except Exception as e:
+            print(f"⚠️ [多源] Baostock A股: {e}")
         return layers
 
     def _collect_layers_hk(self, code: str, days: int) -> List[tuple]:
@@ -789,7 +833,7 @@ class StockDataService:
         return layers
 
     def get_stock_info(self, code: str, market: str = "A 股", days: int = 90) -> StockData:
-        """多源按优先级拉取并合并：A 股 akshare→Baostock→腾讯→yfinance；港股 AV→yfinance→腾讯；美股 AV→yfinance。"""
+        """多源按优先级拉取并合并：A 股 腾讯→yfinance→akshare→Baostock；港股 AV→yfinance→腾讯；美股 AV→yfinance。"""
         try:
             m = (market or "").strip()
             if m == "A 股":
@@ -834,23 +878,22 @@ class StockDataService:
             if stock_row.empty:
                 raise ValueError(f"未找到股票 {code}")
 
-            name = str(stock_row['名称'].values[0])
-            price = float(stock_row['最新价'].values[0])
+            name = str(stock_row["名称"].values[0]).strip()
+            if not name:
+                raise ValueError("akshare 返回空股票名称")
+            price = float(stock_row["最新价"].values[0])
+            if price <= 0 or price != price:
+                raise ValueError(f"akshare 最新价无效: {price}")
             change = f"{float(stock_row['涨跌幅'].values[0]):.2f}%"
             market_cap = f"{float(stock_row['总市值'].values[0])/1e8:.1f}亿"
-            pe = float(stock_row['市盈率 - 动态'].values[0]) if stock_row['市盈率 - 动态'].values[0] else 0.0
-            pb = float(stock_row['市净率'].values[0]) if stock_row['市净率'].values[0] else 0.0
-        except:
-            name = "未知"
-            price = 0.0
-            change = "暂无"
-            market_cap = "暂无"
-            pe = 0.0
-            pb = 0.0
+            pe = float(stock_row["市盈率 - 动态"].values[0]) if stock_row["市盈率 - 动态"].values[0] else 0.0
+            pb = float(stock_row["市净率"].values[0]) if stock_row["市净率"].values[0] else 0.0
+        except Exception as e:
+            raise RuntimeError(f"akshare A股实时行情不可用: {e}") from e
 
         # 历史数据（使用当前年度及近期，避免写死 2024）
         from datetime import timedelta
-        start_date = (datetime.now() - timedelta(days=max(days, 365))).strftime("%Y%m%d")
+        start_date = (_now_cn() - timedelta(days=max(days, 365))).strftime("%Y%m%d")
         所属板块_a = ""
         技术指标简述_a = ""
         公司简介_a = ""
@@ -934,7 +977,7 @@ class StockDataService:
             九十日最高=high_90,
             九十日最低=low_90,
             波动率=volatility,
-            数据时间=datetime.now().strftime("%Y 年%m 月%d日 %H:%M"),
+            数据时间=_fmt_now_cn(),
             风险信号=risk_flags,
             估值分位=pe_percentile,
             所属板块=所属板块_a,
@@ -970,8 +1013,8 @@ class StockDataService:
             bs.logout()
             raise RuntimeError(f"Baostock 登录失败：{lg.error_msg}")
 
-        end_date = datetime.now().strftime("%Y-%m-%d")
-        start_date = (datetime.now() - timedelta(days=max(days, 365))).strftime("%Y-%m-%d")
+        end_date = _now_cn().strftime("%Y-%m-%d")
+        start_date = (_now_cn() - timedelta(days=max(days, 365))).strftime("%Y-%m-%d")
         rs = bs.query_history_k_data_plus(
             symbol,
             "date,code,open,high,low,close,volume",
@@ -1042,7 +1085,7 @@ class StockDataService:
             九十日最高=high_90,
             九十日最低=low_90,
             波动率=volatility,
-            数据时间=datetime.now().strftime("%Y 年%m 月%d日 %H:%M"),
+            数据时间=_fmt_now_cn(),
             风险信号=risk_flags,
             估值分位=pe_percentile,
             所属板块="",
@@ -1129,7 +1172,7 @@ class StockDataService:
             九十日最高=high_90,
             九十日最低=low_90,
             波动率=volatility,
-            数据时间=datetime.now().strftime("%Y 年%m 月%d日 %H:%M"),
+            数据时间=_fmt_now_cn(),
             风险信号=risk_flags,
             估值分位="暂无数据（腾讯源无市盈率）",
             所属板块="",
@@ -1191,7 +1234,7 @@ class StockDataService:
             九十日最高=high_90,
             九十日最低=low_90,
             波动率=volatility,
-            数据时间=datetime.now().strftime("%Y 年%m 月%d日 %H:%M"),
+            数据时间=_fmt_now_cn(),
             风险信号=risk_flags,
             估值分位="暂无数据",
             所属板块="",
@@ -1348,7 +1391,7 @@ class StockDataService:
                 九十日最高=high_90,
                 九十日最低=low_90,
                 波动率=volatility,
-                数据时间=datetime.now().strftime("%Y 年%m 月%d日 %H:%M"),
+                数据时间=_fmt_now_cn(),
                 风险信号=risk_flags,
                 估值分位=pe_percentile,
                 所属板块=所属板块,
@@ -1539,7 +1582,7 @@ class StockDataService:
             九十日最高=high_90,
             九十日最低=low_90,
             波动率=volatility,
-            数据时间=datetime.now().strftime("%Y 年%m 月%d日 %H:%M"),
+            数据时间=_fmt_now_cn(),
             风险信号=risk_flags,
             估值分位=pe_percentile,
             所属板块=sector,
@@ -1564,7 +1607,7 @@ class StockDataService:
             九十日最高=0.0,
             九十日最低=0.0,
             波动率=0.0,
-            数据时间=datetime.now().strftime("%Y 年%m 月%d日 %H:%M"),
+            数据时间=_fmt_now_cn(),
             风险信号=[
                 "⚠️ 未能获取真实行情（网络、yfinance 或 Alpha Vantage 等）；以下为占位，不可作为投资依据",
             ],
@@ -1734,7 +1777,7 @@ class MultiAgentStockAnalyst:
         config = self.analyst_configs[analyst_name]
 
         # 构建数据上下文（价格与市盈率统一保留 2 位小数）
-        _now = datetime.now()
+        _now = _now_cn()
         _year = _now.year
         _date_constraint = f"【当前日期】{_now.strftime('%Y年%m月%d日')}（{_year}年）。严禁在分析中将 2023、2024 等过往年份当作「当前」或「近期」；不得引用旧年份数据作为当前依据；若必须提历史须明确标注「历史（某年）」。"
 
@@ -1771,7 +1814,7 @@ class MultiAgentStockAnalyst:
         prompt = f"""{data_context}
 
 【分析任务】基于以上数据，对该股票进行投资价值分析。
-【时效性硬性约束】当前日期为 {datetime.now().strftime('%Y年%m月%d日')}（{datetime.now().year}年）。输入与输出均不得将 2023、2024 等旧年份作为「当前」或「近期」引用；禁止「2023年…」「2024年目标」等过时表述。若必须提历史，须明确写「历史数据（某年）」且不占主要篇幅。「今年」「当前」「近期」仅指 {datetime.now().year} 年及最近 12 个月。违反则分析无效。
+【时效性硬性约束】当前日期为 {_now.strftime('%Y年%m月%d日')}（{_now.year}年）。输入与输出均不得将 2023、2024 等旧年份作为「当前」或「近期」引用；禁止「2023年…」「2024年目标」等过时表述。若必须提历史，须明确写「历史数据（某年）」且不占主要篇幅。「今年」「当前」「近期」仅指 {_now.year} 年及最近 12 个月。违反则分析无效。
 不要输出思考过程、<think> 或 think 标签，仅输出正式分析内容。
 {role_data_block}
 
@@ -1828,7 +1871,7 @@ class MultiAgentStockAnalyst:
         for round_num in range(1, self.debate_rounds + 1):
             print(f"   🔄 辩论第{round_num}轮...")
 
-            _year = datetime.now().year
+            _year = _now_cn().year
             _date_note = f"【时效】当前为 {_year} 年，勿将 2023、2024 等旧年份当作当前或近期引用。"
 
             # 多头观点
@@ -1944,7 +1987,7 @@ class MultiAgentStockAnalyst:
         return FinalReport(
             分析主题=f"{stock_data.股票名称}（{stock_data.股票代码}）投资价值分析",
             股票代码=stock_data.股票代码,
-            生成时间=datetime.now().strftime("%Y 年%m 月%d日 %H:%M"),
+            生成时间=_fmt_now_cn(),
             数据基准=f"{_fmt_price(stock_data.最新价)}元｜{stock_data.涨跌幅}｜市盈率{_fmt_pe(stock_data.市盈率)}倍",
             分析师报告=reports,
             辩论轮次=debate_rounds,
@@ -1966,7 +2009,7 @@ class MultiAgentStockAnalyst:
         """根据当前报告与最近几份历史报告摘要，生成「对比上次变化与异动信号」解读。"""
         if not historical_summaries:
             return ""
-        _year = datetime.now().year
+        _year = _now_cn().year
         prompt = f"""【当前报告摘要】
 • 生成时间：{report.生成时间}
 • 数据基准：{report.数据基准}
@@ -2069,7 +2112,7 @@ def report_base_name(market: str, stock_code: str, with_time: bool = True) -> st
     m = report_market_short(market)
     c = report_code_short(stock_code, market)
     if with_time:
-        return f"{m}_{c}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        return f"{m}_{c}_{_now_cn().strftime('%Y%m%d_%H%M%S')}"
     return f"{m}_{c}"
 
 def get_recent_report_summaries(reports_dir: Path, market: str, stock_code: str, n: int = 3) -> List[str]:

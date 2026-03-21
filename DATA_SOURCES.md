@@ -15,7 +15,7 @@
 
 | 市场 | 拉取顺序（均成功则全部参与合并） | 分析前补强 `post_enrich` |
 |------|----------------------------------|-------------------------|
-| **A 股** | **akshare** → **Baostock** → **腾讯财经** → **yfinance**（`.SS` / `.SZ`） | 仅当仍缺简介/板块或 K 线仍退化时，再调 yfinance |
+| **A 股** | **腾讯财经** → **yfinance**（`.SS` / `.SZ`）→ **akshare** → **Baostock** | 合并后若仍缺简介/板块或 K 线退化，再按需调 yfinance 补强 |
 | **港股** | 有 Key：**Alpha Vantage** → **yfinance**（`.HK`）→ **腾讯财经**；无 Key 时无 AV 层 | 缺简介时补 yfinance 简介 |
 | **美股** | 有 Key：**Alpha Vantage** → **yfinance**；无 Key 时仅 yfinance | 缺简介时补 yfinance 简介 |
 
@@ -23,7 +23,7 @@
 
 | 市场 | 主路径 | 兜底 / 补强 |
 |------|--------|-------------|
-| **A 股** | 多源：**akshare** → **Baostock** → **腾讯** → **yfinance** | `post_enrich` 仅在合并后仍有缺项或退化区间时补强 yfinance |
+| **A 股** | 多源：**腾讯** → **yfinance** → **akshare** → **Baostock**（优先易通达源，后者补估值/简介） | `post_enrich` 仅在合并后仍有缺项或退化区间时补强 yfinance |
 | **港股** | 多源：**Alpha Vantage**（有 Key）→ **yfinance** → **腾讯** | 简介等由合并 + 必要时 `_try_yf_blurb_only` |
 | **美股** | 多源：**Alpha Vantage**（有 Key）→ **yfinance** | 同上 |
 
@@ -34,7 +34,7 @@
 | **yfinance** | 美、港、A（`.SS` / `.SZ`） | 无需 API Key；有频率与稳定性限制，部分标的 `info` 可能为空。 |
 | **腾讯财经** `qt.gtimg.cn` / `web.ifzq.gtimg.cn` | A 股、港股 | 无需 Key；与前端刷新同源。 |
 | **Alpha Vantage** | 美股、港股（含 OVERVIEW 公司描述） | 需 Key；免费档每日调用次数有限。 |
-| **akshare / Baostock** | 主要 A 股 | 依赖访问国内数据源；海外/Vercel 机房常超时，已用腾讯兜底。 |
+| **akshare / Baostock** | 主要 A 股 | 依赖国内数据源；海外机房常慢或失败，链路中排在 **腾讯 / yfinance** 之后作补强。 |
 | **Finnhub / Twelve Data / Polygon** 等 | 多市场 | 一般需注册 Free Tier Key，可后续在 `StockDataService` 中扩展。 |
 
 ## 环境变量（`.env` 或 Vercel 项目设置）
