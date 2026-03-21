@@ -639,14 +639,17 @@ def api_stock_api_usage():
     return {"ok": True, "apis": apis}
 
 
-# Vercel：FastAPI 单函数接管全站时，需由应用自己提供构建产物 public/（须在全部 /api 路由之后 mount）
-_public_site = _GUX_ROOT / "public"
-if _public_site.is_dir():
+# 单函数部署时由 FastAPI 提供静态站（须在全部 /api 路由之后 mount）。
+# 注意：Vercel Python 打包会排除 **/public/**，故构建产物须放在 web_public/，否则会打进包内仍为「目录不存在」。
+_site_static = _GUX_ROOT / "web_public"
+if not _site_static.is_dir():
+    _site_static = _GUX_ROOT / "public"  # 本地或其它环境可选
+if _site_static.is_dir():
     from fastapi.staticfiles import StaticFiles
 
     app.mount(
         "/",
-        StaticFiles(directory=str(_public_site), html=True),
+        StaticFiles(directory=str(_site_static), html=True),
         name="site",
     )
 

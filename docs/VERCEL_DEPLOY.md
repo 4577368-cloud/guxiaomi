@@ -4,7 +4,7 @@
 
 | 部分 | 适合放 Vercel？ | 说明 |
 |------|----------------|------|
-| **静态前端**（源码在 `project-proj_21qCfX0Vycj`，构建时复制到 **`public/`**） | ✅ 是 | 与 [Vercel FastAPI 文档](https://vercel.com/docs/frameworks/backend/fastapi) 一致：构建生成 `public/`。**单函数部署**时由 `api_server` 在**所有 `/api` 路由之后**挂载 `StaticFiles`，否则 `/` 会返回 FastAPI 的 `Not Found` 而 `/api/health` 仍正常。 |
+| **静态前端**（源码在 `project-proj_21qCfX0Vycj`，构建复制到 **`web_public/`**） | ✅ 是 | Vercel 打 Python 包时会**排除** `**/public/**`，故不能用目录名 `public` 作为进包静态资源；改用 `web_public/` 并由 `api_server` 挂载 `StaticFiles`（在全部 `/api` 之后）。 |
 | **Python `api_server.py`** | ⚠️ 可探测到但有限制 | 根目录已提供 **`app.py`**，将 `api_server.app` 暴露给 Vercel FastAPI 检测；但 Serverless **超时短**、**磁盘非持久**、**后台线程/长分析** 仍可能失败或不符合预期。 |
 
 **推荐：** 生产环境 **API** 仍优先部署在 Render / Railway / VPS 等；Vercel 以静态页 + `ANALYSIS_API_BASE` 指过去为主。
@@ -14,7 +14,7 @@
 - **不要**在 `vercel.json` 里写 `installCommand: pip install -r requirements.txt`。Vercel 构建机的 Python 由 **`uv` 管理**（PEP 668），直接 `pip install` 会报错「外部管理环境」。应 **省略 `installCommand`**，由平台用 **`uv` 自动根据 `requirements.txt` 安装依赖**。
 - 若必须自定义安装，可尝试：`uv pip install -r requirements.txt`（以 Vercel 当前文档为准）。
 - 入口文件：根目录 **`app.py`**（`from api_server import app`），满足官方要求的 `app` 变量名。
-- **构建**：`vercel.json` 的 `buildCommand` 会先写 `env.js` 到源码目录，再把 `project-proj_21qCfX0Vycj/` **复制到 `public/`**（`public/` 已加入 `.gitignore`）。
+- **构建**：`buildCommand` 会先写 `env.js` 到 `project-proj_*`，再复制到 **`web_public/`**（已 `.gitignore`）。**勿**用 `public/` 作打包目录名。
 
 **结论（理想架构）：** Vercel 托管 **页面**；**同一套 API** 更稳妥地放在支持常驻进程 + 持久盘（或对象存储）的平台，例如：
 
@@ -30,14 +30,14 @@
 ## 一、Vercel 项目设置
 
 1. **Root Directory**（若从 monorepo 导入）：设为 `stock_analyzer/guxiaomi`（或你仓库中 `guxiaomi` 所在路径）。
-2. **Framework Preset**：**务必选 FastAPI**，或在 `vercel.json` 里已写 `"framework": "fastapi"`。若选 **Other**，Vercel 往往**只部署静态 `public/`**，不会打包 Python，`/api/*` 会变成平台 **`NOT_FOUND`（404）**。
+2. **Framework Preset**：**务必选 FastAPI**，或 `vercel.json` 里 `"framework": "fastapi"`。若选 **Other**，往往只出静态、不出 Python 函数，`/api/*` 会 **`NOT_FOUND`**。
 3. **环境变量**（Production / Preview 按需）：
 
 | 变量名 | 必填 | 示例 | 含义 |
 |--------|------|------|------|
 | `ANALYSIS_API_BASE` | **API 与站点不同域时必填** | `https://api.example.com` | 浏览器请求的 API 根 URL，**不要**尾斜杠。同一 Vercel 部署上跑 FastAPI 时，前端会默认用 **`location.origin`**，可不配；API 单独部署时 **必须**配置。 |
 
-构建命令会执行 `write_env_js.py` 并复制静态资源；`env.js` 写入源码目录后一并进入 `public/`。典型内容为：
+构建会执行 `write_env_js.py` 并复制到 `web_public/`。典型 `env.js` 为：
 
 `window.ANALYSIS_API_BASE = "https://api.example.com";`
 

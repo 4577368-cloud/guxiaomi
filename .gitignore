@@ -3,7 +3,8 @@
 .env.local
 .env.*.local
 
-# Vercel：构建时从 project-proj_* 复制到 public/，勿提交副本
+# Vercel：构建时复制到 web_public/（勿提交）；public/ 仅本地旧习惯
+web_public/
 public/
 
 # Python
