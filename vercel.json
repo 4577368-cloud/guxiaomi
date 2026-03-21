@@ -1,0 +1,6 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "python3 scripts/write_env_js.py",
+  "outputDirectory": "project-proj_21qCfX0Vycj",
+  "installCommand": "pip install -r requirements.txt"
+}

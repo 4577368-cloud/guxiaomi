@@ -8,14 +8,20 @@
 
   function getApiBase() {
     var params = new URLSearchParams(window.location.search);
-    var apiPort = params.get('api') || params.get('apiPort') || '';
+    var api = params.get('api') || params.get('apiPort') || '';
     if (window.ANALYSIS_API_BASE) return window.ANALYSIS_API_BASE;
-    if (apiPort) return 'http://localhost:' + apiPort;
+    if (api) {
+      if (/^https?:\/\//i.test(api)) return api;
+      var h = window.location.hostname;
+      if (h === 'localhost' || h === '127.0.0.1') return 'http://localhost:' + api;
+    }
     try {
       var saved = localStorage.getItem('analysis_api_base');
       if (saved) return saved;
     } catch (_) {}
-    return 'http://localhost:8123';
+    h = window.location.hostname;
+    if (h === 'localhost' || h === '127.0.0.1') return 'http://localhost:8123';
+    return '';
   }
 
   function showNotifyModal(title, message, isSuccess) {
@@ -72,6 +78,10 @@
 
   function pollJob(jobId) {
     var apiBase = getApiBase();
+    if (!apiBase) {
+      console.warn('analysis-notify: 未配置 ANALYSIS_API_BASE，跳过任务轮询');
+      return;
+    }
     var intervalId = setInterval(function () {
       fetch(apiBase + '/api/analyze/status/' + jobId)
         .then(function (res) {

@@ -29,7 +29,7 @@ pip install -r requirements.txt
 
 - **A 股**：akshare（实时 + 历史）。
 - **港股 / 美股**：优先使用 **Alpha Vantage**（若已配置 API Key），信息更丰富；失败或未配置时自动用 **yfinance** 兜底。
-- 配置 Alpha Vantage：在环境变量中设置 `ALPHA_VANTAGE_API_KEY`，或将 `.env.example` 复制为 `.env` 并填入密钥（需在运行前通过 python-dotenv 等加载，或本机导出环境变量）。
+- 配置 Alpha Vantage / GNews / vLLM 等：复制 **`.env.example` 为 `.env`** 并按注释填写（`run_web.py` 拉起的 `api_server` 与 `demo_ulti_analyst` 会自动加载同目录 `.env`）。变量说明以 `.env.example` 为准。
 
 ## 报告命名与历史对比
 
@@ -58,6 +58,10 @@ pip install -r requirements.txt
 ## 报告输出目录
 
 报告保存在本目录下的 `reports/` 中，命名格式：`A股|港股|美股_代码_年月日_时分秒`。
+
+## 部署到 Vercel
+
+静态前端可部署在 Vercel；Python API 需单独托管（HTTPS）。步骤与变量说明见 **[docs/VERCEL_DEPLOY.md](docs/VERCEL_DEPLOY.md)**。
 
 ## 免责声明
 

@@ -29,9 +29,23 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-const apiPort = new URLSearchParams(window.location.search).get('apiPort') || '';
-if (apiPort) window.ANALYSIS_API_BASE = 'http://localhost:' + apiPort;
-const API_BASE = window.ANALYSIS_API_BASE || 'http://localhost:8123';
+(function () {
+  var q = new URLSearchParams(window.location.search);
+  var api = q.get('apiPort') || q.get('api') || '';
+  if (!api || window.ANALYSIS_API_BASE) return;
+  if (/^https?:\/\//i.test(api)) {
+    window.ANALYSIS_API_BASE = api;
+    return;
+  }
+  var h = window.location.hostname;
+  if (h === 'localhost' || h === '127.0.0.1') {
+    window.ANALYSIS_API_BASE = 'http://localhost:' + api;
+  }
+})();
+var _h = typeof location !== 'undefined' ? location.hostname : '';
+const API_BASE =
+  window.ANALYSIS_API_BASE ||
+  (_h === 'localhost' || _h === '127.0.0.1' ? 'http://localhost:8123' : '');
 
 var CLIENT_RSS_FEEDS = [
   'https://plink.anyfeeder.com/zaobao/realtime/china',

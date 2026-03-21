@@ -1,0 +1,16 @@
+# 本地密钥与环境（勿提交）
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+.Python
+venv/
+.venv/
+
+# 可选：若不希望把生成报告进仓库
+# reports/*.json
+# reports/*.md
+# reports/*.html

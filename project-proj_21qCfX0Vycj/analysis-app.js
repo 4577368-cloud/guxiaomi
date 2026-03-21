@@ -1,10 +1,23 @@
 (function () {
   var params = new URLSearchParams(window.location.search);
-  var apiPort = params.get("api");
-  if (apiPort) window.ANALYSIS_API_BASE = "http://localhost:" + apiPort;
+  var api = params.get("api");
+  if (!api) return;
+  if (/^https?:\/\//i.test(api)) {
+    window.ANALYSIS_API_BASE = api;
+    return;
+  }
+  var h = window.location.hostname;
+  if (h === "localhost" || h === "127.0.0.1") {
+    window.ANALYSIS_API_BASE = "http://localhost:" + api;
+  }
 })();
-/** 默认 API 地址；组件内会用 apiBase 状态并自动探测 8123/8124/8125 */
-const API_BASE_FALLBACK = window.ANALYSIS_API_BASE || "http://localhost:8123";
+/** 默认 API；线上依赖 env.js 的 ANALYSIS_API_BASE；本地空则 localhost:8123 */
+const API_BASE_FALLBACK =
+  window.ANALYSIS_API_BASE ||
+  (typeof location !== "undefined" &&
+  (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+    ? "http://localhost:8123"
+    : "");
 const JOB_STORAGE_KEY = "analysis_job_id";
 const POLL_INTERVAL_MS = 3000;
 
@@ -210,6 +223,8 @@ function AnalysisApp() {
 
   React.useEffect(function () {
     if (window.ANALYSIS_API_BASE) return;
+    var h = window.location.hostname;
+    if (h !== "localhost" && h !== "127.0.0.1") return;
     var cancelled = false;
     var ports = [8123, 8124, 8125];
     (async function () {

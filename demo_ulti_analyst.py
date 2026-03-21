@@ -76,6 +76,16 @@ CONFIG = {
     }
 }
 
+# 与 Vercel / .env 同源：VLLM_BASE_URL、VLLM_API_KEY、VLLM_MODEL_ID
+_llm = CONFIG["LLM 配置"]
+if os.environ.get("VLLM_BASE_URL"):
+    _llm["base_url"] = os.environ["VLLM_BASE_URL"].strip().rstrip("/")
+if os.environ.get("VLLM_API_KEY"):
+    _llm["api_key"] = os.environ["VLLM_API_KEY"].strip()
+_m_id = os.environ.get("VLLM_MODEL_ID") or os.environ.get("VLLM_MODEL")
+if _m_id:
+    _llm["model"] = _m_id.strip()
+
 # ==================== 数据结构 ====================
 def _fmt_price(p: float) -> str:
     """价格保留 2 位小数"""

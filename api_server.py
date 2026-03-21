@@ -13,7 +13,18 @@ import uuid
 from pathlib import Path
 from datetime import datetime
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+_GUX_ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(_GUX_ROOT))
+
+# 本地从 .env 加载（与 demo_ulti_analyst 一致；需 pip install python-dotenv）
+_env_file = _GUX_ROOT / ".env"
+if _env_file.is_file():
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(_env_file)
+    except ImportError:
+        pass
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,13 +36,26 @@ import requests
 
 app = FastAPI(title="股票分析 API", version="1.0")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# 浏览器跨域：与 Vercel 等静态域配合时，可设 ALLOWED_ORIGINS=https://a.vercel.app,https://b.com
+# allow_origins=["*"] 时 allow_credentials 须为 False（规范要求）
+_cors = (os.environ.get("ALLOWED_ORIGINS") or "").strip()
+if _cors and _cors != "*":
+    _origin_list = [x.strip() for x in _cors.split(",") if x.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_origin_list,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 REPORTS_DIR = Path(__file__).resolve().parent / "reports"
 REPORTS_DIR.mkdir(exist_ok=True)
@@ -517,9 +541,13 @@ def api_analyze_chat(req: ChatRequest):
         # 模拟返回（用于测试）
         return JSONResponse({"ok": True, "answer": "[模拟] 深度诊断：请在真实模式下使用。"})
 
-    vllm_base = 'http://vllm.tangbuy.cn:8080/v1'
-    vllm_key = '123456'
-    vllm_model = 'MiniMax-M2.1-AWQ'
+    vllm_base = (
+        os.environ.get("VLLM_BASE_URL") or "http://vllm.tangbuy.cn:8080/v1"
+    ).strip().rstrip("/")
+    vllm_key = (os.environ.get("VLLM_API_KEY") or "123456").strip()
+    vllm_model = (
+        os.environ.get("VLLM_MODEL_ID") or os.environ.get("VLLM_MODEL") or "MiniMax-M2.1-AWQ"
+    ).strip()
 
     system_prompt = f"你是专业股票分析助手，擅长结合历史生成的报告输出可执行策略建议。当前股票: {req.stock_code}，市场: {req.market}。"
     user_prompt = f"已生成报告内容（上下文）:\n{report_text}\n\n用户问题：{req.message}\n请根据报告进行进一步分析、意见、风险提示与建议。"
