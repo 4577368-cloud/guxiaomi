@@ -725,7 +725,7 @@ def _sanitize_chat_answer(text: str) -> str:
 
 @app.post("/api/analyze/chat")
 def api_analyze_chat(req: ChatRequest):
-    """深度诊断对话：报告作快照上下文，允许结合常识与多轮延展；回复经清洗去掉思考块。"""
+    """深度诊断对话：报告为可选背景，助手按通用大模型方式作答；回复经清洗去掉思考块。"""
     if not req.message or not req.message.strip():
         raise HTTPException(status_code=400, detail="message 不能为空")
 
@@ -765,17 +765,17 @@ def api_analyze_chat(req: ChatRequest):
         os.environ.get("VLLM_MODEL_ID") or os.environ.get("VLLM_MODEL") or "MiniMax-M2.1-AWQ"
     ).strip()
 
-    system_prompt = f"""你是资深投资与财报解读助手，与用户就多只股票中的「{req.stock_code}」（{req.market}）进行多轮对话。
+    system_prompt = f"""你是资深投资与市场分析助手，正在与用户讨论标的「{req.stock_code}」（{req.market}）。请**完整发挥**你作为大语言模型的知识、推理与表达能力，直接、充分地回答用户。
 
-【分析报告摘录】（用户当前页面上的报告快照，可能不是最新季报全文，亦可能有滞后）
+【用户当前查看的分析报告摘录】（同标的，便于他追问报告里的观点、数据或结论；这是**补充上下文**，不是对话话题的唯一允许范围）
 {report_excerpt}
 
-【作答原则 — 必须遵守】
-1) 自然对话：像真人投顾一样**直接回答**用户当前问题；正文从有信息量的第一句话写起。不要先写「根据报告我需要…」「报告局限性」「从报告中可以看到」等大段元叙述，除非用户明确问「报告里缺什么/报告写了什么」。
-2) 知识来源：报告用于**衔接估值、区间、技术面摘要**等快照数据。若用户问最新财报、分部收入、同比环比等你可结合训练知识中的**公开信息常识**作概括性补充，并在一句话内标明「以下为基于公开信息的概括，非本页报告原文，请以交易所/公司披露为准」。**禁止**以「报告未提供」为理由整篇拒答或只列缺失项；应在你所知范围内给出有用框架与观察点。
-3) 禁止思考过程：不要输出任何思考标签、内部推理或角色扮演式前言（勿以「用户询问…」「让我先分析…」等开头）。
-4) 合规：涉及买卖、仓位时给条件化参考并声明不构成投资建议。
-5) 语言：简体中文；除代码、交易所缩写外少用英文。"""
+【怎么答】
+• **正常聊天**：像用户平时用大模型一样直接回答——财报、行业、新闻脉络、估值逻辑、技术面、策略、延伸问题都可以谈；不必反复强调「本对话不联网」「报告局限性」等，除非用户**明确问**实时信源或报告里到底写了什么。
+• **与报告衔接**：若问题指向报告中的论点、表格或分析师表述，先顺着报告承接，再给更深解读、补充角度或必要澄清；若与你的常识不一致，可简短说明差异，并建议以交易所/公司披露与实时行情为准。
+• **禁止**：以「报告里没提」为由拒绝回答；输出思考标签；以「用户询问…」「让我先分析…」等元叙述开头。
+• **合规**：涉及具体买卖、仓位时给条件化思路，并声明不构成投资建议。
+• **语言**：简体中文为主；股票代码、交易所等专有名词可保留原文。"""
     # 多轮历史：仅保留 user/assistant，防注入
     hist: List[Dict[str, str]] = []
     for turn in (req.history or [])[-24:]:
@@ -791,11 +791,12 @@ def api_analyze_chat(req: ChatRequest):
     messages.extend(hist)
     messages.append({"role": "user", "content": req.message.strip()[:8000]})
 
+    # 模型由环境变量 VLLM_MODEL_ID / VLLM_MODEL 指定（如 MiniMax 系列），须与 vLLM/OpenAI 兼容网关一致
     payload = {
         "model": vllm_model,
         "messages": messages,
-        "temperature": 0.65,
-        "max_tokens": 2500,
+        "temperature": 0.7,
+        "max_tokens": 3072,
         "stream": False
     }
 
@@ -816,8 +817,8 @@ def api_analyze_chat(req: ChatRequest):
                 fallback_payload = {
                     "model_id": vllm_model,
                     "input": messages,
-                    "temperature": 0.65,
-                    "max_tokens": 2500,
+                    "temperature": 0.7,
+                    "max_tokens": 3072,
                     "stream": False
                 }
                 resp2 = requests.post(
