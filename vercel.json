@@ -1,4 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "fastapi",
   "buildCommand": "python3 scripts/write_env_js.py && rm -rf public && mkdir -p public && cp -a project-proj_21qCfX0Vycj/. public/"
 }

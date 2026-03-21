@@ -30,7 +30,7 @@
 ## 一、Vercel 项目设置
 
 1. **Root Directory**（若从 monorepo 导入）：设为 `stock_analyzer/guxiaomi`（或你仓库中 `guxiaomi` 所在路径）。
-2. **Framework Preset**：Other / 无框架（由 `vercel.json` 的 `buildCommand` 负责写 `env.js` 并填充 `public/`）。
+2. **Framework Preset**：**务必选 FastAPI**，或在 `vercel.json` 里已写 `"framework": "fastapi"`。若选 **Other**，Vercel 往往**只部署静态 `public/`**，不会打包 Python，`/api/*` 会变成平台 **`NOT_FOUND`（404）**。
 3. **环境变量**（Production / Preview 按需）：
 
 | 变量名 | 必填 | 示例 | 含义 |
