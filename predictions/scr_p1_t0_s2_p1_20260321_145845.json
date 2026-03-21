@@ -1,0 +1,521 @@
+{
+  "ok": true,
+  "base_name": "scr_p1_t0_s2_p1_20260321_145845",
+  "saved_at": "2026-03-21 14:58:45",
+  "period_type": 1,
+  "trend_type": 0,
+  "symbol_type": 2,
+  "page": 1,
+  "page_size": 10,
+  "period_label": "周",
+  "trend_label": "看涨",
+  "symbol_kind": "加密货币",
+  "source": "Intellectia",
+  "source_api": "https://api.intellectia.ai/gateway/v1/stock/screener-list",
+  "intellectia_ret": 0,
+  "intellectia_msg": "",
+  "data": {
+    "list": [
+      {
+        "code": "ESE",
+        "symbol": "ESE",
+        "symbol_type": 2,
+        "name": "Eesee",
+        "logo": "https://intellectia-public-documents.s3.amazonaws.com/image/crypto_logo/29454.png",
+        "pre_close": 0.004925,
+        "price": 0.00578,
+        "change_ratio": 17.36,
+        "timestamp": "1773964800",
+        "simiar_num": 10,
+        "probability": 80,
+        "profit": 1.34,
+        "klines": [
+          {
+            "close": 0.00094,
+            "timestamp": "1771459200"
+          },
+          {
+            "close": 0.000939,
+            "timestamp": "1771545600"
+          },
+          {
+            "close": 0.000956,
+            "timestamp": "1771632000"
+          },
+          {
+            "close": 0.00093,
+            "timestamp": "1771718400"
+          },
+          {
+            "close": 0.000948,
+            "timestamp": "1771804800"
+          },
+          {
+            "close": 0.001004,
+            "timestamp": "1771891200"
+          },
+          {
+            "close": 0.001064,
+            "timestamp": "1771977600"
+          },
+          {
+            "close": 0.001025,
+            "timestamp": "1772064000"
+          },
+          {
+            "close": 0.000993,
+            "timestamp": "1772150400"
+          },
+          {
+            "close": 0.000966,
+            "timestamp": "1772236800"
+          },
+          {
+            "close": 0.001077,
+            "timestamp": "1772323200"
+          },
+          {
+            "close": 0.001107,
+            "timestamp": "1772409600"
+          },
+          {
+            "close": 0.001189,
+            "timestamp": "1772496000"
+          },
+          {
+            "close": 0.00412,
+            "timestamp": "1772582400"
+          },
+          {
+            "close": 0.003374,
+            "timestamp": "1772668800"
+          },
+          {
+            "close": 0.003329,
+            "timestamp": "1772755200"
+          },
+          {
+            "close": 0.004472,
+            "timestamp": "1772841600"
+          },
+          {
+            "close": 0.00505,
+            "timestamp": "1772928000"
+          },
+          {
+            "close": 0.004672,
+            "timestamp": "1773014400"
+          },
+          {
+            "close": 0.004172,
+            "timestamp": "1773100800"
+          },
+          {
+            "close": 0.004414,
+            "timestamp": "1773187200"
+          },
+          {
+            "close": 0.004709,
+            "timestamp": "1773273600"
+          },
+          {
+            "close": 0.004767,
+            "timestamp": "1773360000"
+          },
+          {
+            "close": 0.005422,
+            "timestamp": "1773446400"
+          },
+          {
+            "close": 0.005027,
+            "timestamp": "1773532800"
+          },
+          {
+            "close": 0.0051,
+            "timestamp": "1773619200"
+          },
+          {
+            "close": 0.005688,
+            "timestamp": "1773705600"
+          },
+          {
+            "close": 0.005515,
+            "timestamp": "1773792000"
+          },
+          {
+            "close": 0.005003,
+            "timestamp": "1773878400"
+          },
+          {
+            "close": 0.005483,
+            "timestamp": "1773964800"
+          }
+        ],
+        "trend_list": [
+          {
+            "symbol": "ESE",
+            "symbol_type": 2,
+            "is_main": true,
+            "list": [
+              {
+                "change_ratio": 2.37,
+                "timestamp": "1741305600",
+                "close": 0.005925
+              },
+              {
+                "change_ratio": 1.96,
+                "timestamp": "1741392000",
+                "close": 0.005901
+              },
+              {
+                "change_ratio": 1.93,
+                "timestamp": "1741478400",
+                "close": 0.0059
+              },
+              {
+                "change_ratio": 4.24,
+                "timestamp": "1741564800",
+                "close": 0.006033
+              },
+              {
+                "change_ratio": 1.35,
+                "timestamp": "1741651200",
+                "close": 0.005866
+              }
+            ]
+          },
+          {
+            "symbol": "",
+            "symbol_type": 0,
+            "is_main": false,
+            "list": [
+              {
+                "change_ratio": 40.03,
+                "timestamp": "1734739200",
+                "close": 0.007678
+              },
+              {
+                "change_ratio": 91.19,
+                "timestamp": "1734825600",
+                "close": 0.010483
+              },
+              {
+                "change_ratio": 109.43,
+                "timestamp": "1734912000",
+                "close": 0.011483
+              },
+              {
+                "change_ratio": 234.78,
+                "timestamp": "1734998400",
+                "close": 0.018356
+              },
+              {
+                "change_ratio": 208.66,
+                "timestamp": "1735084800",
+                "close": 0.016924
+              }
+            ]
+          },
+          {
+            "symbol": "",
+            "symbol_type": 0,
+            "is_main": false,
+            "list": [
+              {
+                "change_ratio": -1.1,
+                "timestamp": "1746835200",
+                "close": 0.005423
+              },
+              {
+                "change_ratio": -5.39,
+                "timestamp": "1761523200",
+                "close": 0.005187
+              },
+              {
+                "change_ratio": -7.78,
+                "timestamp": "1772323200",
+                "close": 0.005056
+              },
+              {
+                "change_ratio": -12.71,
+                "timestamp": "1761696000",
+                "close": 0.004786
+              },
+              {
+                "change_ratio": -17.86,
+                "timestamp": "1761782400",
+                "close": 0.004504
+              }
+            ]
+          }
+        ],
+        "update_time": "1774065600",
+        "description": ""
+      }
+    ],
+    "total": 1,
+    "detail": {
+      "cover_url": "https://d159e3ysga2l0q.cloudfront.net/image/cover_image/crypto-3.png",
+      "name": "Cryptos Bullish for a Week",
+      "screener_type": 3021,
+      "params": "{}",
+      "desc": "This list highlights cryptos expected to rise, identified by our AI algorithm. It analyzes market-wide price data to spot those most likely to continue an uptrend, based on similarity to proven bullish patterns.\nBefore investing, consider both the probability and predicted return — the first shows our confidence in the signal, the second its potential upside. For best results, balance these metrics and double-check using the “Should I Buy” analysis.",
+      "num": 0
+    },
+    "top2_description": ""
+  },
+  "raw": {
+    "ret": 0,
+    "msg": "",
+    "data": {
+      "list": [
+        {
+          "code": "ESE",
+          "symbol": "ESE",
+          "symbol_type": 2,
+          "name": "Eesee",
+          "logo": "https://intellectia-public-documents.s3.amazonaws.com/image/crypto_logo/29454.png",
+          "pre_close": 0.004925,
+          "price": 0.00578,
+          "change_ratio": 17.36,
+          "timestamp": "1773964800",
+          "simiar_num": 10,
+          "probability": 80,
+          "profit": 1.34,
+          "klines": [
+            {
+              "close": 0.00094,
+              "timestamp": "1771459200"
+            },
+            {
+              "close": 0.000939,
+              "timestamp": "1771545600"
+            },
+            {
+              "close": 0.000956,
+              "timestamp": "1771632000"
+            },
+            {
+              "close": 0.00093,
+              "timestamp": "1771718400"
+            },
+            {
+              "close": 0.000948,
+              "timestamp": "1771804800"
+            },
+            {
+              "close": 0.001004,
+              "timestamp": "1771891200"
+            },
+            {
+              "close": 0.001064,
+              "timestamp": "1771977600"
+            },
+            {
+              "close": 0.001025,
+              "timestamp": "1772064000"
+            },
+            {
+              "close": 0.000993,
+              "timestamp": "1772150400"
+            },
+            {
+              "close": 0.000966,
+              "timestamp": "1772236800"
+            },
+            {
+              "close": 0.001077,
+              "timestamp": "1772323200"
+            },
+            {
+              "close": 0.001107,
+              "timestamp": "1772409600"
+            },
+            {
+              "close": 0.001189,
+              "timestamp": "1772496000"
+            },
+            {
+              "close": 0.00412,
+              "timestamp": "1772582400"
+            },
+            {
+              "close": 0.003374,
+              "timestamp": "1772668800"
+            },
+            {
+              "close": 0.003329,
+              "timestamp": "1772755200"
+            },
+            {
+              "close": 0.004472,
+              "timestamp": "1772841600"
+            },
+            {
+              "close": 0.00505,
+              "timestamp": "1772928000"
+            },
+            {
+              "close": 0.004672,
+              "timestamp": "1773014400"
+            },
+            {
+              "close": 0.004172,
+              "timestamp": "1773100800"
+            },
+            {
+              "close": 0.004414,
+              "timestamp": "1773187200"
+            },
+            {
+              "close": 0.004709,
+              "timestamp": "1773273600"
+            },
+            {
+              "close": 0.004767,
+              "timestamp": "1773360000"
+            },
+            {
+              "close": 0.005422,
+              "timestamp": "1773446400"
+            },
+            {
+              "close": 0.005027,
+              "timestamp": "1773532800"
+            },
+            {
+              "close": 0.0051,
+              "timestamp": "1773619200"
+            },
+            {
+              "close": 0.005688,
+              "timestamp": "1773705600"
+            },
+            {
+              "close": 0.005515,
+              "timestamp": "1773792000"
+            },
+            {
+              "close": 0.005003,
+              "timestamp": "1773878400"
+            },
+            {
+              "close": 0.005483,
+              "timestamp": "1773964800"
+            }
+          ],
+          "trend_list": [
+            {
+              "symbol": "ESE",
+              "symbol_type": 2,
+              "is_main": true,
+              "list": [
+                {
+                  "change_ratio": 2.37,
+                  "timestamp": "1741305600",
+                  "close": 0.005925
+                },
+                {
+                  "change_ratio": 1.96,
+                  "timestamp": "1741392000",
+                  "close": 0.005901
+                },
+                {
+                  "change_ratio": 1.93,
+                  "timestamp": "1741478400",
+                  "close": 0.0059
+                },
+                {
+                  "change_ratio": 4.24,
+                  "timestamp": "1741564800",
+                  "close": 0.006033
+                },
+                {
+                  "change_ratio": 1.35,
+                  "timestamp": "1741651200",
+                  "close": 0.005866
+                }
+              ]
+            },
+            {
+              "symbol": "",
+              "symbol_type": 0,
+              "is_main": false,
+              "list": [
+                {
+                  "change_ratio": 40.03,
+                  "timestamp": "1734739200",
+                  "close": 0.007678
+                },
+                {
+                  "change_ratio": 91.19,
+                  "timestamp": "1734825600",
+                  "close": 0.010483
+                },
+                {
+                  "change_ratio": 109.43,
+                  "timestamp": "1734912000",
+                  "close": 0.011483
+                },
+                {
+                  "change_ratio": 234.78,
+                  "timestamp": "1734998400",
+                  "close": 0.018356
+                },
+                {
+                  "change_ratio": 208.66,
+                  "timestamp": "1735084800",
+                  "close": 0.016924
+                }
+              ]
+            },
+            {
+              "symbol": "",
+              "symbol_type": 0,
+              "is_main": false,
+              "list": [
+                {
+                  "change_ratio": -1.1,
+                  "timestamp": "1746835200",
+                  "close": 0.005423
+                },
+                {
+                  "change_ratio": -5.39,
+                  "timestamp": "1761523200",
+                  "close": 0.005187
+                },
+                {
+                  "change_ratio": -7.78,
+                  "timestamp": "1772323200",
+                  "close": 0.005056
+                },
+                {
+                  "change_ratio": -12.71,
+                  "timestamp": "1761696000",
+                  "close": 0.004786
+                },
+                {
+                  "change_ratio": -17.86,
+                  "timestamp": "1761782400",
+                  "close": 0.004504
+                }
+              ]
+            }
+          ],
+          "update_time": "1774065600",
+          "description": ""
+        }
+      ],
+      "total": 1,
+      "detail": {
+        "cover_url": "https://d159e3ysga2l0q.cloudfront.net/image/cover_image/crypto-3.png",
+        "name": "Cryptos Bullish for a Week",
+        "screener_type": 3021,
+        "params": "{}",
+        "desc": "This list highlights cryptos expected to rise, identified by our AI algorithm. It analyzes market-wide price data to spot those most likely to continue an uptrend, based on similarity to proven bullish patterns.\nBefore investing, consider both the probability and predicted return — the first shows our confidence in the signal, the second its potential upside. For best results, balance these metrics and double-check using the “Should I Buy” analysis.",
+        "num": 0
+      },
+      "top2_description": ""
+    }
+  }
+}

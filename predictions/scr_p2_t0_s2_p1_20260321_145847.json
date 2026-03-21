@@ -1,0 +1,47 @@
+{
+  "ok": true,
+  "base_name": "scr_p2_t0_s2_p1_20260321_145847",
+  "saved_at": "2026-03-21 14:58:47",
+  "period_type": 2,
+  "trend_type": 0,
+  "symbol_type": 2,
+  "page": 1,
+  "page_size": 10,
+  "period_label": "月",
+  "trend_label": "看涨",
+  "symbol_kind": "加密货币",
+  "source": "Intellectia",
+  "source_api": "https://api.intellectia.ai/gateway/v1/stock/screener-list",
+  "intellectia_ret": 0,
+  "intellectia_msg": "",
+  "data": {
+    "list": [],
+    "total": 0,
+    "detail": {
+      "cover_url": "https://d159e3ysga2l0q.cloudfront.net/image/cover_image/crypto-5.png",
+      "name": "Cryptos Bullish for a Month",
+      "screener_type": 3031,
+      "params": "{}",
+      "desc": "This list highlights cryptos expected to rise, identified by our AI algorithm. It analyzes market-wide price data to spot those most likely to continue an uptrend, based on similarity to proven bullish patterns.\nBefore investing, consider both the probability and predicted return — the first shows our confidence in the signal, the second its potential upside. For best results, balance these metrics and double-check using the “Should I Buy” analysis.",
+      "num": 0
+    },
+    "top2_description": ""
+  },
+  "raw": {
+    "ret": 0,
+    "msg": "",
+    "data": {
+      "list": [],
+      "total": 0,
+      "detail": {
+        "cover_url": "https://d159e3ysga2l0q.cloudfront.net/image/cover_image/crypto-5.png",
+        "name": "Cryptos Bullish for a Month",
+        "screener_type": 3031,
+        "params": "{}",
+        "desc": "This list highlights cryptos expected to rise, identified by our AI algorithm. It analyzes market-wide price data to spot those most likely to continue an uptrend, based on similarity to proven bullish patterns.\nBefore investing, consider both the probability and predicted return — the first shows our confidence in the signal, the second its potential upside. For best results, balance these metrics and double-check using the “Should I Buy” analysis.",
+        "num": 0
+      },
+      "top2_description": ""
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "ok": true,
+  "base_name": "scr_p1_t0_s1_p1_20260321_145832",
+  "saved_at": "2026-03-21 14:58:32",
+  "period_type": 1,
+  "trend_type": 0,
+  "symbol_type": 1,
+  "page": 1,
+  "page_size": 10,
+  "period_label": "周",
+  "trend_label": "看涨",
+  "symbol_kind": "ETF",
+  "source": "Intellectia",
+  "source_api": "https://api.intellectia.ai/gateway/v1/stock/screener-list",
+  "intellectia_ret": 0,
+  "intellectia_msg": "",
+  "data": {
+    "list": [],
+    "total": 0,
+    "detail": null,
+    "top2_description": ""
+  },
+  "raw": {
+    "ret": 0,
+    "msg": "",
+    "data": {
+      "list": [],
+      "total": 0,
+      "detail": null,
+      "top2_description": ""
+    }
+  }
+}

@@ -26,6 +26,66 @@ const FRONTEND_VERSION =
 const JOB_STORAGE_VERSION_KEY =
   "analysis_job_id_frontend_version";
 const POLL_INTERVAL_MS = 3000;
+/** 历史报告每页条数，与预测表「每页 10 条」一致；列表区最大高度对齐右侧表体 */
+const HISTORY_PAGE_SIZE = 10;
+
+/** 解析快照文件名 scr_p{pt}_t{tt}_s{st}_... */
+function parseScreenerBaseName(baseName) {
+  if (!baseName || typeof baseName !== "string") return null;
+  var m = /^scr_p(\d+)_t(\d+)_s(\d+)_/.exec(baseName);
+  if (!m) return null;
+  return {
+    pt: parseInt(m[1], 10),
+    tt: parseInt(m[2], 10),
+    st: parseInt(m[3], 10),
+  };
+}
+
+function savedAtToDateKey(savedAt) {
+  if (!savedAt || typeof savedAt !== "string") return null;
+  var part = savedAt.trim().split(/\s+/)[0];
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(part)) return null;
+  return part;
+}
+
+/** 展示为「3月12」；非当年则带年份 */
+function formatPredDateChip(dateKey) {
+  if (!dateKey) return "";
+  var p = dateKey.split("-");
+  if (p.length !== 3) return dateKey;
+  var y = parseInt(p[0], 10);
+  var m = parseInt(p[1], 10);
+  var d = parseInt(p[2], 10);
+  var cy = new Date().getFullYear();
+  if (y !== cy) return y + "年" + m + "月" + d;
+  return m + "月" + d;
+}
+
+function localDateKey() {
+  var d = new Date();
+  var y = d.getFullYear();
+  var m = String(d.getMonth() + 1).padStart(2, "0");
+  var day = String(d.getDate()).padStart(2, "0");
+  return y + "-" + m + "-" + day;
+}
+
+function groupPredictionsByDate(items, trendType, symbolType) {
+  var grouped = {};
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
+    var parsed = parseScreenerBaseName(item.base_name);
+    if (!parsed || parsed.tt !== trendType || parsed.st !== symbolType) continue;
+    var dk = savedAtToDateKey(item.saved_at);
+    if (!dk) continue;
+    if (!grouped[dk]) grouped[dk] = { 0: null, 1: null, 2: null };
+    var pt = parsed.pt;
+    if (grouped[dk][pt] == null) grouped[dk][pt] = item.base_name;
+  }
+  var keys = Object.keys(grouped).sort(function (a, b) {
+    return b.localeCompare(a);
+  });
+  return { grouped: grouped, keys: keys };
+}
 
 function formatReportValue(val) {
   if (val == null) return "";
@@ -302,6 +362,8 @@ function AnalysisApp() {
   const [historyList, setHistoryList] = React.useState([]);
   const [historyLoading, setHistoryLoading] = React.useState(true);
   const [selectedStockCode, setSelectedStockCode] = React.useState("");
+  /** 历史报告分页（与预测表 10 条视觉高度对齐，多出的条目翻页查看） */
+  const [historyPage, setHistoryPage] = React.useState(1);
   const [chatOpen, setChatOpen] = React.useState(false);
   const [chatMinimized, setChatMinimized] = React.useState(false);
   const [chatMessages, setChatMessages] = React.useState([]);
@@ -325,21 +387,27 @@ function AnalysisApp() {
   });
   /** 最近一次拉取或当前快照对应的接口 total，用于禁用「下一页」 */
   const [predRemoteTotal, setPredRemoteTotal] = React.useState(null);
+  /** 日/周/月 Tab：0 日 1 周 2 月 */
+  const [predPeriodTab, setPredPeriodTab] = React.useState(0);
+  /** 当前选中的预测快照日期（保存日 YYYY-MM-DD，用于切换不同批次） */
+  const [selectedPredDateKey, setSelectedPredDateKey] = React.useState(null);
+  const predPeriodTabRef = React.useRef(0);
+  React.useEffect(() => {
+    predPeriodTabRef.current = predPeriodTab;
+  }, [predPeriodTab]);
 
   const getStockTagClass = (code) => {
     const palette = [
-      "bg-sky-100 text-sky-800 hover:bg-sky-200",
-      "bg-emerald-100 text-emerald-800 hover:bg-emerald-200",
-      "bg-amber-100 text-amber-800 hover:bg-amber-200",
-      "bg-purple-100 text-purple-800 hover:bg-purple-200",
-      "bg-pink-100 text-pink-800 hover:bg-pink-200",
-      "bg-indigo-100 text-indigo-800 hover:bg-indigo-200",
-      "bg-rose-100 text-rose-800 hover:bg-rose-200",
-      "bg-lime-100 text-lime-800 hover:bg-lime-200",
+      "bg-slate-200/55 text-slate-800 border border-white/50 hover:bg-slate-300/50",
+      "bg-slate-300/40 text-slate-800 border border-white/50 hover:bg-slate-300/60",
+      "bg-blue-100/50 text-blue-900 border border-white/50 hover:bg-blue-100/80",
+      "bg-cyan-100/45 text-cyan-900 border border-white/50 hover:bg-cyan-100/75",
+      "bg-violet-100/45 text-violet-900 border border-white/50 hover:bg-violet-100/75",
+      "bg-teal-100/45 text-teal-900 border border-white/50 hover:bg-teal-100/75",
     ];
     const hash = [...code].reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
     const pick = palette[hash % palette.length];
-    return `${selectedStockCode === code ? "bg-blue-600 text-white" : pick} btn btn-xs`;
+    return `${selectedStockCode === code ? "bg-blue-600 text-white border-blue-500" : pick} btn btn-xs`;
   };
 
   // 放弃当前任务（停止轮询、清除 job_id，可重新发起分析）
@@ -411,15 +479,21 @@ function AnalysisApp() {
 
   const loadPredList = React.useCallback(async () => {
     setPredListLoading(true);
+    var items = [];
     try {
       const res = await fetch(`${apiBase}/api/screener/list`);
       const data = await res.json();
-      if (data.ok && Array.isArray(data.items)) setPredList(data.items);
-      else setPredList([]);
+      if (data.ok && Array.isArray(data.items)) {
+        items = data.items;
+        setPredList(items);
+      } else {
+        setPredList([]);
+      }
     } catch (_) {
       setPredList([]);
     }
     setPredListLoading(false);
+    return items;
   }, [apiBase]);
 
   React.useEffect(() => {
@@ -440,8 +514,14 @@ function AnalysisApp() {
         );
       }
       setPredDetail(j);
+      var pt =
+        j.period_type != null && !Number.isNaN(Number(j.period_type))
+          ? Math.min(2, Math.max(0, parseInt(String(j.period_type), 10)))
+          : null;
+      if (pt != null) setPredPeriodTab(pt);
       setPredParams(function (p) {
         var next = { ...p };
+        if (pt != null) next.period_type = pt;
         if (j.page != null && !Number.isNaN(Number(j.page))) {
           next.page = Math.max(1, parseInt(String(j.page), 10) || 1);
         }
@@ -470,34 +550,58 @@ function AnalysisApp() {
     setPredError("");
     setPredFetchLoading(true);
     try {
-      const res = await fetch(`${apiBase}/api/screener/fetch`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          period_type: predParams.period_type,
-          trend_type: predParams.trend_type,
-          symbol_type: predParams.symbol_type,
-          page: predParams.page,
-          size: predParams.size,
-        }),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const d = j.detail;
-        throw new Error(
-          typeof d === "string" ? d : d ? JSON.stringify(d) : "拉取失败",
-        );
+      for (var pi = 0; pi < 3; pi++) {
+        const res = await fetch(`${apiBase}/api/screener/fetch`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            period_type: pi,
+            trend_type: predParams.trend_type,
+            symbol_type: predParams.symbol_type,
+            page: predParams.page,
+            size: predParams.size,
+          }),
+        });
+        await res.json().catch(() => ({}));
+        /* 某一周期未取到数据时不提示报错 */
       }
-      var t =
-        j.total != null && j.total !== "" ? Number(j.total) : null;
-      setPredRemoteTotal(t != null && !Number.isNaN(t) ? t : null);
-      await loadPredList();
-      if (j.base_name) await loadScreenerDetail(j.base_name);
+      var items = await loadPredList();
+      var tt = predParams.trend_type;
+      var st = predParams.symbol_type;
+      var g = groupPredictionsByDate(items, tt, st);
+      var keys = g.keys;
+      var grouped = g.grouped;
+      var tk = localDateKey();
+      var pickDate =
+        keys.indexOf(tk) >= 0 ? tk : keys.length ? keys[0] : null;
+      if (pickDate) {
+        setSelectedPredDateKey(pickDate);
+        var pi0 = predPeriodTabRef.current;
+        if (!grouped[pickDate][pi0]) {
+          var fq = [0, 1, 2].find(function (p) {
+            return grouped[pickDate][p];
+          });
+          if (fq !== undefined) setPredPeriodTab(fq);
+        }
+      } else {
+        setSelectedPredDateKey(null);
+        setPredDetail(null);
+        setPredRemoteTotal(null);
+      }
+      setPredError("");
     } catch (e) {
-      setPredError(e.message || "拉取预测失败");
+      setPredError(e.message || "获取预测失败");
     } finally {
       setPredFetchLoading(false);
     }
+  };
+
+  const switchPredPeriodTab = (pt) => {
+    if (pt === predPeriodTab) return;
+    setPredPeriodTab(pt);
+    setPredParams(function (p) {
+      return { ...p, period_type: pt };
+    });
   };
 
   const predMaxPage = React.useMemo(
@@ -532,6 +636,53 @@ function AnalysisApp() {
     }
   };
 
+  /** groupPredictionsByDate 返回 { grouped, keys }，勿写成 predGrouped/predDateKeys 以免白屏 */
+  const { grouped: predGrouped, keys: predDateKeys } = React.useMemo(
+    function () {
+      return groupPredictionsByDate(
+        predList,
+        predParams.trend_type,
+        predParams.symbol_type,
+      );
+    },
+    [predList, predParams.trend_type, predParams.symbol_type],
+  );
+
+  React.useEffect(
+    function () {
+      if (predDateKeys.length === 0) {
+        setSelectedPredDateKey(null);
+        return;
+      }
+      setSelectedPredDateKey(function (prev) {
+        if (prev && predGrouped[prev]) return prev;
+        return predDateKeys[0];
+      });
+    },
+    [predDateKeys, predGrouped],
+  );
+
+  const currentPredSnapshotName = React.useMemo(
+    function () {
+      if (!selectedPredDateKey || !predGrouped[selectedPredDateKey])
+        return null;
+      return predGrouped[selectedPredDateKey][predPeriodTab];
+    },
+    [selectedPredDateKey, predPeriodTab, predGrouped],
+  );
+
+  React.useEffect(
+    function () {
+      if (!currentPredSnapshotName) {
+        setPredDetail(null);
+        setPredRemoteTotal(null);
+        return;
+      }
+      loadScreenerDetail(currentPredSnapshotName);
+    },
+    [currentPredSnapshotName],
+  );
+
   const stockTags = React.useMemo(() => {
     const codes = new Set();
     historyList.forEach((item) => {
@@ -547,6 +698,29 @@ function AnalysisApp() {
       (item) => (item.stock_code || "").toUpperCase() === selectedStockCode,
     );
   }, [historyList, selectedStockCode]);
+
+  React.useEffect(() => {
+    setHistoryPage(1);
+  }, [selectedStockCode, historyList]);
+
+  const historyTotalPages = Math.max(
+    1,
+    Math.ceil(filteredHistoryList.length / HISTORY_PAGE_SIZE),
+  );
+  const historyPageClamped = Math.min(historyPage, historyTotalPages);
+
+  React.useEffect(() => {
+    if (historyPage > historyTotalPages) setHistoryPage(historyTotalPages);
+  }, [historyPage, historyTotalPages]);
+
+  const pagedHistoryList = React.useMemo(
+    function () {
+      var p = Math.min(historyPage, historyTotalPages);
+      var start = (p - 1) * HISTORY_PAGE_SIZE;
+      return filteredHistoryList.slice(start, start + HISTORY_PAGE_SIZE);
+    },
+    [filteredHistoryList, historyPage, historyTotalPages],
+  );
 
   const getChatStorageKey = (stockCode, market) => {
     const code = (stockCode || "").toUpperCase().trim();
@@ -655,6 +829,11 @@ function AnalysisApp() {
       setChatMessages(
         loadChatHistoryFromStorage(data.stock_code || "", data.market || ""),
       );
+      window.setTimeout(function () {
+        var el = document.getElementById("report-reading-panel");
+        if (el)
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 80);
     } catch (e) {
       setError(
         e.name === "AbortError"
@@ -785,55 +964,56 @@ function AnalysisApp() {
     URL.revokeObjectURL(a.href);
   };
 
-  /** 报告标签：未选/选中 两套配色，避免与 btn-primary 混用导致突兀 */
+  /** 报告标签：毛玻璃底 + 霓虹柔光呼吸下划线（Active） */
   const reportTabs = [
     {
       id: "summary",
       label: "摘要",
-      off: "bg-sky-100 text-sky-900 border-sky-200/90 hover:bg-sky-200",
-      on: "bg-sky-600 text-white border-sky-700 shadow-sm ring-2 ring-sky-300/60",
+      off: "bg-white/35 text-slate-900 border-white/45 hover:bg-white/55",
+      on: "bg-white/60 text-slate-900 border-white/65 shadow-[inset_0_-2px_0_rgba(34,211,238,0.85),0_0_28px_rgba(34,211,238,0.22)] ring-2 ring-cyan-200/40 animate-pulse",
     },
     {
       id: "report",
       label: "完整报告",
-      off: "bg-indigo-100 text-indigo-900 border-indigo-200/90 hover:bg-indigo-200",
-      on: "bg-indigo-600 text-white border-indigo-700 shadow-sm ring-2 ring-indigo-300/60",
+      off: "bg-white/35 text-slate-900 border-white/45 hover:bg-white/55",
+      on: "bg-white/60 text-slate-900 border-white/65 shadow-[inset_0_-2px_0_rgba(99,102,241,0.85),0_0_28px_rgba(99,102,241,0.22)] ring-2 ring-indigo-200/40 animate-pulse",
     },
     {
       id: "analysts",
       label: "分析师观点",
-      off: "bg-amber-100 text-amber-950 border-amber-200/90 hover:bg-amber-200",
-      on: "bg-amber-600 text-white border-amber-700 shadow-sm ring-2 ring-amber-300/60",
+      off: "bg-white/35 text-slate-900 border-white/45 hover:bg-white/55",
+      on: "bg-white/60 text-slate-900 border-white/65 shadow-[inset_0_-2px_0_rgba(245,158,11,0.90),0_0_28px_rgba(245,158,11,0.20)] ring-2 ring-amber-200/40 animate-pulse",
     },
     {
       id: "debate",
       label: "多空辩论",
-      off: "bg-rose-100 text-rose-900 border-rose-200/90 hover:bg-rose-200",
-      on: "bg-rose-600 text-white border-rose-700 shadow-sm ring-2 ring-rose-300/60",
+      off: "bg-white/35 text-slate-900 border-white/45 hover:bg-white/55",
+      on: "bg-white/60 text-slate-900 border-white/65 shadow-[inset_0_-2px_0_rgba(244,63,94,0.85),0_0_28px_rgba(244,63,94,0.20)] ring-2 ring-rose-200/40 animate-pulse",
     },
     {
       id: "data",
       label: "数据快照",
-      off: "bg-cyan-100 text-cyan-900 border-cyan-200/90 hover:bg-cyan-200",
-      on: "bg-cyan-600 text-white border-cyan-700 shadow-sm ring-2 ring-cyan-300/60",
+      off: "bg-white/35 text-slate-900 border-white/45 hover:bg-white/55",
+      on: "bg-white/60 text-slate-900 border-white/65 shadow-[inset_0_-2px_0_rgba(45,212,191,0.85),0_0_28px_rgba(45,212,191,0.20)] ring-2 ring-teal-200/40 animate-pulse",
     },
     {
       id: "diff",
       label: "对比与异动",
-      off: "bg-emerald-100 text-emerald-900 border-emerald-200/90 hover:bg-emerald-200",
-      on: "bg-emerald-600 text-white border-emerald-700 shadow-sm ring-2 ring-emerald-300/60",
+      off: "bg-white/35 text-slate-900 border-white/45 hover:bg-white/55",
+      on: "bg-white/60 text-slate-900 border-white/65 shadow-[inset_0_-2px_0_rgba(16,185,129,0.85),0_0_28px_rgba(16,185,129,0.18)] ring-2 ring-emerald-200/40 animate-pulse",
     },
   ];
+
   const deepTabOff =
-    "bg-violet-100 text-violet-900 border-violet-200/90 hover:bg-violet-200";
+    "bg-white/35 text-slate-900 border-white/45 hover:bg-white/55";
   const deepTabOn =
-    "bg-violet-600 text-white border-violet-700 shadow-sm ring-2 ring-violet-300/60";
+    "bg-white/60 text-slate-900 border-white/65 shadow-[inset_0_-2px_0_rgba(139,92,246,0.85),0_0_28px_rgba(139,92,246,0.20)] ring-2 ring-violet-200/40 animate-pulse";
   const exportTabMd =
-    "bg-slate-200 text-slate-800 border-slate-300 hover:bg-slate-300";
+    "bg-white/35 text-slate-900 border-white/45 hover:bg-white/55";
   const exportTabHtml =
-    "bg-teal-100 text-teal-900 border-teal-200/90 hover:bg-teal-200";
+    "bg-white/35 text-slate-900 border-white/45 hover:bg-white/55";
   const reportTabBase =
-    "inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-sm font-medium border transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-400";
+    "inline-flex items-center justify-center rounded-xl px-3.5 py-2 text-sm md:text-[15px] font-medium border transition-all backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-cyan-200/50";
 
   const analyzing = !!jobId;
 
@@ -857,8 +1037,18 @@ function AnalysisApp() {
     if (apiUsage.apis.length === 0 && !apiUsage.loading) fetchApiUsage();
   };
 
+  /** 从报告区回到上方：分析表单 / 历史 / 预测 */
+  const scrollToAnalysisWorkbench = React.useCallback(function () {
+    var el = document.getElementById("analysis-workbench");
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, []);
+
   return (
-    <div className="min-h-screen p-4 md:p-6 max-w-5xl mx-auto">
+    <div className="min-h-screen p-4 md:p-6 w-full max-w-none mx-auto">
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <h1 className="text-xl md:text-2xl font-bold text-[var(--text-primary)]">
           股票分析
@@ -943,10 +1133,15 @@ function AnalysisApp() {
         </div>
       )}
 
-      <div className="card mb-6 bg-white/60 backdrop-blur-md border border-white/30 shadow-lg p-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div
+        id="analysis-workbench"
+        className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-5 xl:gap-6 items-stretch lg:min-h-[min(64vh,720px)] scroll-mt-4"
+      >
+        <div className="order-1 flex flex-col gap-4 w-full lg:col-span-3 min-h-0 h-full lg:min-h-[min(64vh,720px)]">
+        <div className="glass-card w-full mb-0 p-5 md:p-6 shrink-0">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm text-gray-500 mb-1">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
               股票代码 *
             </label>
             <input
@@ -960,7 +1155,9 @@ function AnalysisApp() {
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-600 mb-1">市场</label>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
+              市场
+            </label>
             <select
               className="input-field"
               value={form.market}
@@ -975,7 +1172,9 @@ function AnalysisApp() {
             </select>
           </div>
           <div>
-            <label className="block text-sm text-gray-600 mb-1">历史天数</label>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
+              历史天数
+            </label>
             <input
               type="number"
               className="input-field"
@@ -992,7 +1191,7 @@ function AnalysisApp() {
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-600 mb-1">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
               股票名称（可选）
             </label>
             <input
@@ -1007,9 +1206,9 @@ function AnalysisApp() {
           </div>
         </div>
         {error && <p className="mt-2 text-red-600 text-sm">{error}</p>}
-        <div className="mt-3 flex flex-wrap items-center gap-3">
+        <div className="mt-5 flex flex-wrap items-center gap-3">
           <button
-            className="btn btn-primary"
+            className="btn btn-primary shrink-0"
             onClick={runAnalysis}
             disabled={analyzing}
           >
@@ -1030,14 +1229,18 @@ function AnalysisApp() {
             </span>
           )}
         </div>
-      </div>
+        </div>
 
-      <div className="card mb-6">
-        <h2 className="text-lg font-semibold mb-3">历史报告</h2>
+        <div className="glass-card w-full mb-0 p-5 md:p-6 flex flex-col shrink-0">
+        <h2 className="text-base md:text-lg font-semibold text-slate-900 tracking-tight mb-3 shrink-0">
+          历史报告
+        </h2>
 
         {stockTags.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 mb-3">
-            <span className="text-gray-500 text-sm">按股票代码过滤：</span>
+          <div className="flex flex-wrap items-center gap-2 mb-4 shrink-0">
+            <span className="text-slate-500 text-sm font-medium shrink-0">
+              按代码过滤
+            </span>
             <button
               type="button"
               className="btn btn-xs bg-stone-100 text-stone-700 hover:bg-stone-200"
@@ -1058,310 +1261,272 @@ function AnalysisApp() {
           </div>
         )}
 
-        {historyLoading && <p className="text-gray-500 text-sm">加载中…</p>}
-        {!historyLoading && filteredHistoryList.length === 0 && (
-          <p className="text-gray-500 text-sm">暂无历史报告</p>
-        )}
-        {!historyLoading && filteredHistoryList.length > 0 && (
-          <ul className="space-y-1 max-h-48 overflow-y-auto">
-            {filteredHistoryList.map((item, i) => (
-              <li key={i} className="flex items-stretch gap-1">
-                <button
-                  type="button"
-                  className="text-left flex-1 min-w-0 px-2 py-1.5 rounded hover:bg-gray-100 text-sm text-[var(--primary-color)]"
-                  onClick={() => loadHistoryReport(item.base_name)}
-                >
-                  {item.stock_code ? `${item.stock_code} · ` : ""}
-                  {item.base_name}
-                  <span className="text-gray-400 ml-2">
-                    {item.generated_at}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="shrink-0 px-2 py-1 text-xs rounded border border-red-200 text-red-600 hover:bg-red-50"
-                  title="删除此报告"
-                  onClick={(e) => deleteHistoryReport(item.base_name, e)}
-                >
-                  删除
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <div className="card mb-6 border border-indigo-100/80 bg-gradient-to-br from-white to-indigo-50/40">
-        <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
-          <h2 className="text-lg font-semibold text-gray-900">股票预测</h2>
-          <a
-            className="text-xs text-indigo-600 hover:underline shrink-0"
-            href="https://github.com/openclaw/skills/blob/2b3dcaccedd55355927e013e78b38b9be74290eb/skills/xanxustan/ai-screener/SKILL.md"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Intellectia 技能说明
-          </a>
-        </div>
-        <div className="flex flex-wrap gap-2 items-center mb-2">
-          <span className="text-sm text-gray-600">周期：</span>
-          {[
-            { v: 0, l: "日（明日）" },
-            { v: 1, l: "周" },
-            { v: 2, l: "月" },
-          ].map((x) => (
-            <button
-              key={x.v}
-              type="button"
-              className={`btn btn-xs rounded-lg border ${
-                predParams.period_type === x.v
-                  ? "bg-indigo-600 text-white border-indigo-700"
-                  : "bg-white text-gray-800 border-gray-200 hover:bg-gray-50"
-              }`}
-              onClick={() => {
-                setPredRemoteTotal(null);
-                setPredParams((p) => ({
-                  ...p,
-                  period_type: x.v,
-                  page: 1,
-                }));
-              }}
+        <div
+          className="shrink-0 h-[min(48vh,480px)] rounded-xl border border-white/40 bg-white/20 overflow-hidden flex flex-col"
+          aria-label="历史报告列表区域"
+        >
+          {historyLoading && (
+            <div className="flex-1 min-h-[8rem] flex items-center justify-center text-gray-500 text-sm">
+              加载中…
+            </div>
+          )}
+          {!historyLoading && filteredHistoryList.length === 0 && (
+            <div className="flex-1 min-h-[8rem] flex items-center justify-center text-gray-500 text-sm px-3 text-center">
+              暂无历史报告
+            </div>
+          )}
+          {!historyLoading && filteredHistoryList.length > 0 && (
+            <ul
+              className="flex-1 min-h-0 overflow-y-auto space-y-2 p-2 pr-1"
+              aria-label="历史报告列表"
             >
-              {x.l}
-            </button>
-          ))}
-        </div>
-        <div className="flex flex-wrap gap-2 items-center mb-2">
-          <span className="text-sm text-gray-600">方向：</span>
-          {[
-            { v: 0, l: "看涨" },
-            { v: 1, l: "看跌" },
-          ].map((x) => (
-            <button
-              key={x.v}
-              type="button"
-              className={`btn btn-xs rounded-lg border ${
-                predParams.trend_type === x.v
-                  ? "bg-emerald-600 text-white border-emerald-700"
-                  : "bg-white text-gray-800 border-gray-200 hover:bg-gray-50"
-              }`}
-              onClick={() => {
-                setPredRemoteTotal(null);
-                setPredParams((p) => ({
-                  ...p,
-                  trend_type: x.v,
-                  page: 1,
-                }));
-              }}
-            >
-              {x.l}
-            </button>
-          ))}
-        </div>
-        <div className="flex flex-wrap gap-2 items-center mb-2">
-          <span className="text-sm text-gray-600">资产：</span>
-          {[
-            { v: 0, l: "股票" },
-            { v: 1, l: "ETF" },
-            { v: 2, l: "加密货币" },
-          ].map((x) => (
-            <button
-              key={x.v}
-              type="button"
-              className={`btn btn-xs rounded-lg border ${
-                predParams.symbol_type === x.v
-                  ? "bg-violet-600 text-white border-violet-700"
-                  : "bg-white text-gray-800 border-gray-200 hover:bg-gray-50"
-              }`}
-              onClick={() => {
-                setPredRemoteTotal(null);
-                setPredParams((p) => ({
-                  ...p,
-                  symbol_type: x.v,
-                  page: 1,
-                }));
-              }}
-            >
-              {x.l}
-            </button>
-          ))}
-        </div>
-        <div className="flex flex-wrap gap-2 items-center mb-2">
-          <span className="text-sm text-gray-600 shrink-0">翻页：</span>
-          <button
-            type="button"
-            className="btn btn-xs bg-white border border-gray-300 rounded-lg disabled:opacity-40"
-            disabled={predParams.page <= 1}
-            onClick={() =>
-              setPredParams((p) => ({
-                ...p,
-                page: Math.max(1, p.page - 1),
-              }))
-            }
-          >
-            上一页
-          </button>
-          <label className="text-sm text-gray-600 flex items-center gap-1">
-            第
-            <input
-              type="number"
-              className="input-field w-14 py-1 text-sm text-center"
-              min={1}
-              value={predParams.page}
-              onChange={(e) => {
-                var n = parseInt(e.target.value, 10);
-                if (Number.isNaN(n) || n < 1) n = 1;
-                setPredParams((p) => ({ ...p, page: n }));
-              }}
-              onBlur={() => {
-                setPredParams((p) => {
-                  var n = p.page;
-                  if (predMaxPage != null && n > predMaxPage) n = predMaxPage;
-                  return { ...p, page: Math.max(1, n) };
-                });
-              }}
-            />
-            页
-          </label>
-          <button
-            type="button"
-            className="btn btn-xs bg-white border border-gray-300 rounded-lg disabled:opacity-40"
-            disabled={
-              predMaxPage != null && predParams.page >= predMaxPage
-            }
-            onClick={() =>
-              setPredParams((p) => ({
-                ...p,
-                page:
-                  predMaxPage != null
-                    ? Math.min(predMaxPage, p.page + 1)
-                    : p.page + 1,
-              }))
-            }
-          >
-            下一页
-          </button>
-          {predRemoteTotal != null && predMaxPage != null && (
-            <span className="text-xs text-gray-500">
-              约 {predRemoteTotal} 条 · 共 {predMaxPage} 页
-            </span>
+              {pagedHistoryList.map((item, i) => {
+                const titleLine = `${item.stock_code ? item.stock_code + " · " : ""}${item.base_name}`;
+                const rowKey =
+                  (item.base_name || "") +
+                  "|" +
+                  (item.generated_at || "") +
+                  "|" +
+                  ((historyPageClamped - 1) * HISTORY_PAGE_SIZE + i);
+                return (
+                  <li
+                    key={rowKey}
+                    className="flex items-stretch gap-2 rounded-xl border border-white/40 bg-white/25 hover:bg-white/45 transition-colors"
+                  >
+                    <button
+                      type="button"
+                      className="text-left flex-1 min-w-0 px-3 py-2 rounded-l-xl text-[var(--primary-color)]"
+                      title={titleLine}
+                      onClick={() => loadHistoryReport(item.base_name)}
+                    >
+                      <span className="font-semibold text-slate-900 text-sm leading-snug block truncate">
+                        {item.stock_code ? `${item.stock_code} · ` : ""}
+                        {item.base_name}
+                      </span>
+                      <span className="text-slate-500 text-xs mt-0.5 block tabular-nums">
+                        {item.generated_at}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="shrink-0 self-center mr-2 px-2 py-1 text-xs rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50/80 transition-colors"
+                      title="删除此报告"
+                      onClick={(e) => deleteHistoryReport(item.base_name, e)}
+                    >
+                      删除
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
-        <div className="flex flex-wrap gap-2 items-center mb-3">
-          <span className="text-sm text-gray-600 shrink-0">每页条数：</span>
-          <input
-            type="number"
-            className="input-field w-16 py-1 text-sm"
-            min={1}
-            max={10}
-            title="每页最多 10 条"
-            value={predParams.size}
-            onChange={(e) => {
-              var sz = Math.min(
-                10,
-                Math.max(1, parseInt(e.target.value, 10) || 10),
-              );
-              setPredParams((p) => ({ ...p, size: sz, page: 1 }));
-            }}
-          />
-          <button
-            type="button"
-            className="btn btn-primary btn-sm ml-auto"
-            disabled={predFetchLoading}
-            onClick={fetchScreener}
-          >
-            {predFetchLoading ? "拉取中…" : "拉取并保存快照"}
-          </button>
+        {!historyLoading && filteredHistoryList.length > 0 && (
+          <>
+            {historyTotalPages > 1 && (
+              <div className="mt-3 pt-3 border-t border-white/50 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                <span className="text-xs text-slate-500 tabular-nums">
+                  共 {filteredHistoryList.length} 条 · 每页 {HISTORY_PAGE_SIZE}{" "}
+                  条
+                </span>
+                <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                  <button
+                    type="button"
+                    className="btn btn-xs bg-white/80 border border-slate-200/90 text-slate-700 disabled:opacity-40"
+                    disabled={historyPageClamped <= 1}
+                    onClick={() =>
+                      setHistoryPage(function (p) {
+                        return Math.max(1, p - 1);
+                      })
+                    }
+                  >
+                    上一页
+                  </button>
+                  <span className="text-xs text-slate-600 tabular-nums px-1">
+                    {historyPageClamped} / {historyTotalPages}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-xs bg-white/80 border border-slate-200/90 text-slate-700 disabled:opacity-40"
+                    disabled={historyPageClamped >= historyTotalPages}
+                    onClick={() =>
+                      setHistoryPage(function (p) {
+                        return Math.min(historyTotalPages, p + 1);
+                      })
+                    }
+                  >
+                    下一页
+                  </button>
+                </div>
+              </div>
+            )}
+            {historyTotalPages <= 1 && (
+              <p className="mt-2 text-xs text-slate-400 shrink-0 tabular-nums">
+                共 {filteredHistoryList.length} 条
+              </p>
+            )}
+          </>
+        )}
+        </div>
+        </div>
+
+
+        <div className="glass-card order-2 w-full lg:col-span-9 mb-0 p-4 md:p-5 border-0 bg-white/55 flex flex-col min-h-0 h-full">
+        <div className="shrink-0">
+        <div className="mb-1.5">
+          <h2 className="text-sm md:text-base font-semibold text-slate-900 tracking-tight">
+            股票预测
+          </h2>
+        </div>
+        <p className="text-[11px] text-slate-500 mb-2 leading-snug">
+          「获取」静默拉取<strong className="text-slate-600">日/周/月</strong>；按
+          <strong className="text-slate-600">日期</strong>换批次，再选日/周/月看表。
+        </p>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-2">
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+            <span className="text-[11px] font-semibold text-slate-500 shrink-0">
+              方向
+            </span>
+            <div className="segmented-shell p-0.5">
+            {[
+              { v: 0, l: "看涨" },
+              { v: 1, l: "看跌" },
+            ].map((x) => (
+              <button
+                key={x.v}
+                type="button"
+                className={`seg-btn !py-1 !px-2.5 text-xs ${
+                  predParams.trend_type === x.v ? "on" : ""
+                } first:rounded-l-lg last:rounded-r-lg`}
+                onClick={() => {
+                  setPredRemoteTotal(null);
+                  setPredDetail(null);
+                  setPredParams((p) => ({
+                    ...p,
+                    trend_type: x.v,
+                    page: 1,
+                  }));
+                }}
+              >
+                {x.l}
+              </button>
+            ))}
+          </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+            <span className="text-[11px] font-semibold text-slate-500 shrink-0">
+              资产
+            </span>
+            <div className="segmented-shell p-0.5">
+            {[
+              { v: 0, l: "股票" },
+              { v: 1, l: "ETF" },
+              { v: 2, l: "加密货币" },
+            ].map((x) => (
+              <button
+                key={x.v}
+                type="button"
+                className={`seg-btn !py-1 !px-2.5 text-xs ${
+                  predParams.symbol_type === x.v ? "on" : ""
+                } first:rounded-l-lg last:rounded-r-lg`}
+                onClick={() => {
+                  setPredRemoteTotal(null);
+                  setPredDetail(null);
+                  setPredParams((p) => ({
+                    ...p,
+                    symbol_type: x.v,
+                    page: 1,
+                  }));
+                }}
+              >
+                {x.l}
+              </button>
+            ))}
+          </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 ml-auto">
+            <button
+              type="button"
+              className="btn btn-primary btn-xs shrink-0 !min-h-8 !px-3 !py-1 text-xs"
+              disabled={predFetchLoading}
+              onClick={fetchScreener}
+            >
+              {predFetchLoading ? "获取中…" : "获取"}
+            </button>
+          </div>
         </div>
         {predError && (
-          <p className="text-sm text-red-600 mb-2">{predError}</p>
+          <p className="text-xs text-red-600 mb-1.5">{predError}</p>
         )}
+        </div>
 
-        <h3 className="text-sm font-semibold text-gray-700 mb-2">
-          预测历史（点击打开）
-        </h3>
-        {predListLoading && (
-          <p className="text-gray-500 text-sm">加载中…</p>
-        )}
-        {!predListLoading && predList.length === 0 && (
-          <p className="text-gray-500 text-sm">暂无快照，请先拉取。</p>
-        )}
-        {!predListLoading && predList.length > 0 && (
-          <ul className="space-y-1 max-h-44 overflow-y-auto mb-4">
-            {predList.map((item, i) => (
-              <li key={i} className="flex items-stretch gap-1">
-                <button
-                  type="button"
-                  className={`text-left flex-1 min-w-0 px-2 py-1.5 rounded text-sm border transition-colors ${
-                    predDetail && predDetail.base_name === item.base_name
-                      ? "bg-indigo-100 border-indigo-300 text-indigo-900"
-                      : "hover:bg-gray-100 border-transparent text-[var(--primary-color)]"
-                  }`}
-                  onClick={() => loadScreenerDetail(item.base_name)}
-                >
-                  <span className="font-medium">
-                    {item.symbol_kind || "—"} · {item.period_label || "—"} ·{" "}
-                    {item.trend_label || "—"}
-                    {item.page != null ? ` · 第${item.page}页` : ""}
-                  </span>
-                  <span className="text-gray-500 text-xs ml-2">
-                    {item.list_count != null ? `${item.list_count} 条` : ""}
-                    {item.saved_at ? ` · ${item.saved_at}` : ""}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="shrink-0 px-2 py-1 text-xs rounded border border-red-200 text-red-600 hover:bg-red-50"
-                  title="删除快照"
-                  onClick={(e) => deleteScreenerSnapshot(item.base_name, e)}
-                >
-                  删除
-                </button>
-              </li>
+        <div className="mt-2 pt-2 border-t border-white/50 flex-1 min-h-0 flex flex-col">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1 shrink-0">
+            按保存日期
+          </div>
+          <div className="flex flex-wrap gap-1.5 mb-2 shrink-0">
+            {predDateKeys.length === 0 && (
+              <span className="text-sm text-slate-400">暂无预测快照</span>
+            )}
+            {predDateKeys.map((dk) => (
+              <button
+                key={dk}
+                type="button"
+                className={`btn btn-xs rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+                  selectedPredDateKey === dk
+                    ? "bg-blue-600 text-white border border-blue-500 shadow-sm"
+                    : "bg-white/55 text-slate-700 border border-white/60 hover:bg-white/80"
+                }`}
+                onClick={() => setSelectedPredDateKey(dk)}
+                title={dk}
+              >
+                {formatPredDateChip(dk)}
+              </button>
             ))}
-          </ul>
-        )}
-
-        {predDetail && (
-          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-            <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 text-sm">
-              <span className="font-semibold text-gray-800">
-                {predDetail.symbol_kind} · {predDetail.period_label} ·{" "}
-                {predDetail.trend_label}
-              </span>
-              <span className="text-gray-500 ml-2">
-                {[
-                  predDetail.page != null ? `第 ${predDetail.page} 页` : null,
-                  predDetail.page_size != null
-                    ? `每页 ${predDetail.page_size} 条`
-                    : null,
-                  predDetail.data && predDetail.data.total != null
-                    ? `约 ${predDetail.data.total} 条`
-                    : null,
-                  predDetail.saved_at ? `保存 ${predDetail.saved_at}` : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </span>
-              {predDetail.data &&
-                predDetail.data.detail &&
-                predDetail.data.detail.name && (
-                  <div className="text-xs text-gray-600 mt-1">
-                    {predDetail.data.detail.name}
-                  </div>
+          </div>
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1 shrink-0">
+            预测结果（日 / 周 / 月）
+          </div>
+          <div className="segmented-shell w-full flex flex-wrap p-0.5 mb-2 shrink-0">
+            {[
+              { v: 0, l: "日" },
+              { v: 1, l: "周" },
+              { v: 2, l: "月" },
+            ].map((x) => (
+              <button
+                key={x.v}
+                type="button"
+                className={`seg-btn flex-1 min-w-[4.5rem] !py-1.5 !px-2 text-xs ${
+                  predPeriodTab === x.v ? "on" : ""
+                } first:rounded-l-lg last:rounded-r-lg`}
+                onClick={() => switchPredPeriodTab(x.v)}
+              >
+                {x.l}
+                {selectedPredDateKey &&
+                  !predGrouped[selectedPredDateKey]?.[x.v] && (
+                  <span className="block text-[10px] font-normal opacity-70 mt-0.5">
+                    未获取
+                  </span>
                 )}
-            </div>
-            <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
-              <table className="w-full text-sm">
+              </button>
+            ))}
+          </div>
+
+        {predDetail &&
+          (predDetail.period_type == null ||
+            Number(predDetail.period_type) === predPeriodTab) && (
+          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden shrink-0">
+            <div className="overflow-x-auto flex-1 min-h-[200px] max-h-[min(48vh,480px)] overflow-y-auto">
+              <table className="w-full text-xs md:text-sm">
                 <thead className="sticky top-0 bg-gray-100 text-left">
                   <tr>
-                    <th className="p-2 font-medium">代码</th>
-                    <th className="p-2 font-medium">标的</th>
-                    <th className="p-2 font-medium">名称</th>
-                    <th className="p-2 font-medium">价格</th>
-                    <th className="p-2 font-medium">涨跌%</th>
-                    <th className="p-2 font-medium">概率</th>
-                    <th className="p-2 font-medium">profit</th>
+                    <th className="p-1.5 font-medium">代码</th>
+                    <th className="p-1.5 font-medium">标的</th>
+                    <th className="p-1.5 font-medium">名称</th>
+                    <th className="p-1.5 font-medium">价格</th>
+                    <th className="p-1.5 font-medium">涨跌%</th>
+                    <th className="p-1.5 font-medium">概率</th>
+                    <th className="p-1.5 font-medium">profit</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1373,21 +1538,21 @@ function AnalysisApp() {
                       key={ri}
                       className="border-t border-gray-100 hover:bg-gray-50/80"
                     >
-                      <td className="p-2 font-mono text-xs">
+                      <td className="p-1.5 font-mono text-[11px] md:text-xs">
                         {row.code || "—"}
                       </td>
-                      <td className="p-2 font-medium">{row.symbol || "—"}</td>
-                      <td className="p-2 text-gray-700 max-w-[200px] truncate" title={row.name}>
+                      <td className="p-1.5 font-medium">{row.symbol || "—"}</td>
+                      <td className="p-1.5 text-gray-700 max-w-[200px] truncate" title={row.name}>
                         {row.name || "—"}
                       </td>
-                      <td className="p-2">{row.price != null ? row.price : "—"}</td>
-                      <td className="p-2">
+                      <td className="p-1.5">{row.price != null ? row.price : "—"}</td>
+                      <td className="p-1.5">
                         {row.change_ratio != null ? row.change_ratio : "—"}
                       </td>
-                      <td className="p-2">
+                      <td className="p-1.5">
                         {row.probability != null ? row.probability : "—"}
                       </td>
-                      <td className="p-2">
+                      <td className="p-1.5">
                         {row.profit != null ? row.profit : "—"}
                       </td>
                     </tr>
@@ -1410,12 +1575,106 @@ function AnalysisApp() {
               )}
           </div>
         )}
+        {(!predDetail ||
+          (predDetail.period_type != null &&
+            Number(predDetail.period_type) !== predPeriodTab)) && (
+          <p className="text-xs text-slate-500 py-5 text-center rounded-lg border border-dashed border-slate-200/80 bg-white/30 shrink-0">
+            {currentPredSnapshotName
+              ? "正在加载该周期…"
+              : "该日期下暂无此周期快照，可切换日期或点击「获取」。"}
+          </p>
+        )}
+        <div className="mt-2 pt-2 border-t border-white/40 flex flex-wrap items-center gap-2 shrink-0">
+          <span className="text-[11px] text-slate-500 shrink-0">列表翻页</span>
+          <button
+            type="button"
+            className="btn btn-xs bg-white border border-gray-300 rounded-md disabled:opacity-40 !min-h-7 !py-0.5 text-xs"
+            disabled={predParams.page <= 1}
+            onClick={() =>
+              setPredParams((p) => ({
+                ...p,
+                page: Math.max(1, p.page - 1),
+              }))
+            }
+          >
+            上一页
+          </button>
+          <label className="text-[11px] text-slate-600 flex items-center gap-0.5">
+            第
+            <input
+              type="number"
+              className="input-field input-field-compact w-11 text-center text-xs py-0.5 min-h-7"
+              min={1}
+              value={predParams.page}
+              onChange={(e) => {
+                var n = parseInt(e.target.value, 10);
+                if (Number.isNaN(n) || n < 1) n = 1;
+                setPredParams((p) => ({ ...p, page: n }));
+              }}
+              onBlur={() => {
+                setPredParams((p) => {
+                  var n = p.page;
+                  if (predMaxPage != null && n > predMaxPage) n = predMaxPage;
+                  return { ...p, page: Math.max(1, n) };
+                });
+              }}
+            />
+            页
+          </label>
+          <button
+            type="button"
+            className="btn btn-xs bg-white border border-gray-300 rounded-md disabled:opacity-40 !min-h-7 !py-0.5 text-xs"
+            disabled={
+              predMaxPage != null && predParams.page >= predMaxPage
+            }
+            onClick={() =>
+              setPredParams((p) => ({
+                ...p,
+                page:
+                  predMaxPage != null
+                    ? Math.min(predMaxPage, p.page + 1)
+                    : p.page + 1,
+              }))
+            }
+          >
+            下一页
+          </button>
+          {predRemoteTotal != null && predMaxPage != null ? (
+            <span className="text-[11px] text-slate-500 tabular-nums">
+              约 {predRemoteTotal} 条 · 共 {predMaxPage} 页
+            </span>
+          ) : (
+            <span className="text-[11px] text-slate-400">
+              获取数据后显示总条数与总页数
+            </span>
+          )}
+        </div>
+        </div>
+        </div>
+
       </div>
 
-      {report && (
+      <div
+        id="report-reading-panel"
+        className="w-full mt-8 sm:mt-10 scroll-mt-4"
+      >
+        {report && (
         <>
-          <div>
-            <div className="flex flex-wrap gap-2 mb-3 items-center">
+          <div className="flex flex-col w-full pt-1">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2 shrink-0">
+              <h2 className="text-base md:text-lg font-semibold text-slate-900 tracking-tight">
+                当前报告
+              </h2>
+              <button
+                type="button"
+                className="btn btn-xs bg-white/80 text-slate-700 border border-slate-200/90 shadow-sm hover:bg-slate-50 shrink-0 self-start sm:self-auto"
+                onClick={scrollToAnalysisWorkbench}
+                title="回到分析表单、历史报告与股票预测"
+              >
+                ↑ 回到上方
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2 mb-3 items-center shrink-0">
               {reportTabs.map((t) => (
                 <button
                   key={t.id}
@@ -1452,10 +1711,10 @@ function AnalysisApp() {
               </button>
             </div>
 
-            <div className="card mb-6 report-card">
+            <div className="glass-card mb-0 report-card w-full p-4 md:p-6 lg:p-8">
               {activeTab === "summary" && (
                 <div className="space-y-4 report-summary">
-                  <div className="border-b border-gray-200 pb-3">
+                  <div className="border-b border-white/50 pb-3">
                     <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-0.5">
                       分析主题
                     </div>
@@ -1680,8 +1939,21 @@ function AnalysisApp() {
               </div>
             </div>
           )}
+          {/* 长报告滚动后仍可一键回到分析 / 历史 / 预测区（低于深度诊断 z-50） */}
+          <button
+            type="button"
+            aria-label="回到上方分析区"
+            className="fixed bottom-6 right-6 z-40 flex items-center gap-1.5 rounded-full border border-white/70 bg-white/90 px-4 py-2.5 text-sm font-medium text-slate-800 shadow-[0_8px_30px_rgba(15,23,42,0.12)] backdrop-blur-md hover:bg-white hover:shadow-lg transition-all md:bottom-8 md:right-8"
+            onClick={scrollToAnalysisWorkbench}
+            title="回到分析表单、历史报告与股票预测"
+          >
+            <span className="text-base leading-none">↑</span>
+            回到上方
+          </button>
         </>
-      )}
+        )}
+      </div>
+
     </div>
   );
 }
