@@ -7,6 +7,9 @@
 web_public/
 public/
 
+# 本地持久化的分析任务状态（api_server）
+jobs/
+
 # Python
 __pycache__/
 *.py[cod]

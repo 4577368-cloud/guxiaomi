@@ -9,6 +9,8 @@
 
 **推荐：** 生产环境 **API** 仍优先部署在 Render / Railway / VPS 等；Vercel 以静态页 + `ANALYSIS_API_BASE` 指过去为主。
 
+**异步分析任务（job 轮询）在 Vercel 上的限制：** 任务状态会写入 **`/tmp`**（与报告目录一致），**同一 Serverless 实例**内可轮询成功；若负载均衡把轮询打到**另一实例**，仍可能短暂 **404**（前端已对连续多次 404 再放弃）。**旧部署留下的 `localStorage` job_id** 在新实例上也会失效。长时间、强一致任务请使用**常驻进程**的 API 主机。
+
 若坚持在 Vercel 上跑 FastAPI，需知：
 
 - **不要**在 `vercel.json` 里写 `installCommand: pip install -r requirements.txt`。Vercel 构建机的 Python 由 **`uv` 管理**（PEP 668），直接 `pip install` 会报错「外部管理环境」。应 **省略 `installCommand`**，由平台用 **`uv` 自动根据 `requirements.txt` 安装依赖**。

@@ -326,19 +326,25 @@ function AnalysisApp() {
     } catch (_) {}
   };
 
-  // 恢复未完成的任务：有 job_id 时轮询状态；若后端返回 404（如重启后）则清除 job_id 恢复为可重新分析
+  // 恢复未完成的任务：有 job_id 时轮询；Serverless 多实例可能偶发 404，连续多次再清除
   React.useEffect(() => {
     if (!jobId) return;
+    var consecutive404 = 0;
+    var max404BeforeClear = 15;
     const poll = async () => {
       try {
         const res = await fetch(`${apiBase}/api/analyze/status/${jobId}`);
         if (res.status === 404) {
-          setJobId("");
-          try {
-            localStorage.removeItem(JOB_STORAGE_KEY);
-          } catch (_) {}
+          consecutive404++;
+          if (consecutive404 >= max404BeforeClear) {
+            setJobId("");
+            try {
+              localStorage.removeItem(JOB_STORAGE_KEY);
+            } catch (_) {}
+          }
           return;
         }
+        consecutive404 = 0;
         if (!res.ok) return;
         const data = await res.json();
         if (data.status === "done" && data.result) {

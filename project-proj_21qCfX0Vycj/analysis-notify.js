@@ -83,14 +83,22 @@
       console.warn('analysis-notify: 未配置 ANALYSIS_API_BASE，跳过任务轮询');
       return;
     }
+    /** Serverless 多实例下可能偶发 404，连续多次再放弃；旧任务 ID 最终仍会失效 */
+    var consecutive404 = 0;
+    var max404BeforeDrop = 15;
     var intervalId = setInterval(function () {
       fetch(apiBase + '/api/analyze/status/' + jobId)
         .then(function (res) {
           if (res.status === 404) {
-            clearInterval(intervalId);
-            try { localStorage.removeItem(JOB_STORAGE_KEY); } catch (_) {}
-            return Promise.reject(new Error('NOT_FOUND'));
+            consecutive404++;
+            if (consecutive404 >= max404BeforeDrop) {
+              clearInterval(intervalId);
+              try { localStorage.removeItem(JOB_STORAGE_KEY); } catch (_) {}
+              return Promise.reject(new Error('NOT_FOUND'));
+            }
+            return Promise.reject(new Error('TRANSIENT_404'));
           }
+          consecutive404 = 0;
           return res.ok ? res.json() : Promise.reject();
         })
         .then(function (data) {
@@ -105,8 +113,11 @@
           }
         })
         .catch(function (err) {
+          if (err && err.message === 'TRANSIENT_404') return;
           if (err && err.message === 'NOT_FOUND') {
-            console.warn('分析任务状态已失效(404)，可能后端已重启。已停止轮询并清除本地任务 ID。');
+            console.warn(
+              '分析任务状态连续不可用(404)，已停止轮询。若为 Vercel：任务状态仅在同一实例内可靠，旧浏览器里的任务 ID 或跨实例轮询会失效；可改用独立 API 服务器或重新发起分析。',
+            );
           }
         });
     }, POLL_INTERVAL_MS);

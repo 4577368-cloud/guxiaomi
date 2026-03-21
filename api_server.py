@@ -57,12 +57,30 @@ else:
         allow_headers=["*"],
     )
 
-REPORTS_DIR = Path(__file__).resolve().parent / "reports"
+def _is_vercel_runtime() -> bool:
+    return bool(os.environ.get("VERCEL") or os.environ.get("VERCEL_ENV"))
+
+
+# Serverless 上项目目录只读，报告/预测/任务状态须落在可写盘（多为 /tmp）
+if _is_vercel_runtime():
+    _RUNTIME_DATA = Path("/tmp/guxiaomi_data")
+    _RUNTIME_DATA.mkdir(parents=True, exist_ok=True)
+    REPORTS_DIR = _RUNTIME_DATA / "reports"
+    PREDICTIONS_DIR = _RUNTIME_DATA / "predictions"
+else:
+    REPORTS_DIR = Path(__file__).resolve().parent / "reports"
+    PREDICTIONS_DIR = Path(__file__).resolve().parent / "predictions"
 REPORTS_DIR.mkdir(exist_ok=True)
+PREDICTIONS_DIR.mkdir(exist_ok=True)
+
+# 分析任务状态目录（供多实例/重启后仍能按 job_id 查询；Vercel 上仅同执行环境 /tmp 可见，跨实例仍可能短暂 404）
+if _is_vercel_runtime():
+    JOBS_DIR = Path("/tmp/guxiaomi_jobs")
+else:
+    JOBS_DIR = _GUX_ROOT / "jobs"
+JOBS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Intellectia 选股器快照（与 OpenClaw skill intellectia-stock-screener 同源接口）
-PREDICTIONS_DIR = Path(__file__).resolve().parent / "predictions"
-PREDICTIONS_DIR.mkdir(exist_ok=True)
 INTELLECTIA_SCREENER_URL = "https://api.intellectia.ai/gateway/v1/stock/screener-list"
 # 实测 size>20 时接口返回 404；产品侧每页最多 10 条并支持翻页
 INTELLECTIA_SCREENER_MAX_SIZE = 10
@@ -85,6 +103,45 @@ def _infer_stock_from_base_name(base_name: str) -> tuple:
 # 异步任务状态：job_id -> { status: pending|running|done|failed, result?: dict, error?: str }
 _jobs: Dict[str, Dict[str, Any]] = {}
 _jobs_lock = threading.Lock()
+
+_JOB_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+
+def _job_disk_path(job_id: str) -> Optional[Path]:
+    if not _JOB_ID_RE.match(job_id or ""):
+        return None
+    return JOBS_DIR / f"{job_id}.json"
+
+
+def _persist_job_disk(job_id: str, job: Dict[str, Any]) -> None:
+    path = _job_disk_path(job_id)
+    if path is None:
+        return
+    payload = {
+        "status": job.get("status"),
+        "result": job.get("result"),
+        "error": job.get("error"),
+        "created_at": job.get("created_at"),
+    }
+    tmp = path.with_suffix(".json.tmp")
+    try:
+        tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(path)
+    except OSError:
+        pass
+
+
+def _load_job_disk(job_id: str) -> Optional[Dict[str, Any]]:
+    path = _job_disk_path(job_id)
+    if path is None or not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and data.get("status"):
+            return data
+    except (OSError, json.JSONDecodeError, TypeError):
+        pass
+    return None
 
 
 def _market_norm(m: str) -> str:
@@ -186,6 +243,7 @@ def _run_analyze_task(job_id: str, req: AnalyzeRequest):
     try:
         with _jobs_lock:
             _jobs[job_id]["status"] = "running"
+            _persist_job_disk(job_id, _jobs[job_id])
         from demo_ulti_analyst import (
             MultiAgentStockAnalyst,
             ReportExporter,
@@ -217,6 +275,7 @@ def _run_analyze_task(job_id: str, req: AnalyzeRequest):
         with _jobs_lock:
             _jobs[job_id]["status"] = "done"
             _jobs[job_id]["result"] = payload
+            _persist_job_disk(job_id, _jobs[job_id])
     except Exception as e:
         err_msg = str(e).strip()
         if len(err_msg) > 500:
@@ -225,6 +284,7 @@ def _run_analyze_task(job_id: str, req: AnalyzeRequest):
         with _jobs_lock:
             _jobs[job_id]["status"] = "failed"
             _jobs[job_id]["error"] = err_msg
+            _persist_job_disk(job_id, _jobs[job_id])
 
 
 @app.post("/api/analyze")
@@ -233,6 +293,7 @@ def api_analyze(req: AnalyzeRequest):
     job_id = str(uuid.uuid4())
     with _jobs_lock:
         _jobs[job_id] = {"status": "pending", "result": None, "error": None, "created_at": datetime.now().isoformat()}
+        _persist_job_disk(job_id, _jobs[job_id])
     t = threading.Thread(target=_run_analyze_task, args=(job_id, req), daemon=True)
     t.start()
     return {"ok": True, "job_id": job_id}
@@ -243,6 +304,11 @@ def api_analyze_status(job_id: str):
     """查询分析任务状态。status: pending|running|done|failed；完成时返回 result。"""
     with _jobs_lock:
         job = _jobs.get(job_id)
+    if not job:
+        job = _load_job_disk(job_id)
+        if job:
+            with _jobs_lock:
+                _jobs[job_id] = job
     if not job:
         raise HTTPException(status_code=404, detail="任务不存在或已过期")
     out = {"status": job["status"]}
