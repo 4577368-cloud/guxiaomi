@@ -2903,7 +2903,7 @@ function AnalysisApp() {
               <div className="flex-1 overflow-y-auto p-3 space-y-2">
                 {(chatMessages || []).length === 0 ? (
                   <p className="text-xs text-gray-500">
-                    可追问报告中的观点与数据，也可随意延伸讨论；多轮对话已开启。非投资建议。
+                    直接输入问题即可；首轮会附带报告摘录，从第二轮起为省 token 不再重复附全文，依赖上文衔接。
                   </p>
                 ) : (
                   (chatMessages || []).map((msg, i) => (

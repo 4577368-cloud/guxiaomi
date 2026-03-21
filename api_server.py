@@ -710,6 +710,7 @@ def _sanitize_chat_answer(text: str) -> str:
     meta_patterns = [
         r"^(?:用户(?:询问|问|提到|希望)[^。\n]{0,80}[。\n]\s*)+",
         r"^(?:根据(?:您的)?问题[^。\n]{0,60}[。\n]\s*)+",
+        r"^(?:针对(?:您|你)的问题[^。\n]{0,100}[。\n]\s*)+",
         r"^(?:让我(?:先)?(?:分析|梳理|整理)[^。\n]{0,80}[。\n]\s*)+",
         r"^(?:我需要(?:先)?[^。\n]{0,100}[。\n]\s*)+",
         r"^(?:从报告中[^。\n]{0,80}可以看到[^。\n]{0,120}[。\n]\s*)+",
@@ -723,9 +724,39 @@ def _sanitize_chat_answer(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", s).strip()
 
 
+def _strip_trailing_investment_disclaimer(text: str) -> str:
+    """去掉回复末尾常见的「投资参考/免责」套话（模型仍爱加时的兜底）。"""
+    if not text or not isinstance(text, str):
+        return text or ""
+    s = text.rstrip()
+    # 末尾独立短段：免责声明、投资有风险等
+    tail_pat = (
+        r"(?:\n{2,}|^)"
+        r"(?:[*•\-\s]*"
+        r"(?:"
+        r"不构成任何投资建议|不构成投资建议|仅供参考|投资有风险|入市需谨慎|"
+        r"本文(?:不)?构成|风险提示[:：]|【风险提示】|【免责声明】"
+        r")[^\n]{0,200})"
+        r"(?:\n|$)+$"
+    )
+    for _ in range(4):
+        ns = re.sub(tail_pat, "", s, flags=re.IGNORECASE | re.MULTILINE)
+        if ns == s:
+            break
+        s = ns.rstrip()
+    # 常见「以上.*参考」收尾句
+    s = re.sub(
+        r"\n*以上(?:内容|分析|观点)?(?:仅供|仅作)[^。\n]{0,80}。[\s\n]*$",
+        "",
+        s,
+        flags=re.IGNORECASE,
+    )
+    return s.rstrip()
+
+
 @app.post("/api/analyze/chat")
 def api_analyze_chat(req: ChatRequest):
-    """深度诊断对话：报告为可选背景，助手按通用大模型方式作答；回复经清洗去掉思考块。"""
+    """深度诊断对话：首轮附带报告摘录；自第二轮起省略报告正文仅保留短说明以省 token，依赖对话历史衔接。"""
     if not req.message or not req.message.strip():
         raise HTTPException(status_code=400, detail="message 不能为空")
 
@@ -753,6 +784,35 @@ def api_analyze_chat(req: ChatRequest):
 
     report_excerpt = _truncate_chat_report(report_text)
 
+    # 多轮历史：须先于 system 构建，以便第二轮起省略报告正文省 token
+    hist: List[Dict[str, str]] = []
+    for turn in (req.history or [])[-24:]:
+        r = (turn.role or "").strip().lower()
+        if r not in ("user", "assistant"):
+            continue
+        c = (turn.content or "").strip()
+        if not c:
+            continue
+        hist.append({"role": r, "content": c[:12000]})
+
+    follow_up = len(hist) > 0
+    if follow_up:
+        report_block = (
+            "（本标的分析报告全文**仅在首轮对话**中作为上下文附带；**本轮已省略正文**以节省 token。"
+            "请根据下方对话历史与用户**当前这一句**作答；若用户追问报告原文而历史里没有对应片段，可请其粘贴一两句关键原文，或关闭深度诊断后重新打开以触发新的首轮上下文。）"
+        )
+        bg_heading = "【背景说明·无报告正文】"
+        bg_note = (
+            "下列**不含**分析报告全文；默认不要假设你仍能看到报告细节。"
+        )
+    else:
+        report_block = report_excerpt
+        bg_heading = "【背景摘录·勿默认使用】"
+        bg_note = (
+            "下列内容来自用户本页分析报告，仅作静默参考。**默认不要引用、不要复述、不要说「根据报告」「结合你刚才的报告」**；"
+            "用户**明确问到**报告里某段、某位分析师、报告结论时，再简短结合即可，否则就当普通问答，与背景无关。"
+        )
+
     if req.use_mock:
         # 模拟返回（用于测试）
         return JSONResponse({"ok": True, "answer": "[模拟] 深度诊断：请在真实模式下使用。"})
@@ -765,27 +825,15 @@ def api_analyze_chat(req: ChatRequest):
         os.environ.get("VLLM_MODEL_ID") or os.environ.get("VLLM_MODEL") or "MiniMax-M2.1-AWQ"
     ).strip()
 
-    system_prompt = f"""你是资深投资与市场分析助手，正在与用户讨论标的「{req.stock_code}」（{req.market}）。请**完整发挥**你作为大语言模型的知识、推理与表达能力，直接、充分地回答用户。
+    system_prompt = f"""你在和用户聊「{req.stock_code}」（{req.market}）。**本条消息只解决用户当前这一句问题**：答到点上即可，口语自然，不要复述上一轮已经说过的总结，不要每轮用相同开头/结尾模板。
 
-【用户当前查看的分析报告摘录】（同标的，便于他追问报告里的观点、数据或结论；这是**补充上下文**，不是对话话题的唯一允许范围）
-{report_excerpt}
+{bg_heading}
+{bg_note}
 
-【怎么答】
-• **正常聊天**：像用户平时用大模型一样直接回答——财报、行业、新闻脉络、估值逻辑、技术面、策略、延伸问题都可以谈；不必反复强调「本对话不联网」「报告局限性」等，除非用户**明确问**实时信源或报告里到底写了什么。
-• **与报告衔接**：若问题指向报告中的论点、表格或分析师表述，先顺着报告承接，再给更深解读、补充角度或必要澄清；若与你的常识不一致，可简短说明差异，并建议以交易所/公司披露与实时行情为准。
-• **禁止**：以「报告里没提」为由拒绝回答；输出思考标签；以「用户询问…」「让我先分析…」等元叙述开头。
-• **合规**：涉及具体买卖、仓位时给条件化思路，并声明不构成投资建议。
-• **语言**：简体中文为主；股票代码、交易所等专有名词可保留原文。"""
-    # 多轮历史：仅保留 user/assistant，防注入
-    hist: List[Dict[str, str]] = []
-    for turn in (req.history or [])[-24:]:
-        r = (turn.role or "").strip().lower()
-        if r not in ("user", "assistant"):
-            continue
-        c = (turn.content or "").strip()
-        if not c:
-            continue
-        hist.append({"role": r, "content": c[:12000]})
+{report_block}
+
+【硬性禁止】输出思考标签；以「用户问的是…」「针对您的问题」等元叙述起头；以「报告局限性」「小结：」等每轮套话收尾；**每轮追加**「不构成投资建议」「仅供参考」「投资有风险」「风险提示」等免责或投资参考套话（用户未索要时不要写）。
+【语言】简体中文为主。"""
 
     messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
     messages.extend(hist)
@@ -854,7 +902,7 @@ def api_analyze_chat(req: ChatRequest):
         if not answer:
             answer = '[vllm 无回答，请检查模型或请求]'
 
-        answer = _sanitize_chat_answer(answer)
+        answer = _strip_trailing_investment_disclaimer(_sanitize_chat_answer(answer))
 
         return JSONResponse({"ok": True, "answer": answer})
 
