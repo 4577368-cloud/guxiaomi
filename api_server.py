@@ -192,6 +192,13 @@ class AnalyzeRequest(BaseModel):
     client_quote: Optional[ClientQuotePayload] = None
 
 
+class ChatTurn(BaseModel):
+    """深度诊断多轮对话中的一条（仅 user / assistant）。"""
+
+    role: str
+    content: str
+
+
 class ChatRequest(BaseModel):
     stock_code: str
     market: str = "A 股"
@@ -199,6 +206,8 @@ class ChatRequest(BaseModel):
     report_base_name: Optional[str] = None
     report_text: Optional[str] = None
     use_mock: bool = False
+    # 当前问题之前的对话轮次（不含本条 message），用于多轮延展
+    history: List[ChatTurn] = Field(default_factory=list)
 
 
 class ScreenerFetchRequest(BaseModel):
@@ -680,9 +689,43 @@ def api_news_check_feeds():
         return {"ok": False, "feeds": [], "error": str(e)}
 
 
+def _truncate_chat_report(text: str, max_chars: int = 28000) -> str:
+    """控制单次对话附带的报告长度，避免撑爆上下文。"""
+    t = (text or "").strip()
+    if len(t) <= max_chars:
+        return t
+    return t[: max_chars - 20] + "\n…（报告摘录已截断）"
+
+
+def _sanitize_chat_answer(text: str) -> str:
+    """去掉模型常见的思考块、元叙述前缀，避免浪费展示位。"""
+    if not text or not isinstance(text, str):
+        return text or ""
+    s = text.strip()
+    # 与 demo_ulti_analyst._clean_llm_output 一致：<think>...</think>
+    s = re.sub(r"<think>[\s\S]*?</think>", "", s, flags=re.IGNORECASE | re.DOTALL)
+    s = re.sub(r"<thinking>[\s\S]*?</thinking>", "", s, flags=re.IGNORECASE | re.DOTALL)
+    s = re.sub(r"^(think|思考)[：:]\s*", "", s, flags=re.IGNORECASE | re.MULTILINE)
+    # 「用户询问…」「让我先分析」类元开头（单行或多行短前缀）
+    meta_patterns = [
+        r"^(?:用户(?:询问|问|提到|希望)[^。\n]{0,80}[。\n]\s*)+",
+        r"^(?:根据(?:您的)?问题[^。\n]{0,60}[。\n]\s*)+",
+        r"^(?:让我(?:先)?(?:分析|梳理|整理)[^。\n]{0,80}[。\n]\s*)+",
+        r"^(?:我需要(?:先)?[^。\n]{0,100}[。\n]\s*)+",
+        r"^(?:从报告中[^。\n]{0,80}可以看到[^。\n]{0,120}[。\n]\s*)+",
+    ]
+    for _ in range(3):
+        orig = s
+        for p in meta_patterns:
+            s = re.sub(p, "", s, flags=re.MULTILINE)
+        if s == orig:
+            break
+    return re.sub(r"\n{3,}", "\n\n", s).strip()
+
+
 @app.post("/api/analyze/chat")
 def api_analyze_chat(req: ChatRequest):
-    """深度诊断对话接口：调用 vllm 标准聊天 API（模型同当前配置），以报告作为上下文。"""
+    """深度诊断对话：报告作快照上下文，允许结合常识与多轮延展；回复经清洗去掉思考块。"""
     if not req.message or not req.message.strip():
         raise HTTPException(status_code=400, detail="message 不能为空")
 
@@ -706,7 +749,9 @@ def api_analyze_chat(req: ChatRequest):
                 raise HTTPException(status_code=500, detail='读取报告失败: ' + str(e))
 
     if not report_text:
-        report_text = '当前无历史报告内容。'
+        report_text = '（当前未附带完整报告正文，仅代码与市场信息可用。）'
+
+    report_excerpt = _truncate_chat_report(report_text)
 
     if req.use_mock:
         # 模拟返回（用于测试）
@@ -720,17 +765,37 @@ def api_analyze_chat(req: ChatRequest):
         os.environ.get("VLLM_MODEL_ID") or os.environ.get("VLLM_MODEL") or "MiniMax-M2.1-AWQ"
     ).strip()
 
-    system_prompt = f"你是专业股票分析助手，擅长结合历史生成的报告输出可执行策略建议。当前股票: {req.stock_code}，市场: {req.market}。"
-    user_prompt = f"已生成报告内容（上下文）:\n{report_text}\n\n用户问题：{req.message}\n请根据报告进行进一步分析、意见、风险提示与建议。"
+    system_prompt = f"""你是资深投资与财报解读助手，与用户就多只股票中的「{req.stock_code}」（{req.market}）进行多轮对话。
+
+【分析报告摘录】（用户当前页面上的报告快照，可能不是最新季报全文，亦可能有滞后）
+{report_excerpt}
+
+【作答原则 — 必须遵守】
+1) 自然对话：像真人投顾一样**直接回答**用户当前问题；正文从有信息量的第一句话写起。不要先写「根据报告我需要…」「报告局限性」「从报告中可以看到」等大段元叙述，除非用户明确问「报告里缺什么/报告写了什么」。
+2) 知识来源：报告用于**衔接估值、区间、技术面摘要**等快照数据。若用户问最新财报、分部收入、同比环比等你可结合训练知识中的**公开信息常识**作概括性补充，并在一句话内标明「以下为基于公开信息的概括，非本页报告原文，请以交易所/公司披露为准」。**禁止**以「报告未提供」为理由整篇拒答或只列缺失项；应在你所知范围内给出有用框架与观察点。
+3) 禁止思考过程：不要输出任何思考标签、内部推理或角色扮演式前言（勿以「用户询问…」「让我先分析…」等开头）。
+4) 合规：涉及买卖、仓位时给条件化参考并声明不构成投资建议。
+5) 语言：简体中文；除代码、交易所缩写外少用英文。"""
+    # 多轮历史：仅保留 user/assistant，防注入
+    hist: List[Dict[str, str]] = []
+    for turn in (req.history or [])[-24:]:
+        r = (turn.role or "").strip().lower()
+        if r not in ("user", "assistant"):
+            continue
+        c = (turn.content or "").strip()
+        if not c:
+            continue
+        hist.append({"role": r, "content": c[:12000]})
+
+    messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
+    messages.extend(hist)
+    messages.append({"role": "user", "content": req.message.strip()[:8000]})
 
     payload = {
         "model": vllm_model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        "temperature": 0.7,
-        "max_tokens": 1024,
+        "messages": messages,
+        "temperature": 0.65,
+        "max_tokens": 2500,
         "stream": False
     }
 
@@ -750,12 +815,9 @@ def api_analyze_chat(req: ChatRequest):
             try:
                 fallback_payload = {
                     "model_id": vllm_model,
-                    "input": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "temperature": 0.7,
-                    "max_tokens": 1024,
+                    "input": messages,
+                    "temperature": 0.65,
+                    "max_tokens": 2500,
                     "stream": False
                 }
                 resp2 = requests.post(
@@ -790,6 +852,8 @@ def api_analyze_chat(req: ChatRequest):
 
         if not answer:
             answer = '[vllm 无回答，请检查模型或请求]'
+
+        answer = _sanitize_chat_answer(answer)
 
         return JSONResponse({"ok": True, "answer": answer})
 

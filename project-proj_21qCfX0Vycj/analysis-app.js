@@ -528,6 +528,21 @@ function stripCoreConclusionHeading(text) {
   return t;
 }
 
+/** 深度诊断回复：去掉思考标签与常见元叙述前缀（与后端 api 清洗互补） */
+function sanitizeDiagnosisReply(text) {
+  if (text == null || typeof text !== "string") return text;
+  var s = text.trim();
+  var _thinkRe = new RegExp("<think>[\\s\\S]*?</think>", "gi");
+  s = s.replace(_thinkRe, "");
+  s = s.replace(/<thinking>[\s\S]*?<\/thinking>/gi, "");
+  s = s.replace(/^(?:think|思考)[：:]\s*/gim, "");
+  s = s.replace(
+    /^(?:(?:用户(?:询问|问|提到|希望)|让我(?:先)?(?:分析|梳理|整理)|我需要(?:先)?)[^。\n]{0,100}[。\n]\s*)+/m,
+    "",
+  );
+  return s.replace(/\n{3,}/g, "\n\n").trim();
+}
+
 /** 表格行拆单元格：| a | b | */
 function splitTableCells(row) {
   return row
@@ -1898,6 +1913,9 @@ function AnalysisApp() {
             report.markdown || report.分析主题 || report.融合摘要 || "",
           message: question,
           use_mock: form.use_mock,
+          history: (chatMessages || []).map(function (m) {
+            return { role: m.role, content: m.content || "" };
+          }),
         }),
       });
       if (!res.ok) {
@@ -1911,7 +1929,9 @@ function AnalysisApp() {
         throw new Error(detail);
       }
       const data = await res.json();
-      const answer = data.answer || "未返回回答，请重试";
+      var answer = sanitizeDiagnosisReply(
+        data.answer || "未返回回答，请重试",
+      );
 
       const saved = [
         ...nextMessages,
@@ -2883,7 +2903,7 @@ function AnalysisApp() {
               <div className="flex-1 overflow-y-auto p-3 space-y-2">
                 {(chatMessages || []).length === 0 ? (
                   <p className="text-xs text-gray-500">
-                    输入问题，助手将基于当前报告给出诊断。
+                    输入问题：助手会结合本页报告快照与公开信息常识作答（多轮记忆已开启）；非投资建议。
                   </p>
                 ) : (
                   (chatMessages || []).map((msg, i) => (
@@ -2899,7 +2919,11 @@ function AnalysisApp() {
                         {msg.role === "user" ? "我" : "助手"}
                       </div>
                       <div className="text-sm leading-relaxed report-markdown-block">
-                        {renderMarkdown(msg.content)}
+                        {renderMarkdown(
+                          msg.role === "assistant"
+                            ? sanitizeDiagnosisReply(msg.content)
+                            : msg.content,
+                        )}
                       </div>
                     </div>
                   ))
