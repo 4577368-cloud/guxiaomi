@@ -430,6 +430,8 @@ function AnalysisApp() {
       return "";
     }
   });
+  /** POST /api/analyze 进行中（含 Vercel 同步分析可能数分钟），避免界面像「点了没反应」 */
+  const [analysisSubmitting, setAnalysisSubmitting] = React.useState(false);
   const [error, setError] = React.useState("");
   const [report, setReport] = React.useState(null);
   const [activeTab, setActiveTab] = React.useState("summary");
@@ -487,6 +489,7 @@ function AnalysisApp() {
   // 放弃当前任务（停止轮询、清除 job_id，可重新发起分析）
   const stopAnalysis = () => {
     setJobId("");
+    setAnalysisSubmitting(false);
     setError("");
     try {
       localStorage.removeItem(JOB_STORAGE_KEY);
@@ -848,17 +851,20 @@ function AnalysisApp() {
       setError("请输入股票代码");
       return;
     }
+    if (analysisSubmitting) return;
     setError("");
     setReport(null);
+    setAnalysisSubmitting(true);
     const marketMap = { A股: "A 股", 港股: "港股", 美股: "美股" };
     try {
-      /* Vercel 上分析在同一次 POST 内跑完，可能需数分钟；本地仅返回 job_id，很快 */
-      var analyzePostTimeoutMs =
-        typeof location !== "undefined" &&
-        location.hostname !== "localhost" &&
-        location.hostname !== "127.0.0.1"
-          ? 360000
-          : 20000;
+      var h = typeof location !== "undefined" ? location.hostname || "" : "";
+      var isLanOrLocal =
+        h === "localhost" ||
+        h === "127.0.0.1" ||
+        /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h) ||
+        /^\d{1,3}(\.\d{1,3}){3}$/.test(h);
+      /* 公网域名（含 vercel.app）：同步分析可能极久；局域网/本机 POST 很快返回 job_id */
+      var analyzePostTimeoutMs = isLanOrLocal ? 20000 : 360000;
       const res = await fetchWithTimeoutNoAbort(
         `${apiBase}/api/analyze`,
         {
@@ -894,22 +900,30 @@ function AnalysisApp() {
       const data = await res.json();
       if (!data.job_id) throw new Error("未返回任务 ID");
       /* Vercel：后端 sync 一次返回结果，避免 Serverless 后台线程 + 跨实例轮询 404 */
-      if (data.sync && data.status === "done" && data.result) {
-        setReport(data.result);
-        setActiveTab("summary");
-        setJobId("");
-        try {
-          localStorage.removeItem(JOB_STORAGE_KEY);
-          localStorage.removeItem(JOB_STORAGE_VERSION_KEY);
-        } catch (_) {}
-        return;
-      }
-      if (data.sync && data.status === "failed") {
-        setError(data.error || "分析失败");
-        return;
-      }
-      if (data.sync && data.error) {
-        setError(data.error);
+      if (data.sync) {
+        if (data.status === "done" && data.result) {
+          setReport(data.result);
+          setActiveTab("summary");
+          setJobId("");
+          try {
+            localStorage.removeItem(JOB_STORAGE_KEY);
+            localStorage.removeItem(JOB_STORAGE_VERSION_KEY);
+          } catch (_) {}
+          return;
+        }
+        if (data.status === "failed") {
+          setError(data.error || "分析失败");
+          return;
+        }
+        if (data.error) {
+          setError(data.error);
+          return;
+        }
+        setError(
+          "分析未正常完成（状态：" +
+            (data.status || "?") +
+            "）。请重试或查看 Vercel 函数日志。",
+        );
         return;
       }
       setJobId(data.job_id);
@@ -921,11 +935,15 @@ function AnalysisApp() {
         );
       } catch (_) {}
     } catch (e) {
-      const msg =
-        e.name === "AbortError"
-          ? "请求被取消或超时，请确认后端已启动（python3 run_web.py）"
-          : e.message || "提交失败";
+      var raw = e.message || String(e) || "提交失败";
+      var msg =
+        e.name === "AbortError" ||
+        (typeof raw === "string" && raw.indexOf("请求超时") >= 0)
+          ? "请求超时：云端一次分析可能需数分钟，请在 Vercel → Settings → Functions 调高 Max Duration；本地请确认已运行 python3 run_web.py"
+          : raw;
       setError(msg);
+    } finally {
+      setAnalysisSubmitting(false);
     }
   };
 
@@ -1135,7 +1153,7 @@ function AnalysisApp() {
   const reportTabBase =
     "inline-flex items-center justify-center rounded-xl px-3.5 py-2 text-sm md:text-[15px] font-medium border transition-all backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-cyan-200/50";
 
-  const analyzing = !!jobId;
+  const analyzing = !!jobId || analysisSubmitting;
 
   const fetchApiUsage = async () => {
     setApiUsage(function (prev) {
@@ -1332,7 +1350,11 @@ function AnalysisApp() {
             onClick={runAnalysis}
             disabled={analyzing}
           >
-            {analyzing ? "分析进行中…" : "开始分析"}
+            {jobId
+              ? "分析进行中…"
+              : analysisSubmitting
+                ? "分析中，请稍候（云端可能需数分钟）…"
+                : "开始分析"}
           </button>
           {analyzing && (
             <button
