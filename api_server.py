@@ -639,6 +639,18 @@ def api_stock_api_usage():
     return {"ok": True, "apis": apis}
 
 
+# Vercel：FastAPI 单函数接管全站时，需由应用自己提供构建产物 public/（须在全部 /api 路由之后 mount）
+_public_site = _GUX_ROOT / "public"
+if _public_site.is_dir():
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount(
+        "/",
+        StaticFiles(directory=str(_public_site), html=True),
+        name="site",
+    )
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8123)

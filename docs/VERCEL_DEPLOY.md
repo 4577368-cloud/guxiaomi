@@ -4,7 +4,7 @@
 
 | 部分 | 适合放 Vercel？ | 说明 |
 |------|----------------|------|
-| **静态前端**（源码在 `project-proj_21qCfX0Vycj`，构建时复制到 **`public/`**） | ✅ 是 | 与 [Vercel FastAPI 文档](https://vercel.com/docs/frameworks/backend/fastapi) 一致：静态走 `public/**`，**勿再用**仅 `outputDirectory` 指向前端目录（会把项目当成纯静态，**`/api/*` 进不了 FastAPI**，出现 404）。 |
+| **静态前端**（源码在 `project-proj_21qCfX0Vycj`，构建时复制到 **`public/`**） | ✅ 是 | 与 [Vercel FastAPI 文档](https://vercel.com/docs/frameworks/backend/fastapi) 一致：构建生成 `public/`。**单函数部署**时由 `api_server` 在**所有 `/api` 路由之后**挂载 `StaticFiles`，否则 `/` 会返回 FastAPI 的 `Not Found` 而 `/api/health` 仍正常。 |
 | **Python `api_server.py`** | ⚠️ 可探测到但有限制 | 根目录已提供 **`app.py`**，将 `api_server.app` 暴露给 Vercel FastAPI 检测；但 Serverless **超时短**、**磁盘非持久**、**后台线程/长分析** 仍可能失败或不符合预期。 |
 
 **推荐：** 生产环境 **API** 仍优先部署在 Render / Railway / VPS 等；Vercel 以静态页 + `ANALYSIS_API_BASE` 指过去为主。
