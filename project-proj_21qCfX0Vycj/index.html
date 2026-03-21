@@ -1,0 +1,128 @@
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>股小蜜～懂理财，更懂你！</title>
+    <meta name="description" content="支持美股港股的投资组合管理工具，实时跟踪持仓盈亏，模拟补仓操作">
+    <meta name="keywords" content="股票投资,投资组合,补仓模拟,美股,港股,持仓管理">
+
+    <meta property="og:title" content="股小蜜～懂理财，更懂你！">
+    <meta property="og:description" content="支持美股港股的投资组合管理工具，实时跟踪持仓盈亏，模拟补仓操作">
+    <meta name="twitter:title" content="股小蜜～懂理财，更懂你！">
+    <meta name="twitter:description" content="支持美股港股的投资组合管理工具，实时跟踪持仓盈亏，模拟补仓操作">
+
+    <script src="https://resource.trickle.so/vendor_lib/unpkg/react@18/umd/react.production.min.js"></script>
+    <script src="https://resource.trickle.so/vendor_lib/unpkg/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://resource.trickle.so/vendor_lib/unpkg/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://resource.trickle.so/vendor_lib/unpkg/lucide-static@0.516.0/font/lucide.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+    <script>
+        const ChartJS = window.Chart;
+    </script>
+
+
+    <!-- Predefined Tailwind CSS, use it as needed, or update base on your -->
+    <style type="text/tailwindcss">
+        @layer theme {
+        :root {
+            --primary-color: #1e40af;
+            --secondary-color: #f3f4f6;
+            --success-color: #059669;
+            --danger-color: #dc2626;
+            --warning-color: #d97706;
+            --text-primary: #111827;
+            --text-secondary: #6b7280;
+            --border-color: #e5e7eb;
+        }
+    }
+
+    @layer base {
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: #f9fafb;
+        }
+    }
+
+    @layer components {
+        .btn {
+            @apply px-3 py-1.5 md:px-4 md:py-2 rounded-lg font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 text-sm md:text-base;
+        }
+        
+        .btn-sm {
+            @apply px-2 py-1 text-xs md:text-sm;
+        }
+        
+        .btn-primary {
+            @apply bg-[var(--primary-color)] text-white hover:bg-blue-700 focus:ring-blue-500;
+        }
+        
+        .btn-success {
+            @apply bg-[var(--success-color)] text-white hover:bg-green-700 focus:ring-green-500;
+        }
+        
+        .btn-danger {
+            @apply bg-[var(--danger-color)] text-white hover:bg-red-700 focus:ring-red-500;
+        }
+        
+        .btn-secondary {
+            @apply bg-gray-200 text-gray-800 hover:bg-gray-300 focus:ring-gray-500;
+        }
+        
+        .card {
+            @apply bg-white rounded-lg md:rounded-xl shadow-md border border-gray-300 p-3 md:p-6 hover:shadow-lg transition-shadow duration-200;
+        }
+        
+        .input-field {
+            @apply w-full px-2 py-1.5 md:px-3 md:py-2 text-sm md:text-base border border-[var(--border-color)] rounded-lg focus:ring-2 focus:ring-[var(--primary-color)] focus:border-transparent;
+        }
+        
+        .profit-text {
+            @apply font-semibold text-sm md:text-base;
+        }
+        
+        .profit-positive {
+            @apply text-[var(--success-color)];
+        }
+        
+        .profit-negative {
+            @apply text-[var(--danger-color)];
+        }
+    }
+    </style>
+
+    <link rel="icon" href="https://app.trickle.so/storage/app/46bdde6b-ce0a-436d-9861-f705820c2391.png">
+    <meta property="og:image" content="https://app.trickle.so/storage/app/46bdde6b-ce0a-436d-9861-f705820c2391.png">
+    <meta name="twitter:image" content="https://app.trickle.so/storage/app/46bdde6b-ce0a-436d-9861-f705820c2391.png">
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel" src="components/CapitalPoolCard.js"></script>
+    <script type="text/babel" src="components/PositionAllocationCard.js"></script>
+    <script type="text/babel" src="components/StockCharts.js"></script>
+    <script type="text/babel" src="components/StockCardSections.js"></script>
+    <script type="text/babel" src="components/PositionForm.js"></script>
+    <script type="text/babel" src="components/BuyFeesDetail.js"></script>
+    <script type="text/babel" src="components/StockCard.js"></script>
+    <script type="text/babel" src="components/PortfolioSummary.js"></script>
+    <script type="text/babel" src="components/HoldingsSummaryTable.js"></script>
+    <script type="text/babel" src="components/StockNavigation.js"></script>
+    <script type="text/babel" src="components/AddStockModal.js"></script>
+    <script type="text/babel" src="utils/technicalIndicators.js"></script>
+    <script type="text/babel" src="utils/stockAPI.js"></script>
+    <script type="text/babel" src="utils/storage.js"></script>
+    <script type="text/babel" src="utils/feeCalculations.js"></script>
+    <script type="text/babel" src="utils/calculations.js"></script>
+    <script type="text/babel" src="utils/databaseSync.js"></script>
+    <script type="text/babel" src="app.js"></script>
+    <script src="analysis-notify.js"></script>
+
+
+
+</body>
+
+</html>

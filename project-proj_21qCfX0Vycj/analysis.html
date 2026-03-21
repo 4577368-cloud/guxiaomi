@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>股票分析 - 股小蜜</title>
+    <meta name="description" content="多智能体股票分析，多角色辩论与报告，RSS/GNews 相关新闻">
+    <script src="https://resource.trickle.so/vendor_lib/unpkg/react@18/umd/react.production.min.js"></script>
+    <script src="https://resource.trickle.so/vendor_lib/unpkg/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://resource.trickle.so/vendor_lib/unpkg/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://resource.trickle.so/vendor_lib/unpkg/lucide-static@0.516.0/font/lucide.css" rel="stylesheet">
+    <style type="text/tailwindcss">
+        @layer theme {
+            :root {
+                --primary-color: #1e40af;
+                --secondary-color: #f3f4f6;
+                --success-color: #059669;
+                --danger-color: #dc2626;
+                --warning-color: #d97706;
+                --text-primary: #111827;
+                --text-secondary: #6b7280;
+                --border-color: #e5e7eb;
+            }
+        }
+        @layer base {
+            body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background-color: #f9fafb; }
+        }
+        @layer components {
+            .btn { @apply px-3 py-1.5 md:px-4 md:py-2 rounded-lg font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 text-sm md:text-base; }
+            .btn-primary { @apply bg-[var(--primary-color)] text-white hover:bg-blue-700 focus:ring-blue-500; }
+            .btn-secondary { @apply bg-gray-200 text-gray-800 hover:bg-gray-300 focus:ring-gray-500; }
+            .btn-success { @apply bg-[var(--success-color)] text-white hover:bg-green-700 focus:ring-green-500; }
+            .card { @apply bg-white rounded-lg md:rounded-xl shadow-md border border-gray-300 p-3 md:p-6; }
+            .input-field { @apply w-full px-2 py-1.5 md:px-3 md:py-2 text-sm md:text-base border border-[var(--border-color)] rounded-lg focus:ring-2 focus:ring-[var(--primary-color)]; }
+            .report-markdown blockquote { @apply border-l-4 border-blue-300 pl-3 my-2 text-gray-600; }
+            .report-markdown-block .report-markdown { @apply text-[15px] leading-relaxed; }
+            .report-markdown-block .report-markdown h2 { @apply text-xl font-bold text-gray-900 mt-4 mb-2; }
+            .report-markdown-block .report-markdown h3 { @apply text-lg font-semibold text-gray-800 mt-3 mb-1; }
+            .report-markdown-block .report-markdown p { @apply my-1.5; }
+            .report-markdown-block .report-markdown ul { @apply my-2 pl-6 space-y-0.5; }
+        }
+    </style>
+    <link rel="icon" href="https://app.trickle.so/storage/app/46bdde6b-ce0a-436d-9861-f705820c2391.png">
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel" src="analysis-app.js"></script>
+    <script src="analysis-notify.js"></script>
+</body>
+</html>

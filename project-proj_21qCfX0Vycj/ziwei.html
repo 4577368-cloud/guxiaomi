@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>紫微斗数金融排盘 - 股小蜜</title>
+    <meta name="description" content="专业的紫微斗数命盘分析工具">
+    
+    <script src="https://resource.trickle.so/vendor_lib/unpkg/react@18/umd/react.production.min.js"></script>
+    <script src="https://resource.trickle.so/vendor_lib/unpkg/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://resource.trickle.so/vendor_lib/unpkg/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://resource.trickle.so/vendor_lib/unpkg/lucide-static@0.516.0/font/lucide.css" rel="stylesheet">
+
+    <style type="text/tailwindcss">
+        @layer theme {
+            :root {
+                --primary-color: #7c3aed;
+                --secondary-color: #f3f4f6;
+                --success-color: #059669;
+                --danger-color: #dc2626;
+                --text-primary: #111827;
+                --text-secondary: #6b7280;
+                --border-color: #e5e7eb;
+            }
+        }
+
+        @layer base {
+            body {
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+            }
+        }
+
+        @layer components {
+            .btn {
+                @apply px-4 py-2 md:px-4 md:py-2 rounded-lg font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 text-sm md:text-base;
+            }
+            
+            .btn-sm {
+                @apply px-3 py-1.5 text-xs md:text-sm;
+            }
+            
+            .btn-primary {
+                @apply bg-[var(--primary-color)] text-white hover:bg-purple-700 focus:ring-purple-500;
+            }
+            
+            .btn-secondary {
+                @apply bg-gray-200 text-gray-800 hover:bg-gray-300 focus:ring-gray-500;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel" src="utils/databaseSync.js"></script>
+    <script type="text/babel" src="ziwei-app.js"></script>
+</body>
+</html>
