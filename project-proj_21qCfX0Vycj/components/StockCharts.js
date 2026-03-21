@@ -377,6 +377,7 @@ function StockCharts({ stock }) {
       var lastIdx = nP - 1;
       var minP = Math.min.apply(null, prices);
       var minIdx = prices.indexOf(minP);
+      var maxIdx = prices.indexOf(Math.max.apply(null, prices));
       var showPriceLabel = function (ctx) {
         var i = ctx.dataIndex;
         if (nP <= 10) return true;
