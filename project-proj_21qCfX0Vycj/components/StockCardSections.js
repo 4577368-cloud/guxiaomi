@@ -78,12 +78,14 @@ function MarketDataSection({ stock }) {
   const highStr = prefix + formatPrice(stock.marketData.high || 0);
   const lowStr = prefix + formatPrice(stock.marketData.low || 0);
   const prevStr = prefix + formatPrice(stock.marketData.previousClose || 0);
-  const ch = stock.marketData.change ?? 0;
-  const chPct = stock.marketData.changePercent ?? 0;
-  const changeCls = ch >= 0 ? 'text-green-600' : 'text-red-600';
-  const changeSign = ch >= 0 ? '+' : '';
-  const chPctCls = chPct >= 0 ? 'text-green-600' : 'text-red-600';
-  const chPctStr = (chPct >= 0 ? '+' : '') + chPct.toFixed(2) + '%';
+  const ch = Number(stock.marketData.change);
+  const chN = Number.isFinite(ch) ? ch : 0;
+  const chPct = Number(stock.marketData.changePercent);
+  const chPctN = Number.isFinite(chPct) ? chPct : 0;
+  const changeCls = chN >= 0 ? 'text-green-600' : 'text-red-600';
+  const changeSign = chN >= 0 ? '+' : '';
+  const chPctCls = chPctN >= 0 ? 'text-green-600' : 'text-red-600';
+  const chPctStr = (chPctN >= 0 ? '+' : '') + chPctN.toFixed(2) + '%';
   const rsiCls = ti && ti.rsi > 70 ? 'text-red-600' : ti && ti.rsi < 30 ? 'text-green-600' : 'text-gray-700';
   return (
     <div className="mb-4">
@@ -96,7 +98,7 @@ function MarketDataSection({ stock }) {
           {hasExtendedData && (
             <>
               <span>前收 <strong>{prevStr}</strong></span>
-              <span>涨跌 <strong className={changeCls}>{changeSign}{prefix}{formatPrice(ch)}</strong></span>
+              <span>涨跌 <strong className={changeCls}>{changeSign}{prefix}{formatPrice(chN)}</strong></span>
               <span>涨跌幅 <strong className={chPctCls}>{chPctStr}</strong></span>
             </>
           )}
@@ -467,7 +469,7 @@ function SellSimulationSection({
                 </div>
                 <div>
                   <span className="text-gray-600 block mb-1">收益率</span>
-                  <span className="font-bold text-green-600 text-sm">+{profitSimResult.profitPercent.toFixed(2)}%</span>
+                  <span className="font-bold text-green-600 text-sm">+{(Number.isFinite(Number(profitSimResult.profitPercent)) ? Number(profitSimResult.profitPercent) : 0).toFixed(2)}%</span>
                 </div>
                 <div>
                   <span className="text-gray-600 block mb-1">卖出总额</span>
@@ -495,6 +497,11 @@ function SellSimulationSection({
             const simulation = sellPrice > 0 && sellShares > 0 
               ? calculateSellSimulation(stock, sellPrice, sellShares, brokerChannel)
               : null;
+            var simProfitPct = simulation
+              ? (Number.isFinite(Number(simulation.profitPercent))
+                  ? Number(simulation.profitPercent)
+                  : 0)
+              : 0;
 
             return (
               <div key={sim.id} className="p-4 bg-green-50 rounded-lg border border-green-200">
@@ -573,7 +580,7 @@ function SellSimulationSection({
                       <div className="text-center">
                         <span className="text-gray-600 block">收益率</span>
                         <span className={`font-bold ${simulation.profitPercent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {simulation.profitPercent >= 0 ? '+' : ''}{simulation.profitPercent.toFixed(2)}%
+                          {simProfitPct >= 0 ? '+' : ''}{simProfitPct.toFixed(2)}%
                         </span>
                       </div>
                     </div>

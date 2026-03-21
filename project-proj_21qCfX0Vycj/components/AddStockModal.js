@@ -1,5 +1,4 @@
 function AddStockModal({ onAdd, onClose }) {
-  try {
     const [symbol, setSymbol] = React.useState('');
     const [market, setMarket] = React.useState('US');
     const [brokerChannel, setBrokerChannel] = React.useState('futu');
@@ -176,8 +175,4 @@ function AddStockModal({ onAdd, onClose }) {
       </div>
     </div>
   );
-} catch (error) {
-  console.error('AddStockModal component error:', error);
-  return null;
-}
 }

@@ -9,9 +9,13 @@ function PositionForm({ stock, position, onAdd, onClose }) {
     e.preventDefault();
     if (!formData.price || !formData.shares) return;
 
+    var pr = parseFloat(formData.price);
+    var sh = parseInt(formData.shares, 10);
+    if (!Number.isFinite(pr) || pr < 0 || !Number.isFinite(sh) || sh <= 0) return;
+
     onAdd({
-      price: parseFloat(formData.price),
-      shares: parseInt(formData.shares),
+      price: pr,
+      shares: sh,
       date: formData.date,
       enabled: true
     });
@@ -32,7 +36,7 @@ function PositionForm({ stock, position, onAdd, onClose }) {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
-              买入价格 ({stock.market === 'US' ? 'USD' : 'HKD'})
+              买入价格 ({stock.market === 'US' ? 'USD' : stock.market === 'CN' ? 'CNY' : 'HKD'})
             </label>
             <input
               type="number"

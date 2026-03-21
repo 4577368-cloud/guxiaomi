@@ -183,6 +183,16 @@ class ScreenerFetchRequest(BaseModel):
     size: int = 10  # 每页最多 10（且不超过上游上限）
 
 
+class DeleteReportRequest(BaseModel):
+    """删除历史报告（POST 正文，避免 Vercel 等对 DELETE+query 返回 404）。"""
+    name: str
+
+
+class DeleteScreenerRequest(BaseModel):
+    """删除预测快照（POST 正文）。"""
+    name: str
+
+
 class AnalystItem(BaseModel):
     分析师姓名: str
     角色定位: str
@@ -395,9 +405,9 @@ def api_reports_get(name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.delete("/api/reports/delete")
-def api_reports_delete(name: str):
-    """删除指定 base_name 的报告文件（.json / .md / .html）。"""
+def _reports_delete_impl(name: str) -> dict:
+    """删除指定 base_name 的报告文件（.json / .md / .html）；幂等。"""
+    name = (name or "").strip()
     if not name or ".." in name or "/" in name or "\\" in name:
         raise HTTPException(status_code=400, detail="无效的报告名")
     if Path(name).name != name:
@@ -411,9 +421,19 @@ def api_reports_delete(name: str):
                 deleted_any = True
         except OSError as e:
             raise HTTPException(status_code=500, detail=str(e))
-    if not deleted_any:
-        raise HTTPException(status_code=404, detail="报告不存在")
-    return {"ok": True}
+    return {"ok": True, "deleted": deleted_any}
+
+
+@app.delete("/api/reports/delete")
+def api_reports_delete(name: str):
+    """删除报告（查询参数 name）。部分托管对 DELETE 支持差，优先用 POST。"""
+    return _reports_delete_impl(name)
+
+
+@app.post("/api/reports/delete")
+def api_reports_delete_post(req: DeleteReportRequest):
+    """删除报告（JSON body: {\"name\": \"...\"}）。Vercel 等推荐此方式；含中文 base_name 更稳。"""
+    return _reports_delete_impl(req.name)
 
 
 def _screener_period_label(pt: int) -> str:
@@ -556,19 +576,31 @@ def api_screener_get(name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.delete("/api/screener/delete")
-def api_screener_delete(name: str):
-    """删除一条预测快照。"""
+def _screener_delete_impl(name: str) -> dict:
+    name = (name or "").strip()
     if not _safe_prediction_name(name):
         raise HTTPException(status_code=400, detail="无效的快照名")
     path = PREDICTIONS_DIR / f"{name}.json"
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="快照不存在")
+    deleted = False
     try:
-        path.unlink()
+        if path.is_file():
+            path.unlink()
+            deleted = True
     except OSError as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return {"ok": True}
+    return {"ok": True, "deleted": deleted}
+
+
+@app.delete("/api/screener/delete")
+def api_screener_delete(name: str):
+    """删除预测快照（查询参数）。"""
+    return _screener_delete_impl(name)
+
+
+@app.post("/api/screener/delete")
+def api_screener_delete_post(req: DeleteScreenerRequest):
+    """删除预测快照（JSON body: {\"name\": \"...\"}）。"""
+    return _screener_delete_impl(req.name)
 
 
 @app.get("/api/news")

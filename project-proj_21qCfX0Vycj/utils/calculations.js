@@ -35,13 +35,18 @@ function calculateDailyProfitLoss(stock) {
     0,
   );
   
-  const currentPrice = stock.currentPrice || 0;
-  const previousClose = stock.marketData?.previousClose || currentPrice;
+  const currentPrice = Number(stock.currentPrice);
+  const cp = Number.isFinite(currentPrice) ? currentPrice : 0;
+  const prevRaw = Number(stock.marketData?.previousClose);
+  const previousClose = Number.isFinite(prevRaw) ? prevRaw : cp;
   
   // Daily change is current price minus previous close
-  const dailyChange = currentPrice - previousClose;
+  const dailyChange = cp - previousClose;
   const dailyProfitLoss = totalShares * dailyChange;
-  const dailyProfitPercent = previousClose > 0 ? (dailyChange / previousClose) * 100 : 0;
+  const dailyProfitPercent =
+    previousClose > 0 && Number.isFinite(dailyChange)
+      ? (dailyChange / previousClose) * 100
+      : 0;
   
   return {
     dailyProfitLoss,
@@ -176,14 +181,17 @@ function calculateSellSimulation(stock, sellPrice, sellShares, brokerChannel) {
   const stockAnalysisData = calculateStockAnalysis(stock, brokerChannel);
   const profitMarginPercent = stockAnalysisData.avgCost > 0 ? ((sellPrice / stockAnalysisData.avgCost) - 1) * 100 : 0;
 
+  const rawProfitPct = costBasis > 0 ? (netProfit / costBasis) * 100 : 0;
+  const profitPercent = Number.isFinite(rawProfitPct) ? rawProfitPct : 0;
+
   return {
     grossAmount,
     totalFees,
     netAmount,
     costBasis,
     netProfit,
-    profitPercent: costBasis > 0 ? (netProfit / costBasis) * 100 : 0,
-    profitMarginPercent,
+    profitPercent,
+    profitMarginPercent: Number.isFinite(profitMarginPercent) ? profitMarginPercent : 0,
     feeBreakdown: sellFees
   };
 }

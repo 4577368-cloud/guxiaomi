@@ -145,12 +145,17 @@ function App() {
   };
 
   const handleAddStock = (stockData) => {
+    if (!stockData || !stockData.symbol) return;
+    const id = Date.now().toString();
     const newStock = {
-      id: Date.now().toString(),
       ...stockData,
+      id,
       positions: [],
-      currentPrice: 0,
-      marketData: {}
+      currentPrice: Number(stockData.currentPrice) || 0,
+      marketData:
+        stockData.marketData && typeof stockData.marketData === 'object'
+          ? stockData.marketData
+          : {},
     };
     
     const updatedPortfolio = [...portfolio, newStock];

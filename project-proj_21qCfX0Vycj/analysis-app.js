@@ -31,6 +31,9 @@ const HISTORY_PAGE_SIZE = 10;
 
 /** 浏览器端历史列表缓存（Vercel 无持久盘时服务端列表常为空；且勿在 report 变化时整表重拉以免被空结果覆盖） */
 const HISTORY_LIST_CACHE_KEY = "analysis_reports_list_cache_v1";
+/** 用户已删除的 base_name（Vercel 多实例 /tmp 上文件可能仍在其他实例；合并列表时过滤，避免「删了又出现」） */
+const REPORT_DELETE_TOMBSTONE_KEY = "analysis_reports_deleted_base_names_v1";
+const MAX_REPORT_TOMBSTONES = 500;
 const REPORT_BODY_PREFIX = "analysis_report_body_v1:";
 const REPORT_BODY_INDEX_KEY = "analysis_report_body_index_v1";
 const MAX_CACHED_REPORT_BODIES = 20;
@@ -54,6 +57,49 @@ function saveHistoryListCache(items) {
       JSON.stringify((items || []).slice(0, MAX_LIST_CACHE)),
     );
   } catch (_) {}
+}
+
+function loadDeletedReportBaseNameSet() {
+  try {
+    var raw = localStorage.getItem(REPORT_DELETE_TOMBSTONE_KEY);
+    if (!raw) return {};
+    var j = JSON.parse(raw);
+    if (!Array.isArray(j)) return {};
+    var o = {};
+    var i;
+    for (i = 0; i < j.length; i++) {
+      if (j[i]) o[String(j[i])] = true;
+    }
+    return o;
+  } catch (_) {
+    return {};
+  }
+}
+
+function addDeletedReportBaseName(baseName) {
+  if (!baseName) return;
+  try {
+    var raw = localStorage.getItem(REPORT_DELETE_TOMBSTONE_KEY);
+    var arr = [];
+    if (raw) {
+      var j = JSON.parse(raw);
+      if (Array.isArray(j)) arr = j.slice();
+    }
+    var s = String(baseName);
+    arr = arr.filter(function (x) {
+      return x !== s;
+    });
+    arr.unshift(s);
+    while (arr.length > MAX_REPORT_TOMBSTONES) arr.pop();
+    localStorage.setItem(REPORT_DELETE_TOMBSTONE_KEY, JSON.stringify(arr));
+  } catch (_) {}
+}
+
+function filterOutDeletedReportItems(items) {
+  var tomb = loadDeletedReportBaseNameSet();
+  return (items || []).filter(function (it) {
+    return it && it.base_name && !tomb[it.base_name];
+  });
 }
 
 /** 合并服务端与本地缓存；服务端为空时仍保留本地条目（解决刷新/切实例后列表被清空） */
@@ -156,6 +202,7 @@ function upsertHistoryFromPayload(payload) {
   var item = listItemFromReportPayload(payload);
   if (!item) return;
   var merged = mergeHistoryListItems([item], loadHistoryListCache());
+  merged = filterOutDeletedReportItems(merged);
   saveHistoryListCache(merged);
   return merged;
 }
@@ -642,10 +689,11 @@ function AnalysisApp() {
         var serverItems =
           data.ok && Array.isArray(data.items) ? data.items : [];
         var merged = mergeHistoryListItems(serverItems, cached);
+        merged = filterOutDeletedReportItems(merged);
         saveHistoryListCache(merged);
         setHistoryList(merged);
       } catch (_) {
-        var fallback = loadHistoryListCache();
+        var fallback = filterOutDeletedReportItems(loadHistoryListCache());
         setHistoryList(fallback);
       } finally {
         if (initial) setHistoryLoading(false);
@@ -863,12 +911,19 @@ function AnalysisApp() {
     if (!window.confirm("确定删除该条预测快照吗？")) return;
     setPredError("");
     try {
-      const res = await fetch(
-        `${apiBase}/api/screener/delete?name=${encodeURIComponent(baseName)}`,
-        { method: "DELETE" },
-      );
+      var res = await fetch(`${apiBase}/api/screener/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ name: baseName }),
+      });
+      if (res.status === 404) {
+        res = await fetch(
+          `${apiBase}/api/screener/delete?name=${encodeURIComponent(baseName)}`,
+          { method: "DELETE", headers: { Accept: "application/json" } },
+        );
+      }
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      if (!res.ok && res.status !== 404) {
         const d = j.detail;
         throw new Error(typeof d === "string" ? d : "删除失败");
       }
@@ -1187,24 +1242,37 @@ function AnalysisApp() {
     }
     setError("");
     try {
-      const res = await fetch(
-        `${apiBase}/api/reports/delete?name=${encodeURIComponent(baseName)}`,
-        { method: "DELETE" },
-      );
+      // Vercel 等对 DELETE 常返回 404；改用 POST + JSON，base_name 含中文（如 A股_xxx）更可靠
+      var res = await fetch(`${apiBase}/api/reports/delete`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name: baseName }),
+      });
+      if (res.status === 404) {
+        res = await fetch(
+          `${apiBase}/api/reports/delete?name=${encodeURIComponent(baseName)}`,
+          { method: "DELETE", headers: { Accept: "application/json" } },
+        );
+      }
       const j = await res.json().catch(function () {
         return {};
       });
-      if (!res.ok) {
+      // 404：极旧后端或路由缺失；仍从本机列表移除（tombstone）
+      if (!res.ok && res.status !== 404) {
         setError(j.detail || "删除失败");
         return;
       }
+      addDeletedReportBaseName(baseName);
       removeCachedReportBody(baseName);
       setHistoryList(function (prev) {
-        var next = prev.filter(function (it) {
+        var filtered = filterOutDeletedReportItems(prev).filter(function (it) {
           return it.base_name !== baseName;
         });
-        saveHistoryListCache(next);
-        return next;
+        saveHistoryListCache(filtered);
+        return filtered;
       });
       if (report && (report.base_name || "") === baseName) {
         setReport(null);

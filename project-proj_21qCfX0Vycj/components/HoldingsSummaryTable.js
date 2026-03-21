@@ -7,14 +7,28 @@ function HoldingsSummaryTable({ portfolio }) {
       if (stock.positions && stock.positions.length > 0) {
         const enabledPositions = stock.positions.filter(pos => pos.enabled !== false);
         enabledPositions.forEach(position => {
-          const profitLoss = (stock.currentPrice - position.price) * position.shares;
-          const profitLossPercent = position.price > 0 ? ((stock.currentPrice / position.price) - 1) * 100 : 0;
-          const holdingDays = Math.floor((new Date() - new Date(position.date)) / (1000 * 60 * 60 * 24));
+          const cp = Number(stock.currentPrice);
+          const buyP = Number(position.price);
+          const sh = Number(position.shares) || 0;
+          const profitLoss =
+            Number.isFinite(cp) && Number.isFinite(buyP) ? (cp - buyP) * sh : 0;
+          const profitLossPercent =
+            buyP > 0 && Number.isFinite(cp)
+              ? ((cp / buyP) - 1) * 100
+              : 0;
+          const posDate = position.date ? new Date(position.date) : new Date(NaN);
+          const holdingDays = Number.isFinite(posDate.getTime())
+            ? Math.floor((Date.now() - posDate.getTime()) / (1000 * 60 * 60 * 24))
+            : 0;
           const currencySymbol = stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : 'HK$';
           
-          // Calculate daily profit/loss
-          const dailyChange = stock.marketData?.changePercent || 0;
-          const dailyProfitLoss = stock.currentPrice * position.shares * (dailyChange / 100);
+          // Calculate daily profit/loss（changePercent 可能来自 JSON 字符串）
+          const dailyChange = Number(stock.marketData?.changePercent);
+          const dailyChangeN = Number.isFinite(dailyChange) ? dailyChange : 0;
+          const dailyProfitLoss =
+            Number.isFinite(cp) && sh
+              ? cp * sh * (dailyChangeN / 100)
+              : 0;
           
           allPositions.push({
             symbol: stock.symbol,
@@ -27,7 +41,7 @@ function HoldingsSummaryTable({ portfolio }) {
             profitLoss,
             profitLossPercent,
             dailyProfitLoss,
-            dailyChange,
+            dailyChange: dailyChangeN,
             currencySymbol
           });
         });
@@ -114,20 +128,20 @@ function HoldingsSummaryTable({ portfolio }) {
                     </div>
                   </td>
                   <td className="py-3 px-4 font-medium" dangerouslySetInnerHTML={{ __html: `${pos.currencySymbol}${formatPrice(pos.buyPrice, 3)}` }} />
-                  <td className="py-3 px-4 text-center font-medium">{pos.shares.toLocaleString()}</td>
+                  <td className="py-3 px-4 text-center font-medium">{(Number(pos.shares) || 0).toLocaleString()}</td>
                   <td className="py-3 px-4">{new Date(pos.date).toLocaleDateString('zh-CN')}</td>
                   <td className="py-3 px-4 text-center">{pos.holdingDays}天</td>
                   <td className="py-3 px-4 font-medium" dangerouslySetInnerHTML={{ __html: `${pos.currencySymbol}${formatPrice(pos.currentPrice, 3)}` }} />
                   <td className="py-3 px-4 text-right">
                     <div className={`font-bold ${pos.dailyProfitLoss >= 0 ? 'text-green-600' : 'text-red-600'}`} dangerouslySetInnerHTML={{ __html: `${pos.dailyProfitLoss >= 0 ? '+' : ''}${pos.currencySymbol}${formatPrice(Math.abs(pos.dailyProfitLoss), 2)}` }} />
                     <div className={`text-xs ${pos.dailyProfitLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      ({pos.dailyChange >= 0 ? '+' : ''}{pos.dailyChange.toFixed(2)}%)
+                      ({(Number(pos.dailyChange) >= 0 ? '+' : '')}{(Number.isFinite(Number(pos.dailyChange)) ? Number(pos.dailyChange) : 0).toFixed(2)}%)
                     </div>
                   </td>
                   <td className="py-3 px-4 text-right">
                     <div className={`font-bold ${pos.profitLoss >= 0 ? 'text-green-600' : 'text-red-600'}`} dangerouslySetInnerHTML={{ __html: `${pos.profitLoss >= 0 ? '+' : ''}${pos.currencySymbol}${formatPrice(pos.profitLoss, 2)}` }} />
                     <div className={`text-xs ${pos.profitLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      ({pos.profitLossPercent >= 0 ? '+' : ''}{pos.profitLossPercent.toFixed(2)}%)
+                      ({(Number(pos.profitLossPercent) >= 0 ? '+' : '')}{(Number.isFinite(Number(pos.profitLossPercent)) ? Number(pos.profitLossPercent) : 0).toFixed(2)}%)
                     </div>
                   </td>
                 </tr>

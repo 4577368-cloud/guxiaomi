@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from typing import List, Dict, Any, Optional, Tuple
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from datetime import datetime
 from pathlib import Path
 import markdown
@@ -129,6 +129,10 @@ class StockData:
     所属板块:str = ""
     技术指标简述:str = ""
     近期市场与板块简述:str = ""
+    # 供 LLM 理解业务：yfinance longBusinessSummary / AlphaVantage Description / akshare 主营等
+    公司简介:str = ""
+    # 多源合并记录，如「akshare → Baostock → 腾讯财经 → yfinance（合并：…）」
+    数据溯源:str = ""
 
 @dataclass
 class AnalystReport:
@@ -414,6 +418,20 @@ def _tencent_a_symbol(code: str) -> Tuple[str, str]:
     return f"{prefix}{cc}", cc
 
 
+def _tencent_hk_full_symbol(code: str) -> str:
+    """港股腾讯代码 hk00700（与前端 stockAPI 一致，5 位数字）。"""
+    raw = re.sub(r"\D", "", (code or "").split(".")[0])
+    if not raw:
+        raise ValueError(f"无效港股代码: {code}")
+    return "hk" + raw.zfill(5)[-5:] if len(raw) >= 3 else "hk" + raw.zfill(5)
+
+
+def _cn_yfinance_symbol(code: str) -> str:
+    """A 股 yfinance 标的：沪市 .SS、深市 .SZ。"""
+    cc = _normalize_cn_listed_code(code)
+    return f"{cc}.SS" if cc.startswith("6") else f"{cc}.SZ"
+
+
 def _http_get_text(url: str, timeout: float = 15.0) -> str:
     """GET 文本；可选 GTIMG_HTTP_PROXY_TEMPLATE，形如 https://proxy/?url={url}（与前端 trickle 代理一致）。"""
     tpl = (os.environ.get("GTIMG_HTTP_PROXY_TEMPLATE") or "").strip()
@@ -490,57 +508,305 @@ class StockDataService:
         self.source = source
         self._av_key = _get_alpha_vantage_api_key()
 
-    def get_stock_info(self, code: str, market: str = "A 股", days: int = 90) -> StockData:
-        """获取股票完整信息。A 股数据拉取限时 30 秒，超时则抛出异常以便任务明确失败。"""
+    @staticmethod
+    def _stats_degenerate(sd: StockData) -> bool:
+        """区间塌成一点、无波动等，多为历史 K 线过短或数据源异常。"""
+        if sd.最新价 <= 0:
+            return True
+        hi, lo = float(sd.九十日最高 or 0), float(sd.九十日最低 or 0)
+        if hi <= 0 or lo < 0:
+            return True
+        if abs(hi - lo) < 1e-5 * max(hi, 1.0):
+            return True
+        return False
+
+    def _yf_history_robust(self, ticker, min_rows: int = 20):
+        """yfinance 多档 period，避免新股/限频导致只有几天线。"""
+        if not HAS_YFINANCE:
+            return None
+        for per in ("1y", "2y", "6mo", "3mo", "1mo"):
+            try:
+                h = ticker.history(period=per, interval="1d", auto_adjust=True, timeout=28)
+                if h is not None and len(h) >= min_rows:
+                    return h
+            except Exception:
+                continue
         try:
-            if market == "A 股":
-                from concurrent.futures import ThreadPoolExecutor
-                if HAS_AKSHARE:
-                    with ThreadPoolExecutor(max_workers=1) as ex:
-                        fut = ex.submit(self._get_a_stock_data, code, days)
-                        try:
-                            return fut.result(timeout=30)
-                        except Exception as e:
-                            if "TimeoutError" in type(e).__name__ or "timeout" in str(e).lower():
-                                raise RuntimeError("A股行情获取超时(30秒)，请检查网络或稍后重试") from e
-                            print(f"⚠️ akshare A股数据失败({e})，尝试 Baostock 备选")
-                            try:
-                                return self._get_a_stock_data_baostock(code, days)
-                            except Exception as e2:
-                                print(f"⚠️ Baostock A股数据失败({e2})，尝试腾讯行情兜底（与前端刷新同源）")
-                                try:
-                                    return self._get_a_stock_data_tencent(code, days)
-                                except Exception as e3:
-                                    print(f"⚠️ 腾讯行情 A股失败({e3})，使用模拟数据")
-                                    return self._mock_stock_data(code, market)
-                else:
-                    try:
-                        return self._get_a_stock_data_baostock(code, days)
-                    except Exception as e:
-                        print(f"⚠️ Baostock A股数据失败({e})，尝试腾讯行情兜底（与前端刷新同源）")
-                        try:
-                            return self._get_a_stock_data_tencent(code, days)
-                        except Exception as e2:
-                            print(f"⚠️ 腾讯行情 A股失败({e2})，使用模拟数据")
-                            return self._mock_stock_data(code, market)
-            elif market == "港股":
-                if self._av_key:
-                    try:
-                        return self._get_av_stock_data(code, "港股", days)
-                    except Exception as e:
-                        print(f"⚠️ Alpha Vantage 港股数据失败({e})，改用 yfinance 兜底")
-                return self._get_hk_stock_data(code, days)
-            elif market == "美股":
-                if self._av_key:
-                    try:
-                        return self._get_av_stock_data(code, "美股", days)
-                    except Exception as e:
-                        print(f"⚠️ Alpha Vantage 美股数据失败({e})，改用 yfinance 兜底")
-                return self._get_us_stock_data(code, days)
-            else:
-                return self._mock_stock_data(code, market)
+            return ticker.history(period="max", interval="1d", auto_adjust=True, timeout=32)
+        except Exception:
+            return None
+
+    def _apply_yf_hist_to_sd(self, sd: StockData, hist, days: int) -> None:
+        close = hist["Close"].dropna()
+        if len(close) < 2:
+            return
+        n = min(int(days), len(close))
+        seg = close.iloc[-n:]
+        avg_90 = float(seg.mean())
+        high_90 = float(seg.max())
+        low_90 = float(seg.min())
+        sd.九十日均价 = avg_90
+        sd.九十日最高 = high_90
+        sd.九十日最低 = low_90
+        sd.波动率 = float(seg.std() / avg_90 * 100) if avg_90 > 0 else 0.0
+        try:
+            sd.技术指标简述 = self._yf_tech_summary(hist)
+        except Exception:
+            pass
+
+    def post_enrich_stock_data(self, sd: StockData, code: str, market: str, days: int = 90) -> None:
+        """分析前补强：多源已合并后，仅对缺简介/缺板块或退化 K 线再调 yfinance，避免重复请求。"""
+        m = (market or "").strip()
+        if m == "A 股":
+            need_yf = (
+                not (sd.公司简介 or "").strip()
+                or not (sd.所属板块 or "").strip()
+                or self._stats_degenerate(sd)
+            )
+            if need_yf:
+                self._enrich_cn_with_yfinance(sd, days)
+        elif not (sd.公司简介 or "").strip() and m in ("港股", "美股") and HAS_YFINANCE:
+            self._try_yf_blurb_only(sd, code, m)
+
+    def _try_yf_blurb_only(self, sd: StockData, code: str, market: str) -> None:
+        try:
+            sym = (
+                self._normalize_hk_symbol(code)
+                if market == "港股"
+                else self._normalize_us_symbol(code)
+            )
+            inf = yf.Ticker(sym).info or {}
+            b = (inf.get("longBusinessSummary") or inf.get("description") or "").strip()
+            if b:
+                sd.公司简介 = b[:2200]
+        except Exception:
+            pass
+
+    def _enrich_cn_with_yfinance(self, sd: StockData, days: int) -> None:
+        if not HAS_YFINANCE:
+            return
+        try:
+            sym = _cn_yfinance_symbol(sd.股票代码 or "")
+            t = yf.Ticker(sym)
+            inf = t.info or {}
+            b = (inf.get("longBusinessSummary") or inf.get("description") or "").strip()
+            if b and not (sd.公司简介 or "").strip():
+                sd.公司简介 = b[:2200]
+            sec = (inf.get("sector") or "").strip()
+            ind = (inf.get("industry") or "").strip()
+            combo = "/".join(x for x in (sec, ind) if x)
+            if combo and not (sd.所属板块 or "").strip():
+                sd.所属板块 = combo
+            if self._stats_degenerate(sd):
+                h = self._yf_history_robust(t, min_rows=15)
+                if h is not None and len(h) >= 10:
+                    self._apply_yf_hist_to_sd(sd, h, days)
         except Exception as e:
-            # 超时类错误不降级为模拟数据，直接抛出以便任务失败并提示用户
+            print(f"⚠️ A股 yfinance 补强: {e}")
+
+    @staticmethod
+    def _is_mock_sd(sd: StockData) -> bool:
+        return (sd.股票名称 or "").startswith("【行情不可用")
+
+    @staticmethod
+    def _copy_sd(sd: StockData) -> StockData:
+        return StockData(**{f.name: getattr(sd, f.name) for f in fields(StockData)})
+
+    @staticmethod
+    def _append_risk_unique(sd: StockData, msg: str) -> None:
+        if not msg or msg in (sd.风险信号 or []):
+            return
+        sd.风险信号 = list(sd.风险信号 or []) + [msg]
+
+    def _pick_primary_layer(
+        self, layers: List[tuple],
+    ) -> tuple:
+        """(name, sd)：优先首个非占位且有现价的数据源。"""
+        for name, sd in layers:
+            if not self._is_mock_sd(sd) and (sd.最新价 or 0) > 0:
+                return name, sd
+        for name, sd in layers:
+            if not self._is_mock_sd(sd):
+                return name, sd
+        return layers[0]
+
+    def _merge_layers(
+        self,
+        layers: List[tuple],
+        market: str,
+        code: str,
+        days: int,
+    ) -> StockData:
+        """按优先级合并：主源定现价/涨跌幅，其余补简介、板块、估值；K 线择优替换退化区间；多源交叉校验。"""
+        if not layers:
+            return self._mock_stock_data(code, market)
+        p_name, primary = self._pick_primary_layer(layers)
+        out = self._copy_sd(primary)
+        chain = " → ".join(n for n, _ in layers)
+        price_refs: List[tuple] = []
+        if (primary.最新价 or 0) > 0:
+            price_refs.append((p_name, float(primary.最新价)))
+
+        def _pe_ok(x: Optional[float]) -> bool:
+            return x is not None and x == x and x > 0
+
+        def _pb_ok(x: Optional[float]) -> bool:
+            return x is not None and x == x and x > 0
+
+        bad_mcap = ("", "暂无", "N/A", "暂无（腾讯源）", "暂无（腾讯源无总市值）")
+
+        for name, sd in layers:
+            if name == p_name:
+                continue
+            if self._is_mock_sd(sd):
+                continue
+            if (sd.最新价 or 0) > 0:
+                price_refs.append((name, float(sd.最新价)))
+
+            if len((sd.公司简介 or "").strip()) > len((out.公司简介 or "").strip()):
+                out.公司简介 = sd.公司简介
+            if not (out.所属板块 or "").strip() and (sd.所属板块 or "").strip():
+                out.所属板块 = sd.所属板块
+            if (not out.总市值 or out.总市值 in bad_mcap) and sd.总市值 and sd.总市值 not in bad_mcap:
+                out.总市值 = sd.总市值
+            if not _pe_ok(out.市盈率) and _pe_ok(sd.市盈率):
+                out.市盈率 = sd.市盈率
+            if not _pb_ok(out.市净率) and _pb_ok(sd.市净率):
+                out.市净率 = sd.市净率
+            if (not (out.估值分位 or "").strip() or out.估值分位 == "暂无数据") and (sd.估值分位 or "").strip():
+                out.估值分位 = sd.估值分位
+
+            if self._stats_degenerate(out) and not self._stats_degenerate(sd):
+                out.九十日均价 = sd.九十日均价
+                out.九十日最高 = sd.九十日最高
+                out.九十日最低 = sd.九十日最低
+                out.波动率 = sd.波动率
+                if sd.技术指标简述:
+                    out.技术指标简述 = sd.技术指标简述
+            elif not self._stats_degenerate(out) and not self._stats_degenerate(sd):
+                hi_o, hi_s = float(out.九十日最高 or 0), float(sd.九十日最高 or 0)
+                if hi_o > 0 and hi_s > 0 and abs(hi_o - hi_s) / hi_o > 0.08:
+                    self._append_risk_unique(
+                        out,
+                        f"⚠️ 多源校验：{p_name} 与 {name} 的约{days}日价格高点偏离>8%，区间以主源为准，请注意数据源差异",
+                    )
+
+        if len(price_refs) >= 2:
+            vals = [p for _, p in price_refs if p > 0]
+            if len(vals) >= 2:
+                mx, mn = max(vals), min(vals)
+                if mn > 0 and (mx - mn) / mn > 0.03:
+                    detail = "；".join(f"{n}:{p:.4g}" for n, p in price_refs if p > 0)
+                    self._append_risk_unique(
+                        out,
+                        f"⚠️ 多源现价差异>3%（{detail}），请以致券商/交易所行情为准",
+                    )
+
+        out.数据溯源 = (
+            f"{chain}｜主定价:{p_name}｜合并:缺项互补；"
+            "K 线区间在主源退化时由次优源替换；现价/高点差异已写入风险信号"
+        )
+        out.所属市场 = market
+        return out
+
+    def _collect_layers_a(self, code: str, days: int) -> List[tuple]:
+        """A 股：akshare → Baostock → 腾讯财经 → yfinance（.SS/.SZ）。"""
+        layers: List[tuple] = []
+        if HAS_AKSHARE:
+            from concurrent.futures import ThreadPoolExecutor
+
+            with ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(self._get_a_stock_data, code, days)
+                try:
+                    layers.append(("akshare", fut.result(timeout=30)))
+                except Exception as e:
+                    if "TimeoutError" in type(e).__name__ or "timeout" in str(e).lower():
+                        raise RuntimeError(
+                            "A股 akshare 获取超时(30秒)，请检查网络或稍后重试",
+                        ) from e
+                    print(f"⚠️ [多源] akshare A股: {e}")
+        try:
+            layers.append(("Baostock", self._get_a_stock_data_baostock(code, days)))
+        except Exception as e:
+            print(f"⚠️ [多源] Baostock A股: {e}")
+        try:
+            layers.append(("腾讯财经", self._get_a_stock_data_tencent(code, days)))
+        except Exception as e:
+            print(f"⚠️ [多源] 腾讯财经 A股: {e}")
+        if HAS_YFINANCE:
+            try:
+                cc = _normalize_cn_listed_code(code)
+                sym = _cn_yfinance_symbol(code)
+                layers.append(
+                    ("yfinance", self._get_yf_stock_data(sym, "A 股", cc, days)),
+                )
+            except Exception as e:
+                print(f"⚠️ [多源] yfinance A股: {e}")
+        return layers
+
+    def _collect_layers_hk(self, code: str, days: int) -> List[tuple]:
+        """港股：Alpha Vantage（有 Key）→ yfinance → 腾讯财经。"""
+        layers: List[tuple] = []
+        if self._av_key:
+            try:
+                layers.append(
+                    ("Alpha Vantage", self._get_av_stock_data(code, "港股", days)),
+                )
+            except Exception as e:
+                print(f"⚠️ [多源] Alpha Vantage 港股: {e}")
+        if HAS_YFINANCE:
+            try:
+                yf_sym = self._normalize_hk_symbol(code)
+                layers.append(
+                    ("yfinance", self._get_yf_stock_data(yf_sym, "港股", code, days)),
+                )
+            except Exception as e:
+                print(f"⚠️ [多源] yfinance 港股: {e}")
+        try:
+            layers.append(("腾讯财经", self._get_hk_stock_data_tencent(code, days)))
+        except Exception as e:
+            print(f"⚠️ [多源] 腾讯财经 港股: {e}")
+        return layers
+
+    def _collect_layers_us(self, code: str, days: int) -> List[tuple]:
+        """美股：Alpha Vantage（有 Key）→ yfinance。"""
+        layers: List[tuple] = []
+        if self._av_key:
+            try:
+                layers.append(
+                    ("Alpha Vantage", self._get_av_stock_data(code, "美股", days)),
+                )
+            except Exception as e:
+                print(f"⚠️ [多源] Alpha Vantage 美股: {e}")
+        if HAS_YFINANCE:
+            try:
+                sym = self._normalize_us_symbol(code)
+                layers.append(
+                    ("yfinance", self._get_yf_stock_data(sym, "美股", code, days)),
+                )
+            except Exception as e:
+                print(f"⚠️ [多源] yfinance 美股: {e}")
+        return layers
+
+    def get_stock_info(self, code: str, market: str = "A 股", days: int = 90) -> StockData:
+        """多源按优先级拉取并合并：A 股 akshare→Baostock→腾讯→yfinance；港股 AV→yfinance→腾讯；美股 AV→yfinance。"""
+        try:
+            m = (market or "").strip()
+            if m == "A 股":
+                layers = self._collect_layers_a(code, days)
+            elif m == "港股":
+                layers = self._collect_layers_hk(code, days)
+            elif m == "美股":
+                layers = self._collect_layers_us(code, days)
+            else:
+                return self._mock_stock_data(code, m or market)
+            if not layers:
+                return self._mock_stock_data(code, market)
+            merged = self._merge_layers(layers, m, code, days)
+            if self._is_mock_sd(merged) and (merged.最新价 or 0) <= 0:
+                return self._mock_stock_data(code, market)
+            return merged
+        except Exception as e:
             if "超时" in str(e) or "timeout" in str(e).lower():
                 raise
             print(f"⚠️ 数据获取失败:{str(e)},使用模拟数据")
@@ -587,6 +853,7 @@ class StockDataService:
         start_date = (datetime.now() - timedelta(days=max(days, 365))).strftime("%Y%m%d")
         所属板块_a = ""
         技术指标简述_a = ""
+        公司简介_a = ""
         try:
             hist = ak.stock_zh_a_hist(symbol=clean_code, period="daily", start_date=start_date)
             if len(hist) > 0:
@@ -616,11 +883,19 @@ class StockDataService:
                 cols = list(info_df.columns)
                 name_col = next((c for c in cols if 'item' in c.lower() or '名称' in c or 'key' in c.lower()), cols[0])
                 val_col = next((c for c in cols if 'value' in c.lower() or '值' in c or 'value' in c), (cols[1] if len(cols) > 1 else cols[0]))
+                blurbs: List[str] = []
                 for _, row in info_df.iterrows():
                     if name_col in row and val_col in row and row[name_col]:
-                        if '行业' in str(row[name_col]) or '板块' in str(row[name_col]):
-                            所属板块_a = str(row[val_col]).strip() or 所属板块_a
-                            break
+                        k = str(row[name_col])
+                        v = str(row[val_col]).strip()
+                        if not v:
+                            continue
+                        if '行业' in k or '板块' in k:
+                            所属板块_a = v or 所属板块_a
+                        if any(x in k for x in ('主营', '业务', '简介', '范围', '产品', '经营')):
+                            blurbs.append(f"{k}: {v[:600]}")
+                if blurbs:
+                    公司简介_a = "\n".join(blurbs[:6])[:2200]
         except Exception:
             pass
 
@@ -664,7 +939,8 @@ class StockDataService:
             估值分位=pe_percentile,
             所属板块=所属板块_a,
             技术指标简述=技术指标简述_a,
-            近期市场与板块简述="请结合当前年度及近期大盘与板块走势、该股近期走势综合分析。"
+            近期市场与板块简述="请结合当前年度及近期大盘与板块走势、该股近期走势综合分析。",
+            公司简介=公司简介_a,
         )
 
     def _normalize_a_symbol(self, code: str) -> str:
@@ -771,17 +1047,18 @@ class StockDataService:
             估值分位=pe_percentile,
             所属板块="",
             技术指标简述=技术指标简述_a,
-            近期市场与板块简述="请结合当前年度及近期大盘与板块走势、该股近期走势综合分析。"
+            近期市场与板块简述="请结合当前年度及近期大盘与板块走势、该股近期走势综合分析。",
+            公司简介="",
         )
 
-    def _get_tencent_a_closes(self, full_symbol: str, need_days: int) -> List[float]:
-        """腾讯 fqkline 日 K 收盘价序列（时间正序）。"""
-        cnt = max(int(need_days) + 40, 120)
+    def _get_tencent_fqkline_closes(self, full_symbol: str, need_days: int) -> List[float]:
+        """腾讯 ifzq 日 K 收盘价（时间正序）。拉足条数，避免 90 日区间退化成一点价。"""
+        cnt = min(640, max(int(need_days) + 200, 320))
         url = (
             "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?"
             f"param={full_symbol},day,,,{cnt},qfq"
         )
-        text = _http_get_text(url, timeout=18.0)
+        text = _http_get_text(url, timeout=22.0)
         data = json.loads(text)
         sym_data = (data.get("data") or {}).get(full_symbol) or {}
         day_rows = sym_data.get("qfqday") or sym_data.get("day") or []
@@ -809,7 +1086,7 @@ class StockDataService:
         price = float(q["price"])
         change = f"{q['change_pct']:+.2f}%"
 
-        closes = self._get_tencent_a_closes(full_symbol, days)
+        closes = self._get_tencent_fqkline_closes(full_symbol, days)
         n = min(days, len(closes))
         seg = closes[-n:]
         avg_90 = float(sum(seg) / len(seg)) if seg else price
@@ -820,6 +1097,8 @@ class StockDataService:
         )
 
         risk_flags: List[str] = []
+        if len(seg) < 15 or (high_90 > 0 and low_90 > 0 and abs(high_90 - low_90) < 1e-6 * max(high_90, 1)):
+            risk_flags.append("⚠️ 历史 K 线样本不足或价格区间异常扁平，以下区间与波动率仅供参考，请以交易所行情为准")
         if volatility > 25:
             risk_flags.append("⚠️ 近期波动较大（超过 25%）")
         if q["change_pct"] < -5:
@@ -856,6 +1135,69 @@ class StockDataService:
             所属板块="",
             技术指标简述=tech,
             近期市场与板块简述="请结合当前年度及近期大盘与板块走势、该股近期走势综合分析。",
+            公司简介="",
+        )
+
+    def _get_hk_stock_data_tencent(self, code: str, days: int = 90) -> StockData:
+        """港股：腾讯 qt.gtimg + ifzq K 线（与 A 股同源接口），作 yfinance 失败或区间异常时的兜底。"""
+        import pandas as pd
+
+        full = _tencent_hk_full_symbol(code)
+        quote_url = f"https://qt.gtimg.cn/q={full}"
+        text = _http_get_text(quote_url, timeout=12.0)
+        q = _parse_tencent_gtimg_quote_line(text)
+        name = q["name"] or code
+        price = float(q["price"])
+        change = f"{q['change_pct']:+.2f}%"
+
+        closes = self._get_tencent_fqkline_closes(full, days)
+        n = min(days, len(closes))
+        seg = closes[-n:]
+        avg_90 = float(sum(seg) / len(seg)) if seg else price
+        high_90 = float(max(seg)) if seg else price
+        low_90 = float(min(seg)) if seg else price
+        volatility = (
+            float(pd.Series(seg).std() / avg_90 * 100) if avg_90 > 0 and len(seg) > 1 else 0.0
+        )
+        risk_flags: List[str] = []
+        if len(seg) < 15 or (high_90 > 0 and low_90 > 0 and abs(high_90 - low_90) < 1e-6 * max(high_90, 1)):
+            risk_flags.append("⚠️ 港股腾讯 K 线样本不足或区间扁平，请以券商行情为准")
+        if volatility > 25:
+            risk_flags.append("⚠️ 近期波动较大（超过 25%）")
+        if q["change_pct"] < -5:
+            risk_flags.append("⚠️ 短期跌幅较深（超过 5%）")
+        if not risk_flags:
+            risk_flags.append("✅ 暂无明显风险信号")
+        if len(seg) >= 20:
+            sma5 = float(pd.Series(closes[-5:]).mean())
+            sma20 = float(pd.Series(closes[-20:]).mean())
+            tech = (
+                f"5日均线{round(sma5, 2)}；20日均线{round(sma20, 2)}；"
+                f"近{n}日区间{_fmt_range_cn(low_90, high_90)}港元"
+            )
+        else:
+            tech = f"近{n}日区间{_fmt_range_cn(low_90, high_90)}港元"
+
+        return StockData(
+            股票名称=name,
+            股票代码=code.strip().upper(),
+            所属市场="港股",
+            最新价=round(price, 3),
+            涨跌幅=change,
+            总市值="暂无（腾讯源）",
+            市盈率=None,
+            市净率=None,
+            九十日均价=avg_90,
+            九十日最高=high_90,
+            九十日最低=low_90,
+            波动率=volatility,
+            数据时间=datetime.now().strftime("%Y 年%m 月%d日 %H:%M"),
+            风险信号=risk_flags,
+            估值分位="暂无数据",
+            所属板块="",
+            技术指标简述=tech,
+            近期市场与板块简述="请结合港股大盘与板块走势、该股近期走势综合分析。",
+            公司简介="",
         )
 
     def _normalize_hk_symbol(self, code: str) -> str:
@@ -887,13 +1229,15 @@ class StockDataService:
             return self._mock_stock_data(display_code, market)
         try:
             ticker = yf.Ticker(yf_symbol)
-            info = ticker.info
-            hist = ticker.history(period=f"{max(days, 90)}d", timeout=15)
+            info = ticker.info or {}
+            hist = self._yf_history_robust(ticker, min_rows=12)
             if hist is None or len(hist) == 0:
                 raise ValueError("无历史数据")
             latest = hist.iloc[-1]
             price = float(latest["Close"])
             name = info.get("shortName") or info.get("longName") or display_code
+            blurb = (info.get("longBusinessSummary") or info.get("description") or "").strip()
+            公司简介 = (blurb[:2200] if blurb else "")
 
             # 涨跌幅：今日或最近一根 K 线
             if len(hist) >= 2:
@@ -952,12 +1296,14 @@ class StockDataService:
             volatility = float(closes[-n:].std() / avg_90 * 100) if avg_90 > 0 else 0.0
 
             risk_flags = []
+            if len(hist) < 20 or (high_90 > 0 and abs(high_90 - low_90) < 1e-5 * max(high_90, 1.0)):
+                risk_flags.append("⚠️ 历史日线样本较少或价格区间异常，区间与波动率仅供参考")
             if volatility > 25:
                 risk_flags.append("⚠️ 近期波动较大（超过 25%）")
             if pe is not None and pe > 50:
                 risk_flags.append("⚠️ 估值处于高位（市盈率>50）")
-            elif pe is None:
-                risk_flags.append("⚠️ 公司尚未盈利（市盈率无数据）")
+            elif pe is None and market == "美股":
+                risk_flags.append("⚠️ 市盈率数据缺失（可能未盈利或数据源未提供）")
             if change_pct < -5:
                 risk_flags.append("⚠️ 短期跌幅较深（超过 5%）")
             if not risk_flags:
@@ -1007,7 +1353,8 @@ class StockDataService:
                 估值分位=pe_percentile,
                 所属板块=所属板块,
                 技术指标简述=技术指标简述,
-                近期市场与板块简述="请结合当前年度及近期大盘与板块走势、该股近期走势综合分析。"
+                近期市场与板块简述="请结合当前年度及近期大盘与板块走势、该股近期走势综合分析。",
+                公司简介=公司简介,
             )
         except Exception as e:
             print(f"⚠️ yfinance 获取 {yf_symbol} 失败: {e},使用模拟数据")
@@ -1038,9 +1385,24 @@ class StockDataService:
             return ""
 
     def _get_hk_stock_data(self, code: str, days: int = 90) -> StockData:
-        """获取港股数据（yfinance 实时）"""
+        """港股：优先 yfinance（含公司简介）；异常或占位时用腾讯 K 线兜底。"""
         yf_symbol = self._normalize_hk_symbol(code)
-        return self._get_yf_stock_data(yf_symbol, "港股", code, days)
+        sd = self._get_yf_stock_data(yf_symbol, "港股", code, days)
+        need_tencent = (sd.股票名称 or "").startswith("【行情不可用") or self._stats_degenerate(sd)
+        if need_tencent:
+            try:
+                tsd = self._get_hk_stock_data_tencent(code, days)
+                if sd.公司简介:
+                    tsd.公司简介 = sd.公司简介
+                if sd.所属板块 and not tsd.所属板块:
+                    tsd.所属板块 = sd.所属板块
+                if (sd.股票名称 or "").startswith("【行情不可用"):
+                    return tsd
+                if not self._stats_degenerate(tsd):
+                    return tsd
+            except Exception as e:
+                print(f"⚠️ 腾讯港股兜底失败: {e}")
+        return sd
 
     def _get_us_stock_data(self, code: str, days: int = 90) -> StockData:
         """获取美股数据（yfinance 实时）"""
@@ -1111,8 +1473,12 @@ class StockDataService:
         sector = (overview.get("Sector") or overview.get("Industry") or "").strip()
         if sector == "None":
             sector = ""
+        desc_raw = (overview.get("Description") or "").strip()
+        if desc_raw in ("", "None"):
+            desc_raw = ""
+        av_blurb = desc_raw[:2200] if desc_raw else ""
 
-        # TIME_SERIES_DAILY 用于 90 日区间与技术指标
+        # TIME_SERIES_DAILY：按日期从新到旧取足量交易日（勿依赖 dict 无序迭代）
         tsq = {"function": "TIME_SERIES_DAILY", "symbol": symbol, "apikey": api_key, "outputsize": "compact"}
         req3 = urllib.request.Request(base + "?" + urllib.parse.urlencode(tsq))
         try:
@@ -1121,14 +1487,17 @@ class StockDataService:
         except Exception:
             ts = {}
         daily = ts.get("Time Series (Daily)") or {}
+        dates_sorted = sorted(daily.keys(), reverse=True)
         closes = []
-        for d, v in list(daily.items())[:max(days, 90)]:
+        for d in dates_sorted[: max(int(days), 100)]:
+            v = daily.get(d) or {}
             try:
                 closes.append(float(v.get("4. close")))
             except (TypeError, ValueError):
                 pass
         if closes:
-            closes = closes[:min(days, len(closes))]
+            take = min(int(days), len(closes))
+            closes = closes[:take]
             avg_90 = sum(closes) / len(closes)
             high_90 = max(closes)
             low_90 = min(closes)
@@ -1137,6 +1506,8 @@ class StockDataService:
             avg_90, high_90, low_90, volatility = price, price, price, 0.0
 
         risk_flags = []
+        if len(closes) < 15 or (high_90 > 0 and abs(high_90 - low_90) < 1e-5 * max(high_90, 1.0)):
+            risk_flags.append("⚠️ Alpha Vantage 日线样本不足或区间异常（compact 约 100 个交易日），结论仅供参考")
         if volatility > 25:
             risk_flags.append("⚠️ 近期波动较大（超过 25%）")
         if pe > 50 and pe > 0:
@@ -1173,7 +1544,8 @@ class StockDataService:
             估值分位=pe_percentile,
             所属板块=sector,
             技术指标简述=技术指标简述,
-            近期市场与板块简述="请结合当前年度及近期大盘与板块走势、该股近期走势综合分析。"
+            近期市场与板块简述="请结合当前年度及近期大盘与板块走势、该股近期走势综合分析。",
+            公司简介=av_blurb,
         )
 
     def _mock_stock_data(self, code: str, market: str) -> StockData:
@@ -1197,6 +1569,8 @@ class StockDataService:
                 "⚠️ 未能获取真实行情（网络、yfinance 或 Alpha Vantage 等）；以下为占位，不可作为投资依据",
             ],
             估值分位="暂无数据",
+            公司简介="（行情不可用，无法拉取公司主营业务描述）",
+            数据溯源="无可用源（占位数据）",
         )
 
 # ==================== LLM 客户端 ====================
@@ -1315,6 +1689,7 @@ class MultiAgentStockAnalyst:
         stock_data = self.data_service.get_stock_info(stock_code, market, days)
         if stock_name:
             stock_data.股票名称 = stock_name
+        self.data_service.post_enrich_stock_data(stock_data, stock_code, market, days)
 
         data_summary = f"{stock_data.股票名称}（{stock_code}）｜{_fmt_price(stock_data.最新价)}元｜{stock_data.涨跌幅}｜市盈率{_fmt_pe(stock_data.市盈率)}倍"
         print(f"   ✅ {data_summary}")
@@ -1372,8 +1747,12 @@ class MultiAgentStockAnalyst:
 【总市值】{stock_data.总市值}
 【风险信号】{', '.join(stock_data.风险信号)}
 【数据时间】{stock_data.数据时间}"""
+        if (stock_data.数据溯源 or "").strip():
+            data_context += f"\n【数据溯源】{stock_data.数据溯源.strip()}"
         if stock_data.所属板块:
             data_context += f"\n【所属板块】{stock_data.所属板块}"
+        if (stock_data.公司简介 or "").strip():
+            data_context += f"\n【公司主营业务与简介】{stock_data.公司简介.strip()}"
         if stock_data.技术指标简述:
             data_context += f"\n【技术指标】{stock_data.技术指标简述}"
         if stock_data.近期市场与板块简述:
