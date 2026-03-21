@@ -7,6 +7,7 @@ function StockCharts({ stock }) {
   const backtestChartInstance = React.useRef(null);
   const [effectiveHistory, setEffectiveHistory] = React.useState([]);
   const [activeTab, setActiveTab] = React.useState('charts'); // charts / backtest
+  const [backtestChartError, setBacktestChartError] = React.useState('');
   const windowSize = 30;
 
   /** 图表固定展示最近 windowSize 天（去掉无效滑块，避免与 effect 依赖不同步） */
@@ -45,52 +46,78 @@ function StockCharts({ stock }) {
       }));
   };
 
-  const calculatePortfolioBacktest = () => {
-    const events = getEventCollection();
-    let shares = 0;
-    let cash = 0;
-    let costBasis = 0;
+  /** 回测序列：保证数值可序列化，避免 render 里 .toFixed 抛错拖垮整页 */
+  const backtestData = React.useMemo(() => {
+    try {
+      const events = getEventCollection();
+      let shares = 0;
+      let cash = 0;
+      let costBasis = 0;
 
-    const eventsByDate = events.reduce((acc, evt) => {
-      acc[evt.date] = acc[evt.date] || [];
-      acc[evt.date].push(evt);
-      return acc;
-    }, {});
+      const eventsByDate = events.reduce((acc, evt) => {
+        acc[evt.date] = acc[evt.date] || [];
+        acc[evt.date].push(evt);
+        return acc;
+      }, {});
 
-    let lastEquity = 0;
+      let lastEquity = 0;
+      const hist = Array.isArray(effectiveHistory) ? effectiveHistory : [];
 
-    return effectiveHistory.map((row) => {
-      const rowEvents = eventsByDate[row.date] || [];
-      rowEvents.forEach(evt => {
-        if (evt.type === 'open' || evt.type === 'add' || evt.type === 'buy') {
-          shares += evt.shares;
-          cash -= evt.amount;
-          costBasis += evt.amount;
-        } else if (evt.type === 'reduce' || evt.type === 'sell') {
-          const avgCost = shares > 0 ? costBasis / shares : 0;
-          const reduceCost = avgCost * evt.shares;
-          shares = Math.max(0, shares - evt.shares);
-          cash += evt.amount;
-          costBasis = Math.max(0, costBasis - reduceCost);
+      return hist.map((row) => {
+        if (!row || !row.date) {
+          return {
+            date: '',
+            shares: 0,
+            marketValue: 0,
+            cash: 0,
+            costBasis: 0,
+            totalEquity: lastEquity,
+            dailyProfit: 0,
+          };
         }
+
+        const rowEvents = eventsByDate[row.date] || [];
+        rowEvents.forEach((evt) => {
+          const sh = Number(evt.shares) || 0;
+          const amt = Number(evt.amount) || 0;
+          if (evt.type === 'open' || evt.type === 'add' || evt.type === 'buy') {
+            shares += sh;
+            cash -= amt;
+            costBasis += amt;
+          } else if (evt.type === 'reduce' || evt.type === 'sell') {
+            const avgCost = shares > 0 ? costBasis / shares : 0;
+            const reduceCost = avgCost * sh;
+            shares = Math.max(0, shares - sh);
+            cash += amt;
+            costBasis = Math.max(0, costBasis - reduceCost);
+          }
+        });
+
+        const px = Number(row.price);
+        const safePx = Number.isFinite(px) ? px : 0;
+        const marketValue = shares * safePx;
+        const rawEquity = cash + marketValue;
+        const totalEquity = Number.isFinite(rawEquity) ? rawEquity : lastEquity;
+        const dailyProfit = Number.isFinite(totalEquity - lastEquity)
+          ? totalEquity - lastEquity
+          : 0;
+        lastEquity = totalEquity;
+
+        return {
+          date: row.date,
+          shares,
+          marketValue,
+          cash,
+          costBasis,
+          totalEquity,
+          dailyProfit,
+        };
       });
-
-      const marketValue = shares * row.price;
-      const totalEquity = cash + marketValue;
-      const dailyProfit = Number.isFinite(totalEquity - lastEquity) ? totalEquity - lastEquity : 0;
-      lastEquity = totalEquity;
-
-      return {
-        date: row.date,
-        shares,
-        marketValue,
-        cash,
-        costBasis,
-        totalEquity,
-        dailyProfit
-      };
-    });
-  };
+    } catch (e) {
+      console.error('[StockCharts] 回测计算失败', e);
+      return [];
+    }
+  }, [effectiveHistory, stock]);
 
   const getEventMarkers = () => {
     const events = getEventCollection();
@@ -333,76 +360,131 @@ function StockCharts({ stock }) {
   }, [effectiveHistory, stock.market, sliceLastWindow, stock.positionEventHistory]);
 
   React.useEffect(() => {
-    if (activeTab !== 'backtest') return;
-    if (!backtestChartRef.current || !effectiveHistory || effectiveHistory.length === 0) return;
+    if (activeTab !== 'backtest') {
+      setBacktestChartError('');
+      return;
+    }
+    if (!effectiveHistory || effectiveHistory.length === 0) return;
 
-    try {
-      const backtestData = calculatePortfolioBacktest();
-      const ctx = backtestChartRef.current.getContext('2d');
+    var cancelled = false;
+    setBacktestChartError('');
 
-      if (backtestChartInstance.current) {
-        backtestChartInstance.current.destroy();
-      }
+    var frameId = requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        if (cancelled) return;
+        if (!backtestChartRef.current) return;
 
-      backtestChartInstance.current = new ChartJS(ctx, {
-        type: 'line',
-        data: {
-          labels: backtestData.map(d => d.date),
-        datasets: [
-          {
-            label: '总权益',
-            data: backtestData.map(d => Number(d.totalEquity.toFixed(2))),
-            borderColor: 'rgba(34, 197, 94, 1)',
-            borderWidth: 2,
-            fill: false,
-            tension: 0.2,
-            yAxisID: 'equity'
-          },
-          {
-            label: '每日收益',
-            data: backtestData.map(d => Number(d.dailyProfit.toFixed(2))),
-            type: 'bar',
-            backgroundColor: backtestData.map(d => d.dailyProfit >= 0 ? 'rgba(5, 150, 105, 0.5)' : 'rgba(220, 38, 38, 0.5)'),
-            yAxisID: 'daily'
+        try {
+          if (backtestChartInstance.current) {
+            backtestChartInstance.current.destroy();
+            backtestChartInstance.current = null;
           }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: true }
-        },
-        scales: {
-          equity: {
-            type: 'linear',
-            position: 'left',
-            ticks: {
-              callback: value => `${value.toFixed(2)}`
-            }
-          },
-          daily: {
-            type: 'linear',
-            position: 'right',
-            grid: { drawOnChartArea: false },
-            ticks: {
-              callback: value => `${value.toFixed(2)}`
-            }
+
+          var rows = backtestData.filter(function (d) {
+            return d && d.date;
+          });
+          if (rows.length === 0) {
+            setBacktestChartError('暂无有效日期数据用于回测');
+            return;
           }
+
+          var labels = rows.map(function (d) {
+            return d.date;
+          });
+          var equityVals = rows.map(function (d) {
+            var v = Number(d.totalEquity);
+            return Number.isFinite(v) ? Math.round(v * 100) / 100 : 0;
+          });
+          var dailyVals = rows.map(function (d) {
+            var v = Number(d.dailyProfit);
+            return Number.isFinite(v) ? Math.round(v * 100) / 100 : 0;
+          });
+
+          var ctx = backtestChartRef.current.getContext('2d');
+          if (!ctx) return;
+
+          /* 双折线，避免 line+bar 混合在部分 Chart 版本下报错 */
+          backtestChartInstance.current = new ChartJS(ctx, {
+            type: 'line',
+            data: {
+              labels: labels,
+              datasets: [
+                {
+                  label: '总权益',
+                  data: equityVals,
+                  borderColor: 'rgba(34, 197, 94, 1)',
+                  backgroundColor: 'rgba(34, 197, 94, 0.08)',
+                  borderWidth: 2,
+                  fill: true,
+                  tension: 0.2,
+                  yAxisID: 'equity',
+                },
+                {
+                  label: '日盈亏',
+                  data: dailyVals,
+                  borderColor: 'rgba(59, 130, 246, 0.9)',
+                  backgroundColor: 'rgba(59, 130, 246, 0.06)',
+                  borderWidth: 1.5,
+                  fill: false,
+                  tension: 0.15,
+                  yAxisID: 'daily',
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              interaction: { mode: 'index', intersect: false },
+              plugins: {
+                legend: { display: true },
+              },
+              scales: {
+                x: {
+                  type: 'category',
+                  ticks: { maxRotation: 45, minRotation: 0, autoSkip: true, maxTicksLimit: 12 },
+                },
+                equity: {
+                  type: 'linear',
+                  position: 'left',
+                  ticks: {
+                    callback: function (value) {
+                      return Number(value).toFixed(2);
+                    },
+                  },
+                },
+                daily: {
+                  type: 'linear',
+                  position: 'right',
+                  grid: { drawOnChartArea: false },
+                  ticks: {
+                    callback: function (value) {
+                      return Number(value).toFixed(2);
+                    },
+                  },
+                },
+              },
+            },
+          });
+        } catch (e) {
+          console.error('[StockCharts] 回测图表失败', e);
+          setBacktestChartError(
+            (e && e.message) || '图表渲染失败，请稍后重试',
+          );
         }
-      }
+      });
     });
 
-    } catch (e) {
-      console.error('回测Chart渲染失败', e);
-    }
-
-    return () => {
+    return function () {
+      cancelled = true;
+      cancelAnimationFrame(frameId);
       if (backtestChartInstance.current) {
-        backtestChartInstance.current.destroy();
+        try {
+          backtestChartInstance.current.destroy();
+        } catch (_) {}
+        backtestChartInstance.current = null;
       }
     };
-  }, [activeTab, effectiveHistory]);
+  }, [activeTab, effectiveHistory, backtestData]);
 
   if (!effectiveHistory || effectiveHistory.length === 0) {
     return (
@@ -414,16 +496,25 @@ function StockCharts({ stock }) {
   }
 
   const hasMoreData = effectiveHistory && effectiveHistory.length > 30;
-  const backtestData = calculatePortfolioBacktest();
+  const lastBacktestRow =
+    backtestData.length > 0 ? backtestData[backtestData.length - 1] : null;
+  let lastEquityDisplay = lastBacktestRow
+    ? Number(lastBacktestRow.totalEquity)
+    : 0;
+  let lastSharesDisplay = lastBacktestRow ? Number(lastBacktestRow.shares) : 0;
+  if (!Number.isFinite(lastEquityDisplay)) lastEquityDisplay = 0;
+  if (!Number.isFinite(lastSharesDisplay)) lastSharesDisplay = 0;
 
   return (
     <div className="mb-6 space-y-4">
       <div className="flex gap-2">
         <button
+          type="button"
           onClick={() => setActiveTab('charts')}
           className={`btn btn-sm ${activeTab === 'charts' ? 'btn-primary' : 'btn-secondary'}`}
         >价格+盈亏</button>
         <button
+          type="button"
           onClick={() => setActiveTab('backtest')}
           className={`btn btn-sm ${activeTab === 'backtest' ? 'btn-primary' : 'btn-secondary'}`}
         >仓位事件+回测</button>
@@ -460,8 +551,18 @@ function StockCharts({ stock }) {
         <>
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <h4 className="text-sm font-semibold text-gray-700 mb-3">仓位事件回测</h4>
-            <div style={{ height: '260px' }}>
-              <canvas ref={backtestChartRef}></canvas>
+            {backtestChartError && (
+              <p className="text-xs text-red-600 mb-2">{backtestChartError}</p>
+            )}
+            {!backtestChartError &&
+              (!stock.positionEventHistory ||
+                stock.positionEventHistory.length === 0) && (
+                <p className="text-xs text-amber-700 mb-2">
+                  暂无仓位事件记录；开仓/加仓/减仓后此处会按日期叠加权益曲线。
+                </p>
+              )}
+            <div style={{ height: '260px', minHeight: '200px' }}>
+              <canvas ref={backtestChartRef} />
             </div>
           </div>
 
@@ -497,7 +598,10 @@ function StockCharts({ stock }) {
 
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <h4 className="text-sm font-semibold text-gray-700 mb-2">回测关键指标</h4>
-            <div className="text-xs text-gray-600">最新权益: {backtestData.length > 0 ? backtestData[backtestData.length - 1].totalEquity.toFixed(2) : '0.00'}，持仓: {backtestData.length > 0 ? backtestData[backtestData.length - 1].shares : 0}</div>
+            <div className="text-xs text-gray-600">
+              最新权益: {lastEquityDisplay.toFixed(2)}，持仓股数:{' '}
+              {lastSharesDisplay}
+            </div>
           </div>
         </>
       )}
