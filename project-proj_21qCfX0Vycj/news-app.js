@@ -45,7 +45,11 @@ class ErrorBoundary extends React.Component {
 var _h = typeof location !== 'undefined' ? location.hostname : '';
 const API_BASE =
   window.ANALYSIS_API_BASE ||
-  (_h === 'localhost' || _h === '127.0.0.1' ? 'http://localhost:8123' : '');
+  (_h === 'localhost' || _h === '127.0.0.1'
+    ? 'http://localhost:8123'
+    : typeof location !== 'undefined' && location.origin
+      ? location.origin
+      : '');
 
 var CLIENT_RSS_FEEDS = [
   'https://plink.anyfeeder.com/zaobao/realtime/china',

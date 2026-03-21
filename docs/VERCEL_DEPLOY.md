@@ -4,7 +4,7 @@
 
 | 部分 | 适合放 Vercel？ | 说明 |
 |------|----------------|------|
-| **静态前端**（`project-proj_21qCfX0Vycj`） | ✅ 是 | HTML/JS/CSS，本仓库已配置 `vercel.json`。 |
+| **静态前端**（源码在 `project-proj_21qCfX0Vycj`，构建时复制到 **`public/`**） | ✅ 是 | 与 [Vercel FastAPI 文档](https://vercel.com/docs/frameworks/backend/fastapi) 一致：静态走 `public/**`，**勿再用**仅 `outputDirectory` 指向前端目录（会把项目当成纯静态，**`/api/*` 进不了 FastAPI**，出现 404）。 |
 | **Python `api_server.py`** | ⚠️ 可探测到但有限制 | 根目录已提供 **`app.py`**，将 `api_server.app` 暴露给 Vercel FastAPI 检测；但 Serverless **超时短**、**磁盘非持久**、**后台线程/长分析** 仍可能失败或不符合预期。 |
 
 **推荐：** 生产环境 **API** 仍优先部署在 Render / Railway / VPS 等；Vercel 以静态页 + `ANALYSIS_API_BASE` 指过去为主。
@@ -14,6 +14,7 @@
 - **不要**在 `vercel.json` 里写 `installCommand: pip install -r requirements.txt`。Vercel 构建机的 Python 由 **`uv` 管理**（PEP 668），直接 `pip install` 会报错「外部管理环境」。应 **省略 `installCommand`**，由平台用 **`uv` 自动根据 `requirements.txt` 安装依赖**。
 - 若必须自定义安装，可尝试：`uv pip install -r requirements.txt`（以 Vercel 当前文档为准）。
 - 入口文件：根目录 **`app.py`**（`from api_server import app`），满足官方要求的 `app` 变量名。
+- **构建**：`vercel.json` 的 `buildCommand` 会先写 `env.js` 到源码目录，再把 `project-proj_21qCfX0Vycj/` **复制到 `public/`**（`public/` 已加入 `.gitignore`）。
 
 **结论（理想架构）：** Vercel 托管 **页面**；**同一套 API** 更稳妥地放在支持常驻进程 + 持久盘（或对象存储）的平台，例如：
 
@@ -29,14 +30,14 @@
 ## 一、Vercel 项目设置
 
 1. **Root Directory**（若从 monorepo 导入）：设为 `stock_analyzer/guxiaomi`（或你仓库中 `guxiaomi` 所在路径）。
-2. **Framework Preset**：Other / 无框架（已由 `vercel.json` 指定输出目录）。
+2. **Framework Preset**：Other / 无框架（由 `vercel.json` 的 `buildCommand` 负责写 `env.js` 并填充 `public/`）。
 3. **环境变量**（Production / Preview 按需）：
 
 | 变量名 | 必填 | 示例 | 含义 |
 |--------|------|------|------|
-| `ANALYSIS_API_BASE` | **部署线上前端时必填** | `https://api.example.com` | 浏览器请求的 API 根 URL，**不要**尾斜杠。 |
+| `ANALYSIS_API_BASE` | **API 与站点不同域时必填** | `https://api.example.com` | 浏览器请求的 API 根 URL，**不要**尾斜杠。同一 Vercel 部署上跑 FastAPI 时，前端会默认用 **`location.origin`**，可不配；API 单独部署时 **必须**配置。 |
 
-构建命令会执行 `python3 scripts/write_env_js.py`，生成 `project-proj_21qCfX0Vycj/env.js`，内容为：
+构建命令会执行 `write_env_js.py` 并复制静态资源；`env.js` 写入源码目录后一并进入 `public/`。典型内容为：
 
 `window.ANALYSIS_API_BASE = "https://api.example.com";`
 

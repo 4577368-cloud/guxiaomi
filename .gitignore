@@ -3,6 +3,9 @@
 .env.local
 .env.*.local
 
+# Vercel：构建时从 project-proj_* 复制到 public/，勿提交副本
+public/
+
 # Python
 __pycache__/
 *.py[cod]

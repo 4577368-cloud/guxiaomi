@@ -11,13 +11,15 @@
     window.ANALYSIS_API_BASE = "http://localhost:" + api;
   }
 })();
-/** 默认 API；线上依赖 env.js 的 ANALYSIS_API_BASE；本地空则 localhost:8123 */
+/** 默认 API：本地 8123；线上未注入 ANALYSIS_API_BASE 时用当前站点同源（与 Vercel FastAPI + public/ 一致） */
 const API_BASE_FALLBACK =
   window.ANALYSIS_API_BASE ||
   (typeof location !== "undefined" &&
   (location.hostname === "localhost" || location.hostname === "127.0.0.1")
     ? "http://localhost:8123"
-    : "");
+    : typeof location !== "undefined" && location.origin
+      ? location.origin
+      : "");
 const JOB_STORAGE_KEY = "analysis_job_id";
 const POLL_INTERVAL_MS = 3000;
 

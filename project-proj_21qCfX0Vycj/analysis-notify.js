@@ -21,6 +21,7 @@
     } catch (_) {}
     h = window.location.hostname;
     if (h === 'localhost' || h === '127.0.0.1') return 'http://localhost:8123';
+    if (window.location.origin) return window.location.origin;
     return '';
   }
 
