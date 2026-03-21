@@ -50,8 +50,14 @@
 - 无持久磁盘时报告与任务状态在 **`/tmp`**，多实例下行为见 `api_server.py` 注释。  
 - 若腾讯/yfinance 访问不稳定，优先配置 **`GTIMG_HTTP_PROXY_TEMPLATE`** 或把分析 API 部署在能直连数据源的区域。
 
+## 股票预测（Intellectia 快照）与服务端 / 浏览器缓存
+
+- **服务端**：点击「获取预测」会请求 Intellectia 并把结果写入 `predictions/*.json`（本地为项目目录下 `predictions/`；Serverless 上多为 **`/tmp/guxiaomi_data/predictions`**），列表接口为 `/api/screener/list`，详情为 `/api/screener/get`。
+- **与历史报告的差异（已补齐）**：分析页对**历史报告**一直用 `localStorage` 合并列表并缓存正文，避免 Vercel 列表为空或换实例后「像没保存」。**股票预测**侧现已采用相同思路：`analysis-app.js` 会合并服务端与本地的预测**列表元数据**，并把打开过的快照**正文**缓存在本地（最多约 12 条、单条体积与报告类似有上限）；服务端 404 或网络失败时仍可先看本机缓存，并提示「已显示本机缓存」。删除某条快照会写墓碑并清除对应正文缓存，避免已删条目再从本地冒回列表。
+
 ## 相关文件
 
 - `demo_ulti_analyst.py`：`StockDataService`、`post_enrich_stock_data`、腾讯/yfinance/AV 实现。  
 - `api_server.py`：分析任务 HTTP 入口。  
 - `project-proj_21qCfX0Vycj/utils/stockAPI.js`：浏览器端刷新价格（腾讯）。
+- `project-proj_21qCfX0Vycj/analysis-app.js`：历史报告与股票预测的列表/正文本地缓存逻辑。

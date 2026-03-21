@@ -207,6 +207,158 @@ function upsertHistoryFromPayload(payload) {
   return merged;
 }
 
+/** 股票预测：服务端快照在 Vercel /tmp 或多实例下列表常空；合并本地列表并缓存详情 JSON，行为对齐「历史报告」 */
+const SCREENER_LIST_CACHE_KEY = "analysis_screener_list_cache_v1";
+const SCREENER_DELETE_TOMBSTONE_KEY = "analysis_screener_deleted_base_names_v1";
+const MAX_SCREENER_TOMBSTONES = 500;
+const SCREENER_BODY_PREFIX = "analysis_screener_body_v1:";
+const SCREENER_BODY_INDEX_KEY = "analysis_screener_body_index_v1";
+const MAX_CACHED_SCREENER_BODIES = 12;
+const MAX_SCREENER_LIST_CACHE = 100;
+
+function loadScreenerListCache() {
+  try {
+    var raw = localStorage.getItem(SCREENER_LIST_CACHE_KEY);
+    if (!raw) return [];
+    var j = JSON.parse(raw);
+    return Array.isArray(j) ? j : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveScreenerListCache(items) {
+  try {
+    localStorage.setItem(
+      SCREENER_LIST_CACHE_KEY,
+      JSON.stringify((items || []).slice(0, MAX_SCREENER_LIST_CACHE)),
+    );
+  } catch (_) {}
+}
+
+function loadDeletedScreenerBaseNameSet() {
+  try {
+    var raw = localStorage.getItem(SCREENER_DELETE_TOMBSTONE_KEY);
+    if (!raw) return {};
+    var j = JSON.parse(raw);
+    if (!Array.isArray(j)) return {};
+    var o = {};
+    var i;
+    for (i = 0; i < j.length; i++) {
+      if (j[i]) o[String(j[i])] = true;
+    }
+    return o;
+  } catch (_) {
+    return {};
+  }
+}
+
+function addDeletedScreenerBaseName(baseName) {
+  if (!baseName) return;
+  try {
+    var raw = localStorage.getItem(SCREENER_DELETE_TOMBSTONE_KEY);
+    var arr = [];
+    if (raw) {
+      var j = JSON.parse(raw);
+      if (Array.isArray(j)) arr = j.slice();
+    }
+    var s = String(baseName);
+    arr = arr.filter(function (x) {
+      return x !== s;
+    });
+    arr.unshift(s);
+    while (arr.length > MAX_SCREENER_TOMBSTONES) arr.pop();
+    localStorage.setItem(SCREENER_DELETE_TOMBSTONE_KEY, JSON.stringify(arr));
+  } catch (_) {}
+}
+
+function filterOutDeletedScreenerItems(items) {
+  var tomb = loadDeletedScreenerBaseNameSet();
+  return (items || []).filter(function (it) {
+    return it && it.base_name && !tomb[it.base_name];
+  });
+}
+
+/** 合并服务端与本地预测列表（元数据小，可安全存 localStorage） */
+function mergeScreenerListItems(serverItems, cachedItems) {
+  var map = {};
+  var i;
+  var k;
+  for (i = 0; i < (cachedItems || []).length; i++) {
+    var c = cachedItems[i];
+    k = c && c.base_name;
+    if (k) map[k] = Object.assign({}, c);
+  }
+  for (i = 0; i < (serverItems || []).length; i++) {
+    var s = serverItems[i];
+    k = s && s.base_name;
+    if (k) map[k] = Object.assign({}, map[k] || {}, s);
+  }
+  var out = Object.keys(map).map(function (key) {
+    return map[key];
+  });
+  out.sort(function (a, b) {
+    return String(b.saved_at || "").localeCompare(String(a.saved_at || ""));
+  });
+  return out;
+}
+
+function cacheScreenerBody(baseName, payload) {
+  if (!baseName || !payload) return;
+  try {
+    var json = JSON.stringify(payload);
+    if (json.length > 3.5 * 1024 * 1024) return;
+    localStorage.setItem(SCREENER_BODY_PREFIX + baseName, json);
+    var idx = JSON.parse(localStorage.getItem(SCREENER_BODY_INDEX_KEY) || "[]");
+    if (!Array.isArray(idx)) idx = [];
+    idx = idx.filter(function (x) {
+      return x !== baseName;
+    });
+    idx.unshift(baseName);
+    while (idx.length > MAX_CACHED_SCREENER_BODIES) {
+      var rem = idx.pop();
+      try {
+        localStorage.removeItem(SCREENER_BODY_PREFIX + rem);
+      } catch (_) {}
+    }
+    localStorage.setItem(SCREENER_BODY_INDEX_KEY, JSON.stringify(idx));
+  } catch (_) {
+    try {
+      var idx2 = JSON.parse(localStorage.getItem(SCREENER_BODY_INDEX_KEY) || "[]");
+      if (Array.isArray(idx2) && idx2.length > 1) {
+        var drop = idx2.pop();
+        localStorage.removeItem(SCREENER_BODY_PREFIX + drop);
+        localStorage.setItem(SCREENER_BODY_INDEX_KEY, JSON.stringify(idx2));
+      }
+    } catch (_) {}
+  }
+}
+
+function getCachedScreenerBody(baseName) {
+  if (!baseName) return null;
+  try {
+    var raw = localStorage.getItem(SCREENER_BODY_PREFIX + baseName);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (_) {
+    return null;
+  }
+}
+
+function removeCachedScreenerBody(baseName) {
+  if (!baseName) return;
+  try {
+    localStorage.removeItem(SCREENER_BODY_PREFIX + baseName);
+    var idx = JSON.parse(localStorage.getItem(SCREENER_BODY_INDEX_KEY) || "[]");
+    if (Array.isArray(idx)) {
+      idx = idx.filter(function (x) {
+        return x !== baseName;
+      });
+      localStorage.setItem(SCREENER_BODY_INDEX_KEY, JSON.stringify(idx));
+    }
+  } catch (_) {}
+}
+
 /** 解析快照文件名 scr_p{pt}_t{tt}_s{st}_p{page}_{时间戳}（page 为 Intellectia 列表页码） */
 function parseScreenerBaseName(baseName) {
   if (!baseName || typeof baseName !== "string") return null;
@@ -768,70 +920,105 @@ function AnalysisApp() {
     return () => clearInterval(timer);
   }, [jobId, apiBase, refreshHistoryList]);
 
-  const loadPredList = React.useCallback(async () => {
-    setPredListLoading(true);
+  const loadPredList = React.useCallback(async (opts) => {
+    var initial = opts && opts.initial;
+    if (initial) setPredListLoading(true);
     var items = [];
     try {
+      var cached = loadScreenerListCache();
       const res = await fetch(`${apiBase}/api/screener/list`);
-      const data = await res.json();
-      if (data.ok && Array.isArray(data.items)) {
-        items = data.items;
-        setPredList(items);
-      } else {
-        setPredList([]);
-      }
+      const data = await res.json().catch(function () {
+        return {};
+      });
+      var serverItems =
+        data.ok && Array.isArray(data.items) ? data.items : [];
+      var merged = mergeScreenerListItems(serverItems, cached);
+      merged = filterOutDeletedScreenerItems(merged);
+      saveScreenerListCache(merged);
+      items = merged;
+      setPredList(merged);
     } catch (_) {
-      setPredList([]);
+      var fallback = filterOutDeletedScreenerItems(loadScreenerListCache());
+      items = fallback;
+      setPredList(fallback);
+    } finally {
+      if (initial) setPredListLoading(false);
     }
-    setPredListLoading(false);
     return items;
   }, [apiBase]);
 
   React.useEffect(() => {
-    loadPredList();
+    loadPredList({ initial: true });
   }, [loadPredList]);
+
+  const applyScreenerDetailPayload = React.useCallback(function (j) {
+    if (!j || !j.base_name) return;
+    setPredDetail(j);
+    var pt =
+      j.period_type != null && !Number.isNaN(Number(j.period_type))
+        ? Math.min(2, Math.max(0, parseInt(String(j.period_type), 10)))
+        : null;
+    if (pt != null) setPredPeriodTab(pt);
+    setPredParams(function (p) {
+      var next = { ...p };
+      if (pt != null) next.period_type = pt;
+      if (j.page != null && !Number.isNaN(Number(j.page))) {
+        next.page = Math.max(1, parseInt(String(j.page), 10) || 1);
+      }
+      if (j.page_size != null && !Number.isNaN(Number(j.page_size))) {
+        next.size = Math.min(
+          10,
+          Math.max(1, parseInt(String(j.page_size), 10) || 10),
+        );
+      }
+      return next;
+    });
+    var tot =
+      j.data && j.data.total != null && j.data.total !== ""
+        ? Number(j.data.total)
+        : null;
+    setPredRemoteTotal(tot != null && !Number.isNaN(tot) ? tot : null);
+  }, []);
 
   const loadScreenerDetail = async (baseName) => {
     setPredError("");
+    if (!baseName) {
+      setPredDetail(null);
+      return;
+    }
+    var cached = getCachedScreenerBody(baseName);
+    if (cached && cached.base_name) {
+      applyScreenerDetailPayload(cached);
+    } else {
+      setPredDetail(null);
+    }
     try {
       const res = await fetch(
         `${apiBase}/api/screener/get?name=${encodeURIComponent(baseName)}`,
       );
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
+        if (cached && cached.base_name) {
+          setPredError(
+            "服务端暂无该快照（可能换了实例或已清理 /tmp），已显示本机上次缓存",
+          );
+          return;
+        }
         const d = j.detail;
         throw new Error(
           typeof d === "string" ? d : d ? JSON.stringify(d) : "加载失败",
         );
       }
-      setPredDetail(j);
-      var pt =
-        j.period_type != null && !Number.isNaN(Number(j.period_type))
-          ? Math.min(2, Math.max(0, parseInt(String(j.period_type), 10)))
-          : null;
-      if (pt != null) setPredPeriodTab(pt);
-      setPredParams(function (p) {
-        var next = { ...p };
-        if (pt != null) next.period_type = pt;
-        if (j.page != null && !Number.isNaN(Number(j.page))) {
-          next.page = Math.max(1, parseInt(String(j.page), 10) || 1);
-        }
-        if (j.page_size != null && !Number.isNaN(Number(j.page_size))) {
-          next.size = Math.min(
-            10,
-            Math.max(1, parseInt(String(j.page_size), 10) || 10),
-          );
-        }
-        return next;
-      });
-      var tot =
-        j.data && j.data.total != null && j.data.total !== ""
-          ? Number(j.data.total)
-          : null;
-      setPredRemoteTotal(
-        tot != null && !Number.isNaN(tot) ? tot : null,
-      );
+      applyScreenerDetailPayload(j);
+      cacheScreenerBody(baseName, j);
     } catch (e) {
+      if (cached && cached.base_name) {
+        setPredError(
+          (e && e.message) ||
+            "网络异常，已显示本机缓存的预测快照",
+        );
+        return;
+      }
       setPredError(e.message || "加载预测快照失败");
       setPredDetail(null);
     }
@@ -927,7 +1114,13 @@ function AnalysisApp() {
         const d = j.detail;
         throw new Error(typeof d === "string" ? d : "删除失败");
       }
-      setPredList((prev) => prev.filter((it) => it.base_name !== baseName));
+      addDeletedScreenerBaseName(baseName);
+      removeCachedScreenerBody(baseName);
+      setPredList((prev) => {
+        var next = prev.filter((it) => it.base_name !== baseName);
+        saveScreenerListCache(next);
+        return next;
+      });
       if (predDetail && predDetail.base_name === baseName) setPredDetail(null);
     } catch (e) {
       setPredError(e.message || "删除失败");
