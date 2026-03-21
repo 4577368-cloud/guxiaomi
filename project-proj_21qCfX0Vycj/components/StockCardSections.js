@@ -114,14 +114,18 @@ function MarketDataSection({ stock }) {
 }
 
 function HoldingsAnalysisSection({ stockAnalysis, stock }) {
+  const profitPct = Number(stockAnalysis.profitPercent);
+  const dailyPct = Number(stockAnalysis.dailyProfitPercent);
+  const profitPctStr = (Number.isFinite(profitPct) ? profitPct : 0).toFixed(2);
+  const dailyPctStr = (Number.isFinite(dailyPct) ? dailyPct : 0).toFixed(2);
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-1 mb-4 py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm">
       <span><span className="text-[var(--text-secondary)]">总成本</span> <strong className="text-gray-800">{formatPrice(stockAnalysis.totalCost, 2)}</strong></span>
       <span><span className="text-[var(--text-secondary)]">平均成本</span> <strong className="text-gray-800">{formatPrice(stockAnalysis.avgCost)}</strong></span>
       <span><span className="text-[var(--text-secondary)]">保本价</span> <strong className="text-orange-600">{formatPrice(stockAnalysis.breakEvenPrice)}</strong></span>
       <span><span className="text-[var(--text-secondary)]">当前市值</span> <strong className="text-blue-600">{formatPrice(stockAnalysis.currentValue, 2)}</strong></span>
-      <span><span className="text-[var(--text-secondary)]">浮动盈亏</span> <strong className={stockAnalysis.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{stockAnalysis.profit >= 0 ? '+' : ''}{formatPrice(stockAnalysis.profit, 2)} ({(stockAnalysis.profitPercent >= 0 ? '+' : '') + stockAnalysis.profitPercent.toFixed(2)}%)</strong></span>
-      <span><span className="text-[var(--text-secondary)]">每日盈亏</span> <strong className={stockAnalysis.dailyProfitLoss >= 0 ? 'profit-positive' : 'profit-negative'}>{stockAnalysis.dailyProfitLoss >= 0 ? '+' : ''}{formatPrice(stockAnalysis.dailyProfitLoss, 2)} ({(stockAnalysis.dailyProfitPercent >= 0 ? '+' : '') + stockAnalysis.dailyProfitPercent.toFixed(2)}%)</strong></span>
+      <span><span className="text-[var(--text-secondary)]">浮动盈亏</span> <strong className={stockAnalysis.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{stockAnalysis.profit >= 0 ? '+' : ''}{formatPrice(stockAnalysis.profit, 2)} ({(profitPct >= 0 ? '+' : '') + profitPctStr}%)</strong></span>
+      <span><span className="text-[var(--text-secondary)]">每日盈亏</span> <strong className={stockAnalysis.dailyProfitLoss >= 0 ? 'profit-positive' : 'profit-negative'}>{stockAnalysis.dailyProfitLoss >= 0 ? '+' : ''}{formatPrice(stockAnalysis.dailyProfitLoss, 2)} ({(dailyPct >= 0 ? '+' : '') + dailyPctStr}%)</strong></span>
     </div>
   );
 }
@@ -183,7 +187,7 @@ function PositionsSection({
                       </div>
                       <div className="text-center">
                         <span className="text-xs font-medium text-[var(--text-secondary)] block">股数</span>
-                        <span className="font-bold text-gray-800">{position.shares.toLocaleString()}</span>
+                        <span className="font-bold text-gray-800">{(Number(position.shares) || 0).toLocaleString()}</span>
                       </div>
                       <div className="text-center">
                         <span className="text-xs font-medium text-[var(--text-secondary)] block">日期</span>
@@ -241,6 +245,7 @@ function PositionsSection({
                     </div>
                     <div className="text-center">
                       <button
+                        type="button"
                         onClick={() => setShowBuyFeesDetail(showBuyFeesDetail === position.id ? null : position.id)}
                         className="text-blue-600 hover:text-blue-800 text-xs underline"
                       >
@@ -266,6 +271,7 @@ function PositionsSection({
           <div className="icon-package text-4xl text-gray-300 mb-3 flex justify-center"></div>
           <p className="text-gray-500 mb-4">还没有持仓记录</p>
           <button
+            type="button"
             onClick={() => setShowPositionForm(true)}
             className="btn btn-primary btn-sm"
           >

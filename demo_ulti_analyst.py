@@ -17,7 +17,11 @@ except ImportError:
 import json
 import os
 import re
-from typing import List, Dict, Any, Optional
+import ssl
+import urllib.error
+import urllib.parse
+import urllib.request
+from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -388,6 +392,97 @@ def _get_alpha_vantage_api_key() -> str:
     """优先从环境变量读取，避免密钥进仓库"""
     return (os.environ.get("ALPHA_VANTAGE_API_KEY") or os.environ.get("ALPHAVANTAGE_API_KEY") or "").strip()
 
+
+def _normalize_cn_listed_code(code: str) -> str:
+    """A 股代码规范为 6 位数字（与前端 stockAPI 一致）。"""
+    s = (code or "").strip().upper()
+    if "." in s:
+        s = s.split(".", 1)[0]
+    raw = re.sub(r"\D", "", s)
+    if not raw:
+        raise ValueError(f"无效 A 股代码: {code}")
+    raw = raw.zfill(6)
+    if len(raw) > 6:
+        raw = raw[-6:]
+    return raw
+
+
+def _tencent_a_symbol(code: str) -> Tuple[str, str]:
+    """腾讯行情用的前缀代码，如 sz300442；返回 (full_symbol, clean6)。"""
+    cc = _normalize_cn_listed_code(code)
+    prefix = "sh" if cc.startswith("6") else "sz"
+    return f"{prefix}{cc}", cc
+
+
+def _http_get_text(url: str, timeout: float = 15.0) -> str:
+    """GET 文本；可选 GTIMG_HTTP_PROXY_TEMPLATE，形如 https://proxy/?url={url}（与前端 trickle 代理一致）。"""
+    tpl = (os.environ.get("GTIMG_HTTP_PROXY_TEMPLATE") or "").strip()
+    if tpl and "{url}" in tpl:
+        url = tpl.format(url=urllib.parse.quote(url, safe=""))
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (compatible; StockAnalyzer/1.0)",
+            "Accept": "*/*",
+        },
+        method="GET",
+    )
+    ctx = ssl.create_default_context()
+    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+        raw = resp.read()
+    for enc in ("utf-8", "gbk", "gb18030"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
+def _parse_tencent_gtimg_quote_line(text: str) -> Dict[str, Any]:
+    """解析 qt.gtimg.cn 单行 v_xxx=\"...\"，字段逻辑与前端 stockAPI.parseTencentGtimgLine 对齐。"""
+    m = re.search(r'v_[a-zA-Z0-9_]+="([^"]*)"', text)
+    if not m or m.group(1) is None or m.group(1) == "":
+        raise ValueError("无法解析腾讯行情响应")
+    parts = m.group(1).split("~")
+    if len(parts) < 7:
+        raise ValueError("腾讯行情字段不足")
+    name = str(parts[1]).strip() if len(parts) > 1 else ""
+    price = float(parts[3] or 0)
+    previous_close = float(parts[4] or 0)
+    open_ = float(parts[5] or 0)
+    volume_hands = float(parts[6] or 0)
+    high = float(parts[33]) if len(parts) > 33 and parts[33] else 0.0
+    low = float(parts[34]) if len(parts) > 34 and parts[34] else 0.0
+    if high <= 0 or low <= 0:
+        cand = [x for x in (price, open_, previous_close) if x > 0]
+        mx = max(cand) if cand else price
+        mn = min(cand) if cand else price
+        if high <= 0:
+            high = mx
+        if low <= 0:
+            low = mn if mn > 0 else price
+    pct = 0.0
+    if len(parts) > 32 and parts[32] != "":
+        try:
+            pct = float(str(parts[32]).replace("%", ""))
+        except ValueError:
+            pct = 0.0
+    if pct == 0 and previous_close > 0 and price > 0 and price != previous_close:
+        pct = (price - previous_close) / previous_close * 100.0
+    if price <= 0 or price != price:
+        raise ValueError("腾讯行情无有效价格")
+    return {
+        "name": name,
+        "price": price,
+        "previous_close": previous_close,
+        "open": open_,
+        "high": high,
+        "low": low,
+        "volume_hands": volume_hands,
+        "change_pct": pct,
+    }
+
+
 class StockDataService:
     """股票数据获取服务。港股/美股优先使用 Alpha Vantage（若配置密钥），失败则用 yfinance 兜底。"""
 
@@ -412,14 +507,22 @@ class StockDataService:
                             try:
                                 return self._get_a_stock_data_baostock(code, days)
                             except Exception as e2:
-                                print(f"⚠️ Baostock A股数据失败({e2})，使用模拟数据")
-                                return self._mock_stock_data(code, market)
+                                print(f"⚠️ Baostock A股数据失败({e2})，尝试腾讯行情兜底（与前端刷新同源）")
+                                try:
+                                    return self._get_a_stock_data_tencent(code, days)
+                                except Exception as e3:
+                                    print(f"⚠️ 腾讯行情 A股失败({e3})，使用模拟数据")
+                                    return self._mock_stock_data(code, market)
                 else:
                     try:
                         return self._get_a_stock_data_baostock(code, days)
                     except Exception as e:
-                        print(f"⚠️ Baostock A股数据失败({e})，使用模拟数据")
-                        return self._mock_stock_data(code, market)
+                        print(f"⚠️ Baostock A股数据失败({e})，尝试腾讯行情兜底（与前端刷新同源）")
+                        try:
+                            return self._get_a_stock_data_tencent(code, days)
+                        except Exception as e2:
+                            print(f"⚠️ 腾讯行情 A股失败({e2})，使用模拟数据")
+                            return self._mock_stock_data(code, market)
             elif market == "港股":
                 if self._av_key:
                     try:
@@ -448,13 +551,19 @@ class StockDataService:
         import akshare as ak
         import pandas as pd
 
-        # 清理代码格式
-        clean_code = code.split('.')[0] if '.' in code else code
+        # 清理代码格式（6 位）；东方财富「代码」列常为数字型，直接 == 字符串会匹配不到
+        clean_code = _normalize_cn_listed_code(code)
 
         # 实时行情
         try:
             df_spot = ak.stock_zh_a_spot_em()
-            stock_row = df_spot[df_spot['代码'] == clean_code]
+            code_col = (
+                df_spot["代码"]
+                .astype(str)
+                .str.replace(r"\.0$", "", regex=True)
+                .str.zfill(6)
+            )
+            stock_row = df_spot[code_col == clean_code]
 
             if stock_row.empty:
                 raise ValueError(f"未找到股票 {code}")
@@ -663,6 +772,90 @@ class StockDataService:
             所属板块="",
             技术指标简述=技术指标简述_a,
             近期市场与板块简述="请结合当前年度及近期大盘与板块走势、该股近期走势综合分析。"
+        )
+
+    def _get_tencent_a_closes(self, full_symbol: str, need_days: int) -> List[float]:
+        """腾讯 fqkline 日 K 收盘价序列（时间正序）。"""
+        cnt = max(int(need_days) + 40, 120)
+        url = (
+            "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?"
+            f"param={full_symbol},day,,,{cnt},qfq"
+        )
+        text = _http_get_text(url, timeout=18.0)
+        data = json.loads(text)
+        sym_data = (data.get("data") or {}).get(full_symbol) or {}
+        day_rows = sym_data.get("qfqday") or sym_data.get("day") or []
+        if not day_rows:
+            raise ValueError("腾讯K线返回为空")
+        rows = list(day_rows)
+        rows.reverse()
+        closes: List[float] = []
+        for row in rows:
+            if isinstance(row, (list, tuple)) and len(row) >= 3:
+                closes.append(float(row[2]))
+        if not closes:
+            raise ValueError("腾讯K线无有效收盘价")
+        return closes
+
+    def _get_a_stock_data_tencent(self, code: str, days: int = 90) -> StockData:
+        """A 股：腾讯 qt.gtimg + ifzq K 线（与前端刷新价格同源），用于 akshare/Baostock 不可用时的兜底。"""
+        import pandas as pd
+
+        full_symbol, cc = _tencent_a_symbol(code)
+        quote_url = f"https://qt.gtimg.cn/q={full_symbol}"
+        text = _http_get_text(quote_url, timeout=12.0)
+        q = _parse_tencent_gtimg_quote_line(text)
+        name = q["name"] or cc
+        price = float(q["price"])
+        change = f"{q['change_pct']:+.2f}%"
+
+        closes = self._get_tencent_a_closes(full_symbol, days)
+        n = min(days, len(closes))
+        seg = closes[-n:]
+        avg_90 = float(sum(seg) / len(seg)) if seg else price
+        high_90 = float(max(seg)) if seg else price
+        low_90 = float(min(seg)) if seg else price
+        volatility = (
+            float(pd.Series(seg).std() / avg_90 * 100) if avg_90 > 0 and len(seg) > 1 else 0.0
+        )
+
+        risk_flags: List[str] = []
+        if volatility > 25:
+            risk_flags.append("⚠️ 近期波动较大（超过 25%）")
+        if q["change_pct"] < -5:
+            risk_flags.append("⚠️ 短期跌幅较深（超过 5%）")
+        if not risk_flags:
+            risk_flags.append("✅ 暂无明显风险信号")
+
+        if len(seg) >= 20:
+            sma5 = float(pd.Series(closes[-5:]).mean())
+            sma20 = float(pd.Series(closes[-20:]).mean())
+            tech = (
+                f"5日均线{round(sma5, 2)}；20日均线{round(sma20, 2)}；"
+                f"近{n}日区间{_fmt_range_cn(low_90, high_90)}元"
+            )
+        else:
+            tech = f"近{n}日区间{_fmt_range_cn(low_90, high_90)}元"
+
+        return StockData(
+            股票名称=name,
+            股票代码=cc,
+            所属市场="A 股",
+            最新价=round(price, 2),
+            涨跌幅=change,
+            总市值="暂无（腾讯源无总市值）",
+            市盈率=0.0,
+            市净率=0.0,
+            九十日均价=avg_90,
+            九十日最高=high_90,
+            九十日最低=low_90,
+            波动率=volatility,
+            数据时间=datetime.now().strftime("%Y 年%m 月%d日 %H:%M"),
+            风险信号=risk_flags,
+            估值分位="暂无数据（腾讯源无市盈率）",
+            所属板块="",
+            技术指标简述=tech,
+            近期市场与板块简述="请结合当前年度及近期大盘与板块走势、该股近期走势综合分析。",
         )
 
     def _normalize_hk_symbol(self, code: str) -> str:

@@ -24,7 +24,7 @@ function PositionForm({ stock, position, onAdd, onClose }) {
           <h3 className="text-lg font-semibold">
             {position ? '编辑持仓记录' : '添加持仓记录'}
           </h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <div className="icon-x text-xl"></div>
           </button>
         </div>

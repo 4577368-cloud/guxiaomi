@@ -30,9 +30,16 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
         note: eventType === 'open' ? '开仓' : '加仓'
       };
 
+      const newPos = {
+        ...position,
+        id: Date.now().toString(),
+        price: Number(position.price) || 0,
+        shares: Number(position.shares) || 0,
+        enabled: position.enabled !== false,
+      };
       const updatedStock = {
         ...stock,
-        positions: [...currentPositions, { ...position, id: Date.now().toString() }],
+        positions: [...currentPositions, newPos],
         positionEventHistory: [...(stock.positionEventHistory || []), event]
       };
       onUpdate(updatedStock);

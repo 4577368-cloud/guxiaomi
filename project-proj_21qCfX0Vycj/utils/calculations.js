@@ -30,7 +30,10 @@ function calculateDailyProfitLoss(stock) {
   }
 
   const enabledPositions = stock.positions.filter(pos => pos.enabled !== false);
-  const totalShares = enabledPositions.reduce((sum, pos) => sum + pos.shares, 0);
+  const totalShares = enabledPositions.reduce(
+    (sum, pos) => sum + (Number(pos.shares) || 0),
+    0,
+  );
   
   const currentPrice = stock.currentPrice || 0;
   const previousClose = stock.marketData?.previousClose || currentPrice;
@@ -70,13 +73,15 @@ function calculateStockAnalysis(stock, brokerChannel) {
   let totalBuyFees = 0;
 
   enabledPositions.forEach(position => {
-    const positionValue = position.price * position.shares;
-    const buyFees = calculateBuyFees(brokerChannel || 'futu', stock.market, position.price, position.shares);
+    const sh = Number(position.shares) || 0;
+    const pr = Number(position.price) || 0;
+    const positionValue = pr * sh;
+    const buyFees = calculateBuyFees(brokerChannel || 'futu', stock.market, pr, sh);
     const totalFees = Object.values(buyFees).reduce((sum, fee) => sum + fee, 0);
     
     totalCostWithFees += positionValue + totalFees; // 实际总成本
     totalSharesValue += positionValue; // 股票价值总和
-    totalShares += position.shares;
+    totalShares += sh;
     totalBuyFees += totalFees;
   });
 
@@ -96,17 +101,19 @@ function calculateStockAnalysis(stock, brokerChannel) {
   // Calculate daily profit/loss
   const { dailyProfitLoss, dailyProfitPercent } = calculateDailyProfitLoss(stock);
 
+  const n = (x) => (typeof x === 'number' && Number.isFinite(x) ? x : 0);
+
   return {
-    totalCost: totalCostWithFees,     // 实际总成本（含买入手续费）
-    avgCost,                          // 平均成本（含手续费）
-    totalShares,
-    currentValue,                     // 当前市值
-    profit,                          // 浮动盈亏
-    profitPercent,                   // 盈亏百分比
-    totalBuyFees,                    // 买入手续费总计
-    breakEvenPrice,                  // 盈亏保本价（考虑卖出手续费）
-    dailyProfitLoss,                 // 每日盈亏（基于前收盘价）
-    dailyProfitPercent               // 每日盈亏百分比
+    totalCost: n(totalCostWithFees),
+    avgCost: n(avgCost),
+    totalShares: n(totalShares),
+    currentValue: n(currentValue),
+    profit: n(profit),
+    profitPercent: n(profitPercent),
+    totalBuyFees: n(totalBuyFees),
+    breakEvenPrice: n(breakEvenPrice),
+    dailyProfitLoss: n(dailyProfitLoss),
+    dailyProfitPercent: n(dailyProfitPercent),
   };
 }
 
