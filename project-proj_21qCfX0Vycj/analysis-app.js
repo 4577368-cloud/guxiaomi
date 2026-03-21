@@ -598,7 +598,14 @@ function renderMarkdownPlain(raw) {
   function parseInline(line) {
     var segs = [];
     var rest = String(line);
+    /** 防止 * / ** 未闭合时 indexOf 为 0 且 slice(0) 不前进导致死循环卡死浏览器 */
+    var guard = 0;
+    var maxGuard = Math.max(5000, rest.length * 4);
     while (rest.length) {
+      if (++guard > maxGuard) {
+        segs.push(rest);
+        break;
+      }
       var mlink = /^\[([^\]]*)\]\(([^)]+)\)/.exec(rest);
       if (mlink) {
         var lab = mlink[1];
@@ -692,6 +699,9 @@ function renderMarkdownPlain(raw) {
       if (idx < 0) {
         segs.push(rest);
         rest = "";
+      } else if (idx === 0) {
+        segs.push(rest.charAt(0));
+        rest = rest.slice(1);
       } else {
         segs.push(rest.slice(0, idx));
         rest = rest.slice(idx);
