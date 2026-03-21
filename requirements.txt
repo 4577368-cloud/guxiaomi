@@ -1,11 +1,12 @@
-# 股票分析 Web 应用依赖
-streamlit>=1.28.0
-openai>=1.0.0
-pandas>=2.0.0
-markdown>=3.4.0
-akshare>=1.12.0
-yfinance>=0.2.0
-python-dotenv>=1.0.0
-python-dateutil>=2.8.0
+# Vercel Serverless / 生产 API：需控制在 Lambda ~250MB 以内。
+# 已排除：streamlit（仅本地看板）、akshare（体积极大，A 股可走腾讯财经 + yfinance，见 demo_ulti_analyst 多源逻辑）。
+# 本地完整环境请安装：pip install -r requirements-dev.txt
 fastapi>=0.100.0
 uvicorn>=0.22.0
+openai>=1.0.0
+python-dotenv>=1.0.0
+python-dateutil>=2.8.0
+markdown>=3.4.0
+pandas>=2.0.0,<3
+yfinance>=0.2.0
+requests>=2.28.0

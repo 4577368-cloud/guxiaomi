@@ -18,16 +18,17 @@
 ## 环境要求与安装
 
 - Python 3.9+
-- 依赖见 `requirements.txt`
+- **本地完整能力**（Streamlit、`akshare` 等）：`requirements-dev.txt`（内含对 `requirements.txt` 的引用）
+- **仅 API / 与 Vercel 对齐的最小依赖**：`requirements.txt`（不含 Streamlit、不含 akshare，体积适合 Serverless）
 
 ```bash
 cd guxiaomi
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ```
 
 ## 数据源说明
 
-- **A 股**：akshare（实时 + 历史）。
+- **A 股**：本地推荐 **akshare**（`requirements-dev.txt`）；仅装 `requirements.txt` 时走 **腾讯财经 + yfinance** 等多源合并。
 - **港股 / 美股**：优先使用 **Alpha Vantage**（若已配置 API Key），信息更丰富；失败或未配置时自动用 **yfinance** 兜底。
 - 配置 Alpha Vantage / GNews / vLLM 等：复制 **`.env.example` 为 `.env`** 并按注释填写（`run_web.py` 拉起的 `api_server` 与 `demo_ulti_analyst` 会自动加载同目录 `.env`）。变量说明以 `.env.example` 为准。
 

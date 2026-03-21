@@ -1,0 +1,4 @@
+# 本地开发完整依赖（含 Streamlit 看板 + akshare A 股增强）
+-r requirements.txt
+streamlit>=1.28.0
+akshare>=1.12.0

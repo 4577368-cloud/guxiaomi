@@ -15,6 +15,7 @@
 
 若坚持在 Vercel 上跑 FastAPI，需知：
 
+- **部署包体积（≈250MB 上限）**：根目录 **`requirements.txt` 已按 Serverless 精简**（不含 **Streamlit**、不含 **akshare**，二者体积极大且易触发「程序包超过 Lambda 限制」）。A 股数据仍可通过 **腾讯财经 + yfinance** 等多源逻辑获取。本地若要 Streamlit 看板或 akshare 增强，请执行：`pip install -r requirements-dev.txt`。若精简后仍超上限，请把 API 迁到 Render/Railway/VPS，Vercel 仅托管静态页并配置 **`ANALYSIS_API_BASE`**。
 - **不要**在 `vercel.json` 里写 `installCommand: pip install -r requirements.txt`。Vercel 构建机的 Python 由 **`uv` 管理**（PEP 668），直接 `pip install` 会报错「外部管理环境」。应 **省略 `installCommand`**，由平台用 **`uv` 自动根据 `requirements.txt` 安装依赖**。
 - 若必须自定义安装，可尝试：`uv pip install -r requirements.txt`（以 Vercel 当前文档为准）。
 - 入口文件：根目录 **`app.py`**（`from api_server import app`），满足官方要求的 `app` 变量名。

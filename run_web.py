@@ -4,6 +4,7 @@
   - 后端 API：8123 起，若被占用则自动试 8124、8125
   - 前端静态页：8888 起，若被占用则自动试 8889、8890…（见 WEB_PORTS）
 直接运行此文件即可；控制台会打印实际端口，请用该地址打开（勿混用旧端口）。
+依赖：建议先 pip install -r requirements-dev.txt（含 akshare/Streamlit 等完整能力）；仅 API 可只用 requirements.txt。
 """
 import os
 import socket

@@ -1,0 +1,12 @@
+# 减小上传与打包体积（前端用 CDN，无需 node_modules；报告运行时写在 /tmp）
+project-proj_21qCfX0Vycj/node_modules/
+**/__pycache__/
+*.py[cod]
+.git/
+venv/
+.venv/
+reports/
+jobs/
+web_public/
+public/
+docs/
