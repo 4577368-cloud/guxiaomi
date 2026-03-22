@@ -1,4 +1,6 @@
 function BuyFeesDetail({ buyFees, stock, onClose }) {
+  var mkt = stock && stock.market;
+  var currencyPrefix = mkt === "US" ? "$" : mkt === "CN" ? "¥" : "";
   const feeNames = {
     commission: '经纪佣金',
     platformFee: '平台使用费',
@@ -28,7 +30,7 @@ function BuyFeesDetail({ buyFees, stock, onClose }) {
         {Object.entries(buyFees).map(([key, value]) => (
           <div key={key} className="flex justify-between">
             <span className="text-gray-600">{feeNames[key] || key}:</span>
-            <span className="font-medium" dangerouslySetInnerHTML={{ __html: `${stock.market === 'US' ? '$' : ''}${formatPrice(value, 2)}` }} />
+            <span className="font-medium" dangerouslySetInnerHTML={{ __html: `${currencyPrefix}${formatPrice(value, 2)}` }} />
           </div>
         ))}
       </div>

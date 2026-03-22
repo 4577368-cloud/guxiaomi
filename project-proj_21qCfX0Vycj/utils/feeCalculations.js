@@ -55,24 +55,37 @@ function getBrokerFeeStructure(brokerChannel, market) {
 }
 
 function calculateBuyFees(brokerChannel, market, price, shares) {
-  const amount = price * shares;
+  try {
+  const pr = Number(price);
+  const sh = Number(shares);
+  if (!Number.isFinite(pr) || !Number.isFinite(sh) || pr < 0 || sh <= 0) {
+    return {};
+  }
+  const amount = pr * sh;
   let fees = {};
-  
+
+  // A 股：与港股/美股费率结构不同，单独给示意项，避免误走美股分支
+  if (market === "CN") {
+    fees.commission = Math.max(amount * 0.0003, 5);
+    fees.transferFee = Math.max(amount * 0.00001, 0.01);
+    return fees;
+  }
+
   if (brokerChannel === 'futu') {
     if (market === 'HK') {
       fees.commission = Math.max(amount * 0.0003, 3);
       fees.platformFee = 15;
       fees.exchangeFee = amount * 0.0000565;
       fees.tradingLevy = amount * 0.000027;
-      fees.transferFee = Math.ceil(shares / 1000) * 1.5;
+      fees.transferFee = Math.ceil(sh / 1000) * 1.5;
     } else {
       // 美股买入：平台费、审计跟踪费、交收费
       // 平台费: $0.005/股，最低$1，最高0.99%*交易金额
-      fees.platformFee = Math.min(Math.max(shares * 0.005, 1), amount * 0.0099);
+      fees.platformFee = Math.min(Math.max(sh * 0.005, 1), amount * 0.0099);
       // 审计跟踪费: $0.000046/股，最低$0.01
-      fees.auditTrailFee = Math.max(shares * 0.000046, 0.01);
+      fees.auditTrailFee = Math.max(sh * 0.000046, 0.01);
       // 交收费: $0.003/股，最高交易额7%
-      fees.settlementFee = Math.min(shares * 0.003, amount * 0.07);
+      fees.settlementFee = Math.min(sh * 0.003, amount * 0.07);
     }
     } else if (brokerChannel === 'longbridge') {
     if (market === 'HK') {
@@ -92,9 +105,9 @@ function calculateBuyFees(brokerChannel, market, price, shares) {
       fees.settlementFee = amount * 0.000042;
     } else {
       // 美股买入：平台费+审计跟踪费+交收费
-      fees.platformFee = Math.min(Math.max(shares * 0.005, 1), amount * 0.0099);
-      fees.auditTrailFee = Math.max(shares * 0.000046, 0.01);
-      fees.settlementFee = Math.min(shares * 0.003, amount * 0.07);
+      fees.platformFee = Math.min(Math.max(sh * 0.005, 1), amount * 0.0099);
+      fees.auditTrailFee = Math.max(sh * 0.000046, 0.01);
+      fees.settlementFee = Math.min(sh * 0.003, amount * 0.07);
     }
   } else if (brokerChannel === 'boc') {
     if (market === 'HK') {
@@ -113,11 +126,15 @@ function calculateBuyFees(brokerChannel, market, price, shares) {
       fees.settlementFee = amount * 0.000042;
     } else {
       // 中银美股买入：佣金$0.02/股，最低$5/笔
-      fees.commission = Math.max(shares * 0.02, 5);
+      fees.commission = Math.max(sh * 0.02, 5);
     }
   }
-  
+
   return fees;
+  } catch (e) {
+    console.error("calculateBuyFees", e);
+    return {};
+  }
 }
 
 function calculateSellFees(brokerChannel, market, price, shares) {

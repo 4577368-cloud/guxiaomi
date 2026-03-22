@@ -1,3 +1,59 @@
+/** 持仓区（含添加持仓弹窗）异常时只降级本块，避免整页「页面渲染错误」 */
+class HoldingsSectionErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, info) {
+    console.error("[HoldingsSectionErrorBoundary]", error, info && info.componentStack);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="mb-6 p-4 rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-900">
+          <p className="font-medium">持仓区域加载失败</p>
+          <p className="text-xs mt-1 text-amber-800/90">
+            已隔离错误，其余内容仍可使用。请点击重试或刷新页面；若反复出现请查看浏览器控制台。
+          </p>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm mt-2"
+            onClick={() => this.setState({ hasError: false })}
+          >
+            重试
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function _safePositionDateLabel(dateStr) {
+  if (dateStr == null || dateStr === "") return "—";
+  var d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "—";
+  return d.getMonth() + 1 + "-" + d.getDate();
+}
+
+function _safeDaysHeld(dateStr) {
+  if (dateStr == null || dateStr === "") return "—";
+  var d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "—";
+  var t0 = new Date();
+  t0.setHours(0, 0, 0, 0);
+  var t1 = new Date(d);
+  t1.setHours(0, 0, 0, 0);
+  var diff = Math.floor((t0 - t1) / (1000 * 60 * 60 * 24));
+  return Number.isFinite(diff) ? String(diff) : "—";
+}
+
 function StockBasicInfo({ stock, brokerChannel, onBrokerChannelChange, onPriceUpdate, onRefreshAllPrices }) {
   const [isEditingPrice, setIsEditingPrice] = React.useState(false);
   const [editPrice, setEditPrice] = React.useState('');
@@ -73,7 +129,14 @@ function MarketDataSection({ stock }) {
   const prefix = stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : '';
   const hasExtendedData = stock.marketData.previousClose !== undefined;
   const ti = stock.technicalIndicators;
-  const hasTI = ti && (ti.ma5 > 0 || ti.ma10 > 0 || ti.rsi > 0);
+  const ma5n = Number(ti && ti.ma5);
+  const ma10n = Number(ti && ti.ma10);
+  const rsin = Number(ti && ti.rsi);
+  const hasTI =
+    ti &&
+    ((Number.isFinite(ma5n) && ma5n > 0) ||
+      (Number.isFinite(ma10n) && ma10n > 0) ||
+      (Number.isFinite(rsin) && rsin > 0));
   const openStr = prefix + formatPrice(stock.marketData.open || 0);
   const highStr = prefix + formatPrice(stock.marketData.high || 0);
   const lowStr = prefix + formatPrice(stock.marketData.low || 0);
@@ -86,7 +149,13 @@ function MarketDataSection({ stock }) {
   const changeSign = chN >= 0 ? '+' : '';
   const chPctCls = chPctN >= 0 ? 'text-green-600' : 'text-red-600';
   const chPctStr = (chPctN >= 0 ? '+' : '') + chPctN.toFixed(2) + '%';
-  const rsiCls = ti && ti.rsi > 70 ? 'text-red-600' : ti && ti.rsi < 30 ? 'text-green-600' : 'text-gray-700';
+  const rsiCls =
+    Number.isFinite(rsin) && rsin > 70
+      ? "text-red-600"
+      : Number.isFinite(rsin) && rsin < 30
+        ? "text-green-600"
+        : "text-gray-700";
+  const rsiDisplay = Number.isFinite(rsin) ? rsin.toFixed(2) : "—";
   return (
     <div className="mb-4">
       <div className="px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 text-sm">
@@ -104,9 +173,9 @@ function MarketDataSection({ stock }) {
           )}
           {hasTI && (
             <>
-              <span>MA5 <strong className="text-blue-700">{prefix}{formatPrice(ti.ma5 || 0)}</strong></span>
-              <span>MA10 <strong className="text-blue-700">{prefix}{formatPrice(ti.ma10 || 0)}</strong></span>
-              <span>RSI(14) <strong className={rsiCls}>{(ti.rsi || 0).toFixed(2)}</strong></span>
+              <span>MA5 <strong className="text-blue-700">{prefix}{formatPrice(Number.isFinite(ma5n) ? ma5n : 0)}</strong></span>
+              <span>MA10 <strong className="text-blue-700">{prefix}{formatPrice(Number.isFinite(ma10n) ? ma10n : 0)}</strong></span>
+              <span>RSI(14) <strong className={rsiCls}>{rsiDisplay}</strong></span>
             </>
           )}
         </div>
@@ -145,7 +214,16 @@ function PositionsSection({
   setShowBuyFeesDetail, 
   onAddPosition 
 }) {
+  if (!stock || !stock.id) {
+    return (
+      <div className="mb-6 p-3 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-600">
+        持仓数据异常，请刷新页面或重新选择股票。
+      </div>
+    );
+  }
   const positions = Array.isArray(stock.positions) ? stock.positions : [];
+  const mkt = stock.market;
+  const currencyPrefix = mkt === "US" ? "$" : mkt === "CN" ? "¥" : "";
   return (
     <div className="mb-6" id={`stock-${stock.id}`}>
       <div className="flex items-center justify-between mb-4">
@@ -166,12 +244,33 @@ function PositionsSection({
 
       {positions.length > 0 ? (
         <div className="space-y-2">
-          {positions.map(position => {
-            const buyFees = calculateBuyFees(brokerChannel || 'futu', stock.market, position.price, position.shares);
-            const totalBuyFees = Object.values(buyFees).reduce((sum, fee) => sum + fee, 0);
-            
+          {positions.map((position, idx) => {
+            var buyFees = {};
+            var totalBuyFees = 0;
+            try {
+              buyFees =
+                calculateBuyFees(
+                  brokerChannel || "futu",
+                  stock.market,
+                  position.price,
+                  position.shares,
+                ) || {};
+              totalBuyFees = Object.values(buyFees).reduce(function (sum, fee) {
+                var n = Number(fee);
+                return sum + (Number.isFinite(n) ? n : 0);
+              }, 0);
+            } catch (err) {
+              console.warn("[PositionsSection] calculateBuyFees failed", err);
+              buyFees = {};
+              totalBuyFees = 0;
+            }
+            var px = Number(position.price);
+            var sh = Number(position.shares);
+            var lineAmount =
+              Number.isFinite(px) && Number.isFinite(sh) ? px * sh : NaN;
+
             return (
-              <div key={position.id} className="p-3 bg-gradient-to-r from-gray-50 to-blue-50 rounded-lg border border-gray-200">
+              <div key={position.id != null ? String(position.id) : "p-" + idx} className="p-3 bg-gradient-to-r from-gray-50 to-blue-50 rounded-lg border border-gray-200">
                 <div className="mb-2">
                   <div className="flex items-center gap-4 mb-2">
                     <input
@@ -184,7 +283,7 @@ function PositionsSection({
                       <div className="text-center">
                         <span className="text-xs font-medium text-[var(--text-secondary)] block">价格</span>
                         <span className="font-bold text-gray-800">
-                          <span dangerouslySetInnerHTML={{ __html: `${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(position.price)}` }} />
+                          <span dangerouslySetInnerHTML={{ __html: `${currencyPrefix}${formatPrice(Number.isFinite(px) ? px : 0)}` }} />
                         </span>
                       </div>
                       <div className="text-center">
@@ -194,15 +293,13 @@ function PositionsSection({
                       <div className="text-center">
                         <span className="text-xs font-medium text-[var(--text-secondary)] block">日期</span>
                         <span className="font-bold text-gray-800">
-                          {new Date(position.date).getMonth() + 1}-{new Date(position.date).getDate()}
+                          {_safePositionDateLabel(position.date)}
                         </span>
                       </div>
                       <div className="text-center">
                         <span className="text-xs font-medium text-[var(--text-secondary)] block">天数</span>
                         <span className="font-bold text-gray-800">
-                          {Math.floor(
-                            (new Date().setHours(0,0,0,0) - new Date(position.date).setHours(0,0,0,0)) / (1000 * 60 * 60 * 24)
-                          )}
+                          {_safeDaysHeld(position.date)}
                         </span>
                       </div>
                     </div>
@@ -230,19 +327,19 @@ function PositionsSection({
                     <div className="text-center">
                       <span className="text-gray-600 block">成交金额</span>
                       <span className="font-medium">
-                        <span dangerouslySetInnerHTML={{ __html: `${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(position.price * position.shares, 2)}` }} />
+                        <span dangerouslySetInnerHTML={{ __html: `${currencyPrefix}${formatPrice(Number.isFinite(lineAmount) ? lineAmount : 0, 2)}` }} />
                       </span>
                     </div>
                     <div className="text-center">
                       <span className="text-gray-600 block">总手续费</span>
                       <span className="font-medium text-orange-600">
-                        <span dangerouslySetInnerHTML={{ __html: `${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(totalBuyFees, 2)}` }} />
+                        <span dangerouslySetInnerHTML={{ __html: `${currencyPrefix}${formatPrice(totalBuyFees, 2)}` }} />
                       </span>
                     </div>
                     <div className="text-center">
                       <span className="text-gray-600 block">实际成本</span>
                       <span className="font-bold text-red-600">
-                        <span dangerouslySetInnerHTML={{ __html: `${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(position.price * position.shares + totalBuyFees, 2)}` }} />
+                        <span dangerouslySetInnerHTML={{ __html: `${currencyPrefix}${formatPrice((Number.isFinite(lineAmount) ? lineAmount : 0) + totalBuyFees, 2)}` }} />
                       </span>
                     </div>
                     <div className="text-center">

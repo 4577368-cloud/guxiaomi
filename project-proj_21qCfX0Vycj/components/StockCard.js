@@ -493,19 +493,21 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
           <StockCharts stock={stock} />
           <HoldingsAnalysisSection stockAnalysis={stockAnalysis} stock={stock} />
         
-        <PositionsSection 
-          stock={stock}
-          brokerChannel={brokerChannel}
-          onUpdatePosition={handleUpdatePosition}
-          onDeletePosition={handleDeletePosition}
-          showPositionForm={showPositionForm}
-          setShowPositionForm={setShowPositionForm}
-          editingPosition={editingPosition}
-          setEditingPosition={setEditingPosition}
-          showBuyFeesDetail={showBuyFeesDetail}
-          setShowBuyFeesDetail={setShowBuyFeesDetail}
-          onAddPosition={handleAddPosition}
-        />
+        <HoldingsSectionErrorBoundary>
+          <PositionsSection
+            stock={stock}
+            brokerChannel={brokerChannel}
+            onUpdatePosition={handleUpdatePosition}
+            onDeletePosition={handleDeletePosition}
+            showPositionForm={showPositionForm}
+            setShowPositionForm={setShowPositionForm}
+            editingPosition={editingPosition}
+            setEditingPosition={setEditingPosition}
+            showBuyFeesDetail={showBuyFeesDetail}
+            setShowBuyFeesDetail={setShowBuyFeesDetail}
+            onAddPosition={handleAddPosition}
+          />
+        </HoldingsSectionErrorBoundary>
 
         <SellSimulationSection
           sellSimulations={sellSimulations}

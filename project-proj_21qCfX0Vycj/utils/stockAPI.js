@@ -78,12 +78,15 @@ function generateMockUSData(symbol) {
 
 // Utility functions for formatting
 function formatVolume(volume) {
-  if (volume >= 1000000) {
-    return (volume / 1000000).toFixed(1) + 'M';
-  } else if (volume >= 1000) {
-    return (volume / 1000).toFixed(0) + 'K';
+  var v = Number(volume);
+  if (!Number.isFinite(v) || v < 0) return "0";
+  if (v >= 1000000) {
+    return (v / 1000000).toFixed(1) + "M";
   }
-  return volume.toString();
+  if (v >= 1000) {
+    return (v / 1000).toFixed(0) + "K";
+  }
+  return String(v);
 }
 
 function formatPrice(price, precision = 3) {

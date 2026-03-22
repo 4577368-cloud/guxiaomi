@@ -1,4 +1,6 @@
 function PositionForm({ stock, position, onAdd, onClose }) {
+  var s = stock && typeof stock === "object" ? stock : {};
+  var market = s.market === "US" ? "US" : s.market === "CN" ? "CN" : "HK";
   const [formData, setFormData] = React.useState({
     price: position?.price || '',
     shares: position?.shares || '',
@@ -36,7 +38,7 @@ function PositionForm({ stock, position, onAdd, onClose }) {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
-              买入价格 ({stock.market === 'US' ? 'USD' : stock.market === 'CN' ? 'CNY' : 'HKD'})
+              买入价格 ({market === "US" ? "USD" : market === "CN" ? "CNY" : "HKD"})
             </label>
             <input
               type="number"

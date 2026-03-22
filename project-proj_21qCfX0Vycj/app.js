@@ -17,7 +17,7 @@ class ErrorBoundary extends React.Component {
       return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
           <div className="text-center max-w-md">
-            <h1 className="text-xl font-bold text-gray-900 mb-2">页面渲染出错</h1>
+            <h1 className="text-xl font-bold text-gray-900 mb-2">页面渲染错误</h1>
             <p className="text-gray-600 text-sm mb-4">
               可点击刷新重试。若反复出现，请打开开发者工具查看控制台报错。
             </p>
