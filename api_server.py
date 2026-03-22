@@ -45,7 +45,7 @@ if _env_file.is_file():
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from typing import Optional, List, Dict, Any
 
 import requests
@@ -208,6 +208,18 @@ class ChatRequest(BaseModel):
     use_mock: bool = False
     # 当前问题之前的对话轮次（不含本条 message），用于多轮延展
     history: List[ChatTurn] = Field(default_factory=list)
+
+
+class LlmChatRequest(BaseModel):
+    """通用对话：与 /api/analyze/chat 同源 VLLM（环境变量 VLLM_*），供紫微排盘等页面使用。"""
+
+    system: str = ""
+    user: str
+    history: List[ChatTurn] = Field(default_factory=list)
+    stream: bool = False
+    use_mock: bool = False
+    max_tokens: int = 8192
+    temperature: float = 0.7
 
 
 class ScreenerFetchRequest(BaseModel):
@@ -754,6 +766,215 @@ def _strip_trailing_investment_disclaimer(text: str) -> str:
     return s.rstrip()
 
 
+def _vllm_env() -> tuple:
+    vllm_base = (
+        os.environ.get("VLLM_BASE_URL") or "http://vllm.tangbuy.cn:8080/v1"
+    ).strip().rstrip("/")
+    vllm_key = (os.environ.get("VLLM_API_KEY") or "123456").strip()
+    vllm_model = (
+        os.environ.get("VLLM_MODEL_ID") or os.environ.get("VLLM_MODEL") or "MiniMax-M2.1-AWQ"
+    ).strip()
+    return vllm_base, vllm_key, vllm_model
+
+
+def _vllm_parse_message_content(data: dict) -> str:
+    if not isinstance(data, dict):
+        return ""
+    answer = ""
+    if data.get("choices"):
+        choice = data["choices"][0]
+        if isinstance(choice, dict):
+            msg = choice.get("message")
+            if isinstance(msg, dict) and msg.get("content"):
+                answer = str(msg.get("content") or "")
+            elif choice.get("text"):
+                answer = str(choice.get("text") or "")
+    elif data.get("response"):
+        answer = str(data.get("response") or "")
+    elif data.get("output"):
+        answer = str(data.get("output") or "")
+    return answer.strip()
+
+
+def _vllm_chat_complete_json(
+    messages: List[Dict[str, str]],
+    *,
+    max_tokens: int = 3072,
+    temperature: float = 0.7,
+) -> dict:
+    """调用 OpenAI 兼容 /chat/completions；失败时尝试备选 body（部分网关）。"""
+    vllm_base, vllm_key, vllm_model = _vllm_env()
+    payload = {
+        "model": vllm_model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": False,
+    }
+    try:
+        resp = requests.post(
+            f"{vllm_base}/chat/completions",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {vllm_key}",
+            },
+            json=payload,
+            timeout=300,
+        )
+        if resp.status_code == 200:
+            return resp.json()
+        fallback_payload = {
+            "model_id": vllm_model,
+            "input": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": False,
+        }
+        resp2 = requests.post(
+            vllm_base,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {vllm_key}",
+            },
+            json=fallback_payload,
+            timeout=300,
+        )
+        if resp2.status_code != 200:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"vllm 失败(主/备选): {resp.status_code}/{resp2.status_code}, "
+                    f"主: {resp.text[:800]}, 备: {resp2.text[:800]}"
+                ),
+            )
+        return resp2.json()
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=500, detail=f"vllm 请求失败: {e}")
+
+
+def _llm_chat_build_messages(req: LlmChatRequest) -> List[Dict[str, str]]:
+    messages: List[Dict[str, str]] = []
+    s = (req.system or "").strip()
+    if s:
+        messages.append({"role": "system", "content": s[:64000]})
+    for turn in (req.history or [])[-32:]:
+        r = (turn.role or "").strip().lower()
+        if r not in ("user", "assistant"):
+            continue
+        c = (turn.content or "").strip()
+        if not c:
+            continue
+        messages.append({"role": r, "content": c[:48000]})
+    u = (req.user or "").strip()
+    if not u:
+        raise HTTPException(status_code=400, detail="user 不能为空")
+    messages.append({"role": "user", "content": u[:64000]})
+    return messages
+
+
+@app.get("/api/llm/meta")
+def api_llm_meta():
+    """返回当前服务端使用的模型 id（与股票分析同源），供前端展示。"""
+    _, _, mid = _vllm_env()
+    return {"ok": True, "model_id": mid}
+
+
+@app.post("/api/llm/chat")
+def api_llm_chat(req: LlmChatRequest):
+    """通用 LLM：紫微排盘等与分析页共用 VLLM_MODEL_ID / VLLM_BASE_URL。"""
+    if not (req.user or "").strip():
+        raise HTTPException(status_code=400, detail="user 不能为空")
+
+    mt = int(req.max_tokens) if req.max_tokens else 8192
+    mt = max(256, min(mt, 32768))
+    temp = float(req.temperature) if req.temperature is not None else 0.7
+    if temp < 0 or temp > 2:
+        temp = 0.7
+
+    if req.use_mock:
+        if req.stream:
+
+            def _mock_stream():
+                yield (
+                    'data: {"choices":[{"delta":{"content":"[模拟] 请在真实模式下使用。"}}]}\n\n'
+                ).encode("utf-8")
+                yield b"data: [DONE]\n\n"
+
+            return StreamingResponse(_mock_stream(), media_type="text/event-stream")
+        return JSONResponse({"ok": True, "content": "[模拟] 请在真实模式下使用。"})
+
+    messages = _llm_chat_build_messages(req)
+
+    if req.stream:
+        vllm_base, vllm_key, vllm_model = _vllm_env()
+        payload = {
+            "model": vllm_model,
+            "messages": messages,
+            "temperature": temp,
+            "max_tokens": mt,
+            "stream": True,
+        }
+
+        def _byte_iter():
+            try:
+                r = requests.post(
+                    f"{vllm_base}/chat/completions",
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {vllm_key}",
+                    },
+                    json=payload,
+                    stream=True,
+                    timeout=300,
+                )
+                if r.status_code != 200:
+                    err = (r.text or str(r.status_code))[:2000]
+                    yield (
+                        "data: "
+                        + json.dumps(
+                            {
+                                "choices": [
+                                    {
+                                        "delta": {
+                                            "content": "[接口错误] " + err,
+                                        },
+                                        "finish_reason": "stop",
+                                    }
+                                ]
+                            },
+                            ensure_ascii=False,
+                        )
+                        + "\n\n"
+                    ).encode("utf-8")
+                    yield b"data: [DONE]\n\n"
+                    return
+                for line in r.iter_lines(decode_unicode=False):
+                    if line:
+                        yield line + b"\n"
+            except Exception as e:
+                yield (
+                    "data: "
+                    + json.dumps(
+                        {
+                            "choices": [
+                                {"delta": {"content": "[请求异常] " + str(e)}}
+                            ]
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n\n"
+                ).encode("utf-8")
+                yield b"data: [DONE]\n\n"
+
+        return StreamingResponse(_byte_iter(), media_type="text/event-stream")
+
+    data = _vllm_chat_complete_json(messages, max_tokens=mt, temperature=temp)
+    content = _vllm_parse_message_content(data)
+    if not content:
+        content = "[vllm 无回答，请检查模型或请求]"
+    return JSONResponse({"ok": True, "content": content})
+
+
 @app.post("/api/analyze/chat")
 def api_analyze_chat(req: ChatRequest):
     """深度诊断对话：首轮附带报告摘录；自第二轮起省略报告正文仅保留短说明以省 token，依赖对话历史衔接。"""
@@ -817,14 +1038,6 @@ def api_analyze_chat(req: ChatRequest):
         # 模拟返回（用于测试）
         return JSONResponse({"ok": True, "answer": "[模拟] 深度诊断：请在真实模式下使用。"})
 
-    vllm_base = (
-        os.environ.get("VLLM_BASE_URL") or "http://vllm.tangbuy.cn:8080/v1"
-    ).strip().rstrip("/")
-    vllm_key = (os.environ.get("VLLM_API_KEY") or "123456").strip()
-    vllm_model = (
-        os.environ.get("VLLM_MODEL_ID") or os.environ.get("VLLM_MODEL") or "MiniMax-M2.1-AWQ"
-    ).strip()
-
     system_prompt = f"""你在和用户聊「{req.stock_code}」（{req.market}）。**本条消息只解决用户当前这一句问题**：答到点上即可，口语自然，不要复述上一轮已经说过的总结，不要每轮用相同开头/结尾模板。
 
 {bg_heading}
@@ -839,75 +1052,19 @@ def api_analyze_chat(req: ChatRequest):
     messages.extend(hist)
     messages.append({"role": "user", "content": req.message.strip()[:8000]})
 
-    # 模型由环境变量 VLLM_MODEL_ID / VLLM_MODEL 指定（如 MiniMax 系列），须与 vLLM/OpenAI 兼容网关一致
-    payload = {
-        "model": vllm_model,
-        "messages": messages,
-        "temperature": 0.7,
-        "max_tokens": 3072,
-        "stream": False
-    }
-
     try:
-        resp = requests.post(
-            f"{vllm_base}/chat/completions",
-            headers={
-                'Content-Type': 'application/json',
-                'Authorization': f'Bearer {vllm_key}',
-            },
-            json=payload,
-            timeout=120
+        data = _vllm_chat_complete_json(
+            messages, max_tokens=3072, temperature=0.7
         )
-
-        if resp.status_code != 200:
-            # 兼容部分 vllm 直接 /v1 body: {"model_id":..., "input":...}
-            try:
-                fallback_payload = {
-                    "model_id": vllm_model,
-                    "input": messages,
-                    "temperature": 0.7,
-                    "max_tokens": 3072,
-                    "stream": False
-                }
-                resp2 = requests.post(
-                    vllm_base,
-                    headers={
-                        'Content-Type': 'application/json',
-                        'Authorization': f'Bearer {vllm_key}',
-                    },
-                    json=fallback_payload,
-                    timeout=120
-                )
-                if resp2.status_code != 200:
-                    raise HTTPException(status_code=500, detail=f"vllm 失败(主/备选): {resp.status_code}/{resp2.status_code}, 主响应: {resp.text}, 备选: {resp2.text}")
-                data = resp2.json()
-            except requests.exceptions.RequestException as ee:
-                raise HTTPException(status_code=500, detail=f"vllm 请求失败: {ee}")
-        else:
-            data = resp.json()
-
-        answer = ''
-        if isinstance(data, dict):
-            if data.get('choices'):
-                choice = data['choices'][0]
-                if 'message' in choice and 'content' in choice['message']:
-                    answer = choice['message']['content']
-                elif 'text' in choice:
-                    answer = choice['text']
-            elif data.get('response'):
-                answer = data.get('response')
-            elif data.get('output'):
-                answer = data.get('output')
-
+        answer = _vllm_parse_message_content(data)
         if not answer:
-            answer = '[vllm 无回答，请检查模型或请求]'
-
+            answer = "[vllm 无回答，请检查模型或请求]"
         answer = _strip_trailing_investment_disclaimer(_sanitize_chat_answer(answer))
-
         return JSONResponse({"ok": True, "answer": answer})
-
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=500, detail=f"vllm 请求失败: {e}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 

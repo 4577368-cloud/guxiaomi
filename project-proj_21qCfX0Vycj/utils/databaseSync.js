@@ -89,7 +89,7 @@ async function saveZiweiReportDB(reportName, reportData) {
       wealthReport: reportData.wealthReport || '',
       portfolioReport: reportData.portfolioReport || '',
       stockReport: reportData.stockReport || '',
-      model: reportData.model || 'DeepSeek'
+      model: reportData.model || '同源分析模型'
     };
     
     if (existingReport) {

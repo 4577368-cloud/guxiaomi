@@ -54,6 +54,22 @@
 </head>
 <body>
     <div id="root"></div>
+    <script src="env.js"></script>
+    <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var api = params.get('api');
+      if (!api) return;
+      if (/^https?:\/\//i.test(api)) {
+        window.ANALYSIS_API_BASE = api;
+        return;
+      }
+      var h = window.location.hostname;
+      if (h === 'localhost' || h === '127.0.0.1') {
+        window.ANALYSIS_API_BASE = 'http://localhost:' + api;
+      }
+    })();
+    </script>
     <script type="text/babel" src="utils/databaseSync.js"></script>
     <script type="text/babel" src="ziwei-app.js"></script>
 </body>

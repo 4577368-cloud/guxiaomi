@@ -431,6 +431,14 @@ function App() {
                   <span className="sm:hidden">新闻</span>
                 </button>
                 <a
+                  href="ziwei.html"
+                  className="btn btn-sm btn-secondary flex items-center gap-1"
+                >
+                  <div className="icon-sparkles text-xs sm:text-sm"></div>
+                  <span className="hidden sm:inline">紫微排盘</span>
+                  <span className="sm:hidden">紫微</span>
+                </a>
+                <a
                   href="analysis.html"
                   className="btn btn-sm btn-accent-analysis flex items-center gap-1"
                 >

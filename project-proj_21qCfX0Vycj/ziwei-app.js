@@ -32,6 +32,37 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+/** 与股票分析页同源：Vercel 同域 或 env.js 的 ANALYSIS_API_BASE；本地默认 8123 */
+function getZiweiApiBase() {
+  try {
+    var saved = (localStorage.getItem('analysis_api_base') || '').trim().replace(/\/+$/, '');
+    var onDeployed =
+      typeof location !== 'undefined' &&
+      location.hostname !== 'localhost' &&
+      location.hostname !== '127.0.0.1';
+    if (saved && onDeployed && /^(https?:\/\/)?(localhost|127\.0\.0\.1)/i.test(saved)) {
+      saved = '';
+      try {
+        localStorage.removeItem('analysis_api_base');
+      } catch (_) {}
+    }
+    if (saved) return saved;
+  } catch (_) {}
+  if (typeof window !== 'undefined' && window.ANALYSIS_API_BASE) {
+    return String(window.ANALYSIS_API_BASE).replace(/\/+$/, '');
+  }
+  if (
+    typeof location !== 'undefined' &&
+    (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+  ) {
+    return 'http://localhost:8123';
+  }
+  if (typeof location !== 'undefined' && location.origin) {
+    return location.origin;
+  }
+  return '';
+}
+
 function ZiweiApp() {
   const [inputText, setInputText] = React.useState('');
   const [basicReport, setBasicReport] = React.useState(null);
@@ -67,6 +98,18 @@ function ZiweiApp() {
   const chatSectionRef = React.useRef(null);
   const chatContainerRef = React.useRef(null);
   const MAX_HISTORY = 10;
+  const [llmModelLabel, setLlmModelLabel] = React.useState('');
+
+  React.useEffect(() => {
+    const base = getZiweiApiBase();
+    if (!base) return;
+    fetch(base + '/api/llm/meta')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && d.model_id) setLlmModelLabel(String(d.model_id));
+      })
+      .catch(() => {});
+  }, []);
 
     // Load history and saved reports from cloud and localStorage on mount
     React.useEffect(() => {
@@ -154,78 +197,102 @@ function ZiweiApp() {
       return new Date().toLocaleString('zh-CN');
     };
 
-    const callDeepSeekAPI = async (systemPrompt, userPrompt, streaming = false, onChunk = null) => {
+    /** 与股票分析同源：POST {apiBase}/api/llm/chat → 服务端 VLLM（Vercel 与分析共用模型） */
+    const callAnalysisLlmAPI = async (systemPrompt, userPrompt, streaming = false, onChunk = null) => {
+      const apiBase = getZiweiApiBase();
+      if (!apiBase) {
+        throw new Error(
+          '未配置分析 API：请启动 guxiaomi/api_server（默认端口 8123），或与股票分析同域部署；也可在 URL 加 ?api=https://你的后端',
+        );
+      }
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 second timeout
-      
+      const timeoutId = setTimeout(() => controller.abort(), 300000);
+
       try {
-        const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer sk-7aefb85227c148beb2d768605d7e0159'
-          },
-          body: JSON.stringify({
-            model: 'deepseek-chat',
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt }
-            ],
-            stream: streaming
-          }),
-          signal: controller.signal
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`API错误 ${response.status}: ${errorText}`);
-        }
-
         if (streaming) {
+          const response = await fetch(`${apiBase}/api/llm/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              system: systemPrompt || '',
+              user: userPrompt,
+              stream: true,
+              max_tokens: 8192,
+            }),
+            signal: controller.signal,
+          });
+
+          clearTimeout(timeoutId);
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`API错误 ${response.status}: ${errorText.slice(0, 800)}`);
+          }
+
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
           let fullContent = '';
+          let sseBuf = '';
 
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n').filter(line => line.trim() !== '');
+            sseBuf += decoder.decode(value, { stream: true });
+            const parts = sseBuf.split('\n');
+            sseBuf = parts.pop() || '';
 
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const data = line.slice(6);
-                if (data === '[DONE]') continue;
+            for (const line of parts) {
+              const trimmed = line.trim();
+              if (!trimmed.startsWith('data: ')) continue;
+              const data = trimmed.slice(6);
+              if (data === '[DONE]') continue;
 
-                try {
-                  const parsed = JSON.parse(data);
-                  const content = parsed.choices?.[0]?.delta?.content || '';
-                  if (content) {
-                    fullContent += content;
-                    if (onChunk) onChunk(content);
-                  }
-                } catch (e) {
-                  // Skip invalid JSON
+              try {
+                const parsed = JSON.parse(data);
+                const errMsg = parsed.error && (parsed.error.message || parsed.error);
+                if (errMsg) throw new Error(String(errMsg));
+                const content = parsed.choices?.[0]?.delta?.content || '';
+                if (content) {
+                  fullContent += content;
+                  if (onChunk) onChunk(content);
                 }
+              } catch (e) {
+                if (e instanceof SyntaxError) continue;
+                throw e;
               }
             }
           }
 
           return fullContent;
-        } else {
-          const data = await response.json();
-          if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-            throw new Error('API返回数据格式错误');
-          }
-          return data.choices[0].message.content;
         }
+
+        const response = await fetch(`${apiBase}/api/llm/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system: systemPrompt || '',
+            user: userPrompt,
+            stream: false,
+            max_tokens: 8192,
+          }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.detail || data.error || `HTTP ${response.status}`);
+        }
+        if (!data.ok && data.content == null) {
+          throw new Error(data.detail || 'API 返回异常');
+        }
+        return data.content != null ? data.content : '';
       } catch (error) {
         clearTimeout(timeoutId);
         if (error.name === 'AbortError') {
-          throw new Error('API请求超时，请稍后重试');
+          throw new Error('请求超时，请稍后重试');
         }
         throw error;
       }
@@ -244,7 +311,7 @@ function ZiweiApp() {
       try {
         const timeName = extractTimeFromInput(inputText);
         const timestamp = new Date().toLocaleString('zh-CN');
-        const model = 'DeepSeek';
+        const model = llmModelLabel || '同源分析模型';
         
         // Get current date dynamically
         const now = new Date();
@@ -271,7 +338,7 @@ function ZiweiApp() {
         
         while (retryCount <= maxRetries) {
           try {
-            basicResponse = await callDeepSeekAPI(basicSystemPrompt, inputText);
+            basicResponse = await callAnalysisLlmAPI(basicSystemPrompt, inputText);
             break; // Success, exit retry loop
           } catch (error) {
             retryCount++;
@@ -373,7 +440,7 @@ function ZiweiApp() {
 
 （报告结束，不包含任何免责声明）`;
         
-        let wealthResponse = await callDeepSeekAPI(wealthSystemPrompt, inputText);
+        let wealthResponse = await callAnalysisLlmAPI(wealthSystemPrompt, inputText);
         
         setWealthReport({
           id: Date.now() + 1,
@@ -535,7 +602,7 @@ function ZiweiApp() {
           
           const portfolioUserPrompt = `请基于以下命盘信息和持仓组合数据生成整体持仓分析报告。\n\n## 命盘信息\n${inputText}\n\n${portfolioData}`;
           
-          let portfolioResponse = await callDeepSeekAPI(portfolioSystemPrompt, portfolioUserPrompt);
+          let portfolioResponse = await callAnalysisLlmAPI(portfolioSystemPrompt, portfolioUserPrompt);
           
           setPortfolioAnalysisReport({
             id: Date.now() + 2,
@@ -584,7 +651,7 @@ function ZiweiApp() {
       
       try {
         const timestamp = new Date().toLocaleString('zh-CN');
-        const model = 'DeepSeek';
+        const model = llmModelLabel || '同源分析模型';
         
         // Get current date dynamically
         const now = new Date();
@@ -718,7 +785,7 @@ ${flowContext}`;
         
         const flowUserPrompt = `${inputText}`;
         
-        let flowResponse = await callDeepSeekAPI(flowSystemPrompt, flowUserPrompt);
+        let flowResponse = await callAnalysisLlmAPI(flowSystemPrompt, flowUserPrompt);
         
         setFlowReport({
           id: Date.now() + 3,
@@ -795,7 +862,7 @@ ${flowContext}`;
         
         // Use updated stocks for analysis
         const timestamp = new Date().toLocaleString('zh-CN');
-        const model = 'DeepSeek';
+        const model = llmModelLabel || '同源分析模型';
         
         // Get current date dynamically
         const now = new Date();
@@ -1005,7 +1072,7 @@ ${allStocksData}
 
 请进行详细的技术分析和持仓评估。`;
         
-        let response = await callDeepSeekAPI(systemPrompt, userPrompt);
+        let response = await callAnalysisLlmAPI(systemPrompt, userPrompt);
         
         setStockAnalysisReport({
           id: Date.now(),
@@ -1081,7 +1148,7 @@ ${allStocksData}
             
             const portfolioUserPrompt = `请基于以下命盘信息和持仓组合数据生成整体持仓分析报告。\n\n## 命盘信息\n${inputText}\n\n${portfolioData}`;
             
-            let portfolioResponse = await callDeepSeekAPI(portfolioSystemPrompt, portfolioUserPrompt);
+            let portfolioResponse = await callAnalysisLlmAPI(portfolioSystemPrompt, portfolioUserPrompt);
             
             setPortfolioAnalysisReport({
               id: Date.now() + 10,
@@ -1258,7 +1325,7 @@ ${allStocksData}
 
     const timeName = saveDialogName.trim();
     const timestamp = new Date().toLocaleString('zh-CN');
-    const model = 'DeepSeek';
+    const model = llmModelLabel || '同源分析模型';
 
     const existingIndex = historyList.findIndex(h => h.timeName === timeName);
     let newHistory;
@@ -1474,7 +1541,7 @@ ${allStocksData}
         
         // Stream response
         let fullResponse = '';
-        const response = await callDeepSeekAPI(systemPrompt, userMessage, true, (chunk) => {
+        const response = await callAnalysisLlmAPI(systemPrompt, userMessage, true, (chunk) => {
           fullResponse += chunk;
           setStreamingMessage(fullResponse);
         });
@@ -1486,7 +1553,7 @@ ${allStocksData}
         const suggestionPrompt = `基于以下对话内容，生成3个用户可能感兴趣的后续问题。问题要简短、具体，与金融投资和紫微斗数命理相关。\n\n用户问题：${userMessage}\n\nAI回复：${response.substring(0, 500)}\n\n请只返回3个问题，每个问题一行，不要编号，不要其他说明文字。`;
         
         try {
-          const suggestions = await callDeepSeekAPI('你是一个智能助手，擅长生成相关的后续问题。', suggestionPrompt, false);
+          const suggestions = await callAnalysisLlmAPI('你是一个智能助手，擅长生成相关的后续问题。', suggestionPrompt, false);
           const questions = suggestions.split('\n').filter(q => q.trim()).slice(0, 3);
           setSuggestedQuestions(questions);
         } catch (e) {
