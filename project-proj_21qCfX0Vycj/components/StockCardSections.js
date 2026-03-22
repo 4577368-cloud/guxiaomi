@@ -91,7 +91,12 @@ function StockBasicInfo({ stock, brokerChannel, onBrokerChannelChange, onPriceUp
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
       <div className="flex items-center gap-1.5">
         <span className="text-[var(--text-secondary)]">购入渠道</span>
-        <select value={brokerChannel} onChange={(e) => onBrokerChannelChange(e.target.value)} className="px-2 py-0.5 text-sm border border-[var(--border-color)] rounded min-w-0 max-w-[120px]">
+        <select
+          value={brokerChannel}
+          onChange={(e) => onBrokerChannelChange(e.target.value)}
+          className="min-w-0 max-w-[140px] py-1 text-sm"
+          title="选择佣金与费率计算所用渠道"
+        >
           <option value="futu">富途</option>
           <option value="longbridge">长桥</option>
           <option value="boc">中银</option>
@@ -108,11 +113,11 @@ function StockBasicInfo({ stock, brokerChannel, onBrokerChannelChange, onPriceUp
           </span>
         ) : (
           <span className="flex items-center gap-1">
-            <button type="button" onClick={handlePriceEdit} className="font-bold text-[var(--primary-color)] hover:text-blue-700 flex items-center gap-0.5" title="点击编辑价格">
+            <button type="button" onClick={handlePriceEdit} className="font-bold text-amber-300 hover:text-yellow-300 flex items-center gap-0.5" title="点击编辑价格">
               <span dangerouslySetInnerHTML={{ __html: pricePrefix + formatPrice(stock.currentPrice || 0) }} /><div className="icon-edit text-xs"></div>
             </button>
             {onRefreshAllPrices && (
-              <button type="button" onClick={() => { try { onRefreshAllPrices(); } catch (e) { console.error(e); } }} className="text-[var(--text-secondary)] hover:text-[var(--primary-color)] p-0.5" title="获取全部持仓最新价格">
+              <button type="button" onClick={() => { try { onRefreshAllPrices(); } catch (e) { console.error(e); } }} className="text-[var(--text-secondary)] hover:text-amber-300 p-0.5" title="获取全部持仓最新价格">
                 <div className="icon-refresh-cw text-xs"></div>
               </button>
             )}
@@ -160,7 +165,7 @@ function MarketDataSection({ stock }) {
     <div className="mb-4">
       <div className="px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 text-sm">
         <div className="flex flex-wrap gap-x-4 gap-y-1">
-          <span>开盘 <strong>{openStr}</strong>{stock.marketData.isManual && <span className="text-xs bg-blue-100 text-blue-800 px-1 rounded ml-0.5">手动</span>}</span>
+          <span>开盘 <strong>{openStr}</strong>{stock.marketData.isManual && <span className="text-xs rounded border border-amber-400/50 bg-amber-500/20 px-1 text-amber-200 ml-0.5">手动</span>}</span>
           <span>最高 <strong className="text-green-600">{highStr}</strong></span>
           <span>最低 <strong className="text-red-600">{lowStr}</strong></span>
           <span>成交量 <strong>{formatVolume(stock.marketData.volume || 0)}</strong></span>
@@ -173,8 +178,8 @@ function MarketDataSection({ stock }) {
           )}
           {hasTI && (
             <>
-              <span>MA5 <strong className="text-blue-700">{prefix}{formatPrice(Number.isFinite(ma5n) ? ma5n : 0)}</strong></span>
-              <span>MA10 <strong className="text-blue-700">{prefix}{formatPrice(Number.isFinite(ma10n) ? ma10n : 0)}</strong></span>
+              <span>MA5 <strong className="text-amber-300 tabular-nums">{prefix}{formatPrice(Number.isFinite(ma5n) ? ma5n : 0)}</strong></span>
+              <span>MA10 <strong className="text-yellow-300 tabular-nums">{prefix}{formatPrice(Number.isFinite(ma10n) ? ma10n : 0)}</strong></span>
               <span>RSI(14) <strong className={rsiCls}>{rsiDisplay}</strong></span>
             </>
           )}
@@ -194,7 +199,7 @@ function HoldingsAnalysisSection({ stockAnalysis, stock }) {
       <span><span className="text-[var(--text-secondary)]">总成本</span> <strong className="text-gray-800">{formatPrice(stockAnalysis.totalCost, 2)}</strong></span>
       <span><span className="text-[var(--text-secondary)]">平均成本</span> <strong className="text-gray-800">{formatPrice(stockAnalysis.avgCost)}</strong></span>
       <span><span className="text-[var(--text-secondary)]">保本价</span> <strong className="text-orange-600">{formatPrice(stockAnalysis.breakEvenPrice)}</strong></span>
-      <span><span className="text-[var(--text-secondary)]">当前市值</span> <strong className="text-blue-600">{formatPrice(stockAnalysis.currentValue, 2)}</strong></span>
+      <span><span className="text-[var(--text-secondary)]">当前市值</span> <strong className="text-amber-300 tabular-nums">{formatPrice(stockAnalysis.currentValue, 2)}</strong></span>
       <span><span className="text-[var(--text-secondary)]">浮动盈亏</span> <strong className={stockAnalysis.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{stockAnalysis.profit >= 0 ? '+' : ''}{formatPrice(stockAnalysis.profit, 2)} ({(profitPct >= 0 ? '+' : '') + profitPctStr}%)</strong></span>
       <span><span className="text-[var(--text-secondary)]">每日盈亏</span> <strong className={stockAnalysis.dailyProfitLoss >= 0 ? 'profit-positive' : 'profit-negative'}>{stockAnalysis.dailyProfitLoss >= 0 ? '+' : ''}{formatPrice(stockAnalysis.dailyProfitLoss, 2)} ({(dailyPct >= 0 ? '+' : '') + dailyPctStr}%)</strong></span>
     </div>
@@ -228,7 +233,7 @@ function PositionsSection({
     <div className="mb-6" id={`stock-${stock.id}`}>
       <div className="flex items-center justify-between mb-4">
         <h4 className="text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2">
-          <div className="icon-layers text-lg text-[var(--primary-color)]"></div>
+          <div className="icon-layers text-lg text-amber-400"></div>
           持仓记录 ({positions.length})
         </h4>
         <button
@@ -277,7 +282,7 @@ function PositionsSection({
                       type="checkbox"
                       checked={position.enabled !== false}
                       onChange={(e) => onUpdatePosition(position.id, { ...position, enabled: e.target.checked })}
-                      className="w-4 h-4 accent-blue-500"
+                      className="w-4 h-4 accent-amber-500"
                     />
                     <div className="flex-1 grid grid-cols-4 gap-2 text-sm">
                       <div className="text-center">
@@ -307,7 +312,7 @@ function PositionsSection({
                       <button
                         type="button"
                         onClick={() => setEditingPosition(position)}
-                        className="text-blue-600 hover:text-blue-800 p-1"
+                        className="text-amber-300 hover:text-yellow-300 p-1"
                         title="编辑"
                       >
                         <div className="icon-edit text-xs"></div>
@@ -346,7 +351,7 @@ function PositionsSection({
                       <button
                         type="button"
                         onClick={() => setShowBuyFeesDetail(showBuyFeesDetail === position.id ? null : position.id)}
-                        className="text-blue-600 hover:text-blue-800 text-xs underline"
+                        className="text-amber-300 hover:text-yellow-300 text-xs font-semibold underline underline-offset-2"
                       >
                         费用详情
                       </button>
@@ -461,7 +466,7 @@ function SellSimulationSection({
           </h4>
           <button
             onClick={() => setShowFeeModal(true)}
-            className="text-blue-600 hover:text-blue-800 transition-colors text-lg font-bold"
+            className="text-amber-300 hover:text-yellow-300 transition-colors text-lg font-bold"
             title="查看费率结构"
           >
             ?
@@ -477,13 +482,13 @@ function SellSimulationSection({
       </div>
 
       {/* Net Profit Target Simulation */}
-      <div className="mb-4 p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg border border-purple-200">
-        <h5 className="text-sm font-semibold text-purple-900 mb-1 flex items-center gap-2">
-          <div className="icon-target text-sm text-purple-600"></div>
+      <div className="mb-4 rounded-xl border border-amber-400/40 bg-slate-900/45 p-4 backdrop-blur-md">
+        <h5 className="mb-1 flex items-center gap-2 text-sm font-semibold text-amber-100">
+          <div className="icon-target text-sm text-amber-400"></div>
           净盈利目标 → 卖出规模
         </h5>
-        <p className="text-[11px] text-purple-800/90 leading-relaxed mb-3">
-          以<strong>当前持仓总股数</strong>为上限：优先按<strong>现价（无则保本/均价）</strong>算出需卖<strong>多少股</strong>才能接近目标净盈利；若现价下满仓也达不到目标，会给出<strong>一次性卖光</strong>时约需的<strong>单价</strong>。不再用「成交额最小」误选成只卖 1 股。
+        <p className="mb-3 text-[11px] leading-relaxed text-slate-200">
+          以<strong className="text-slate-50">当前持仓总股数</strong>为上限：优先按<strong className="text-slate-50">现价（无则保本/均价）</strong>算出需卖<strong className="text-slate-50">多少股</strong>才能接近目标净盈利；若现价下满仓也达不到目标，会给出<strong className="text-slate-50">一次性卖光</strong>时约需的<strong className="text-slate-50">单价</strong>。不再用「成交额最小」误选成只卖 1 股。
         </p>
         
         <div className="space-y-3">
@@ -492,10 +497,10 @@ function SellSimulationSection({
               <button
                 key={amount}
                 onClick={() => handleProfitTargetSelect(amount)}
-                className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                   targetProfit === amount.toString()
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-white text-purple-700 border border-purple-300 hover:bg-purple-100'
+                    ? 'border border-amber-400/70 bg-amber-500/30 text-slate-50 shadow-[0_0_0_1px_rgba(251,191,36,0.45)]'
+                    : 'border border-white/20 bg-white/[0.08] text-slate-100 hover:border-amber-400/45 hover:bg-white/[0.12]'
                 }`}
               >
                 {stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}
@@ -506,7 +511,7 @@ function SellSimulationSection({
           </div>
           
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
+            <label className="mb-1 block text-xs font-medium text-slate-300">
               自定义目标净盈利（{currencyLabel}，{currencyHint}）
             </label>
             <input
@@ -514,46 +519,46 @@ function SellSimulationSection({
               step="100"
               value={targetProfit}
               onChange={(e) => handleProfitTargetInput(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+              className="input-field w-full rounded-lg px-3 py-2 text-sm"
               placeholder={'目标金额（' + currencyLabel + '）'}
             />
           </div>
 
           {profitSimResult ? (
-            <div className="mt-3 p-3 bg-white rounded-lg border border-purple-300">
+            <div className="mt-3 rounded-lg border border-white/20 bg-white/[0.06] p-3 backdrop-blur-sm">
               {profitSimResult.planHint && (
-                <p className="text-[11px] text-purple-900/90 leading-relaxed mb-3 pb-2 border-b border-purple-100">
+                <p className="mb-3 border-b border-white/10 pb-2 text-[11px] leading-relaxed text-slate-200">
                   {profitSimResult.planHint}
                 </p>
               )}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+              <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3">
                 <div className="col-span-2 sm:col-span-1">
-                  <span className="text-gray-600 block mb-1">卖出总价（毛）</span>
-                  <span className="font-bold text-purple-900 text-sm" dangerouslySetInnerHTML={{ __html: `${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(profitSimResult.grossAmount, 2)}` }} />
+                  <span className="mb-1 block text-slate-400">卖出总价（毛）</span>
+                  <span className="gx-num text-sm font-bold text-slate-50 tabular-nums" dangerouslySetInnerHTML={{ __html: `${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(profitSimResult.grossAmount, 2)}` }} />
                 </div>
                 <div>
-                  <span className="text-gray-600 block mb-1">实收净额</span>
-                  <span className="font-bold text-purple-900 text-sm" dangerouslySetInnerHTML={{ __html: `${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(profitSimResult.netAmount, 2)}` }} />
+                  <span className="mb-1 block text-slate-400">实收净额</span>
+                  <span className="gx-num text-sm font-bold text-slate-50 tabular-nums" dangerouslySetInnerHTML={{ __html: `${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(profitSimResult.netAmount, 2)}` }} />
                 </div>
                 <div>
-                  <span className="text-gray-600 block mb-1">该笔净盈利</span>
-                  <span className={`font-bold text-sm ${profitSimResult.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`} dangerouslySetInnerHTML={{ __html: `${profitSimResult.netProfit >= 0 ? '+' : ''}${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(profitSimResult.netProfit, 2)}` }} />
+                  <span className="mb-1 block text-slate-400">该笔净盈利</span>
+                  <span className={`gx-num text-sm font-bold tabular-nums ${profitSimResult.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} dangerouslySetInnerHTML={{ __html: `${profitSimResult.netProfit >= 0 ? '+' : ''}${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(profitSimResult.netProfit, 2)}` }} />
                 </div>
                 <div>
-                  <span className="text-gray-600 block mb-1">参考卖出单价</span>
-                  <span className="font-bold text-purple-900 text-sm" dangerouslySetInnerHTML={{ __html: `${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(profitSimResult.sellPrice, 3)}` }} />
+                  <span className="mb-1 block text-slate-400">参考卖出单价</span>
+                  <span className="gx-num text-sm font-bold text-amber-200 tabular-nums" dangerouslySetInnerHTML={{ __html: `${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(profitSimResult.sellPrice, 3)}` }} />
                 </div>
                 <div>
-                  <span className="text-gray-600 block mb-1">卖出股数</span>
-                  <span className="font-bold text-purple-900 text-sm">{profitSimResult.sellShares.toLocaleString()}</span>
+                  <span className="mb-1 block text-slate-400">卖出股数</span>
+                  <span className="gx-num text-sm font-bold text-slate-50 tabular-nums">{profitSimResult.sellShares.toLocaleString()}</span>
                 </div>
                 <div>
-                  <span className="text-gray-600 block mb-1">剩余持仓</span>
-                  <span className="font-medium text-blue-600 text-sm">{profitSimResult.remainingShares.toLocaleString()} 股</span>
+                  <span className="mb-1 block text-slate-400">剩余持仓</span>
+                  <span className="gx-num text-sm font-semibold text-yellow-300 tabular-nums">{profitSimResult.remainingShares.toLocaleString()} 股</span>
                 </div>
                 <div>
-                  <span className="text-gray-600 block mb-1">该笔收益率</span>
-                  <span className={`font-bold text-sm ${profitSimResult.profitPercent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  <span className="mb-1 block text-slate-400">该笔收益率</span>
+                  <span className={`gx-num text-sm font-bold tabular-nums ${profitSimResult.profitPercent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                     {(profitSimResult.profitPercent >= 0 ? '+' : '') +
                       (Number.isFinite(Number(profitSimResult.profitPercent))
                         ? Number(profitSimResult.profitPercent)
@@ -563,13 +568,13 @@ function SellSimulationSection({
                   </span>
                 </div>
                 <div className="col-span-2 sm:col-span-3">
-                  <span className="text-gray-600 block mb-1">手续费</span>
-                  <span className="font-medium text-orange-600 text-sm" dangerouslySetInnerHTML={{ __html: `${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(profitSimResult.totalFees, 2)}` }} />
+                  <span className="mb-1 block text-slate-400">手续费</span>
+                  <span className="gx-num text-sm font-semibold text-amber-300 tabular-nums" dangerouslySetInnerHTML={{ __html: `${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(profitSimResult.totalFees, 2)}` }} />
                 </div>
               </div>
             </div>
           ) : targetProfit && (
-            <div className="mt-3 p-3 bg-yellow-50 rounded-lg border border-yellow-300 text-xs text-yellow-800">
+            <div className="hint-glass mt-3 text-xs">
               在当前费率与持仓下，无法在合理单价范围内凑出该净盈利目标；可调低目标、或等待价格上行后再算。
             </div>
           )}

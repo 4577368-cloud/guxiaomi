@@ -50,45 +50,67 @@ function PortfolioSummary({ summary, capitalPool, onUpdateCapitalPool }) {
       setEditCapital(0);
     };
 
+    const statCard =
+      'flex min-h-0 items-center gap-2 rounded-lg border border-white/15 bg-white/[0.06] p-2 backdrop-blur-sm';
+
     return (
-      <div className="bg-white rounded-lg md:rounded-xl shadow-md border border-gray-300 p-3 md:p-4 mb-4 md:mb-6" data-name="portfolio-summary" data-file="components/PortfolioSummary.js">
-        <h2 className="text-base md:text-lg font-bold text-[var(--text-primary)] mb-2 flex items-center gap-2">
-          <div className="icon-pie-chart text-base text-[var(--primary-color)]"></div>
+      <div className="card mb-4 p-3 shadow-md md:mb-6 md:rounded-xl md:p-4" data-name="portfolio-summary" data-file="components/PortfolioSummary.js">
+        <h2 className="mb-2 flex items-center gap-2 text-base font-bold text-slate-100 md:text-lg">
+          <div className="icon-pie-chart text-base text-cyan-400"></div>
           投资组合总览
         </h2>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-          <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg border border-blue-200 min-h-0">
-            <div className="icon-wallet text-blue-600 shrink-0"></div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+          <div className={statCard + ' border-cyan-400/30'}>
+            <div className="icon-wallet shrink-0 text-cyan-400"></div>
             <div className="min-w-0">
-              <span className="text-xs text-[var(--text-secondary)]">资金池</span>
+              <span className="block text-xs font-medium text-slate-300">资金池</span>
               {isEditingCapital ? (
-                <div className="flex items-center gap-1 mt-0.5">
-                  <input type="number" step="0.01" value={typeof editCapital === 'string' ? editCapital : String(editCapital ?? '')} onChange={(e) => setEditCapital(e.target.value == null ? '' : String(e.target.value))} onKeyDown={(e) => { if (e.key === 'Enter') handleCapitalSave(); }} className="w-20 px-1 py-0.5 text-xs border border-blue-300 rounded" autoFocus />
-                  <button onClick={handleCapitalSave} className="text-green-600 p-0.5" title="保存"><div className="icon-check text-xs"></div></button>
-                  <button onClick={handleCapitalCancel} className="text-red-600 p-0.5" title="取消"><div className="icon-x text-xs"></div></button>
+                <div className="mt-0.5 flex items-center gap-1">
+                  <input type="number" step="0.01" value={typeof editCapital === 'string' ? editCapital : String(editCapital ?? '')} onChange={(e) => setEditCapital(e.target.value == null ? '' : String(e.target.value))} onKeyDown={(e) => { if (e.key === 'Enter') handleCapitalSave(); }} className="input-field w-24 rounded px-1.5 py-0.5 text-xs" autoFocus />
+                  <button onClick={handleCapitalSave} className="p-0.5 text-emerald-400" title="保存"><div className="icon-check text-xs"></div></button>
+                  <button onClick={handleCapitalCancel} className="p-0.5 text-rose-400" title="取消"><div className="icon-x text-xs"></div></button>
                 </div>
               ) : (
-                <button onClick={handleCapitalEdit} className="block text-sm font-bold text-blue-800 hover:text-blue-900 text-left">
-                  HK${formatPrice(totalCapitalHKD, 2)}{!isEditingCapital && <span className="text-xs font-normal text-gray-600 ml-1">已用 {usedPercent.toFixed(1)}%</span>}
+                <button onClick={handleCapitalEdit} className="block text-left">
+                  <span className="gx-num text-sm font-bold text-cyan-300 tabular-nums">HK${formatPrice(totalCapitalHKD, 2)}</span>
+                  {!isEditingCapital && (
+                    <span className="ml-1 text-xs font-medium text-slate-300">已用 {usedPercent.toFixed(1)}%</span>
+                  )}
                 </button>
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2 p-2 bg-orange-50 rounded-lg border border-orange-200 min-h-0">
-            <div className="icon-dollar-sign text-orange-600 shrink-0"></div>
-            <div className="min-w-0"><span className="text-xs text-[var(--text-secondary)]">总投入</span><p className="text-sm font-bold text-orange-800">{formatPrice(safeSummary.totalCost, 2)}</p></div>
+          <div className={statCard + ' border-amber-400/25'}>
+            <div className="icon-dollar-sign shrink-0 text-amber-400"></div>
+            <div className="min-w-0">
+              <span className="block text-xs font-medium text-slate-300">总投入</span>
+              <p className="gx-num text-sm font-bold tabular-nums text-amber-200">{formatPrice(safeSummary.totalCost, 2)}</p>
+            </div>
           </div>
-          <div className={`flex items-center gap-2 p-2 rounded-lg border min-h-0 ${remainingCapital >= 0 ? 'bg-cyan-50 border-cyan-200' : 'bg-red-50 border-red-200'}`}>
-            <div className={`shrink-0 ${remainingCapital >= 0 ? 'icon-piggy-bank text-cyan-600' : 'icon-alert-circle text-red-600'}`}></div>
-            <div className="min-w-0"><span className="text-xs text-[var(--text-secondary)]">剩余资金</span><p className={`text-sm font-bold ${remainingCapital >= 0 ? 'text-cyan-800' : 'text-red-800'}`}>{remainingCapital >= 0 ? '' : '-'}{formatPrice(Math.abs(remainingCapital), 2)}</p></div>
+          <div className={statCard + (remainingCapital >= 0 ? ' border-emerald-400/25' : ' border-rose-400/30')}>
+            <div className={'shrink-0 ' + (remainingCapital >= 0 ? 'icon-piggy-bank text-emerald-400' : 'icon-alert-circle text-rose-400')}></div>
+            <div className="min-w-0">
+              <span className="block text-xs font-medium text-slate-300">剩余资金</span>
+              <p className={'gx-num text-sm font-bold tabular-nums ' + (remainingCapital >= 0 ? 'text-emerald-300' : 'text-rose-300')}>
+                {remainingCapital >= 0 ? '' : '-'}{formatPrice(Math.abs(remainingCapital), 2)}
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-2 p-2 bg-purple-50 rounded-lg border border-purple-200 min-h-0">
-            <div className="icon-trending-up text-purple-600 shrink-0"></div>
-            <div className="min-w-0"><span className="text-xs text-[var(--text-secondary)]">当前市值</span><p className="text-sm font-bold text-purple-800">{formatPrice(safeSummary.totalValue, 2)}</p></div>
+          <div className={statCard + ' border-amber-400/40'}>
+            <div className="icon-trending-up shrink-0 text-amber-400"></div>
+            <div className="min-w-0">
+              <span className="block text-xs font-medium text-slate-300">当前市值</span>
+              <p className="gx-num text-sm font-bold tabular-nums text-amber-200">{formatPrice(safeSummary.totalValue, 2)}</p>
+            </div>
           </div>
-          <div className={`flex items-center gap-2 p-2 rounded-lg border min-h-0 ${(safeSummary.totalProfit || 0) >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-            <div className={`shrink-0 ${(safeSummary.totalProfit || 0) >= 0 ? 'icon-trending-up text-[var(--success-color)]' : 'icon-trending-down text-[var(--danger-color)]'}`}></div>
-            <div className="min-w-0"><span className="text-xs text-[var(--text-secondary)]">总盈亏</span><p className={`text-sm font-bold ${(safeSummary.totalProfit || 0) >= 0 ? 'profit-positive' : 'profit-negative'}`}>{(safeSummary.totalProfit || 0) >= 0 ? '+' : ''}{formatPrice(safeSummary.totalProfit, 2)} ({(safeSummary.totalProfitPercent || 0) >= 0 ? '+' : ''}{(Number(safeSummary.totalProfitPercent) || 0).toFixed(2)}%)</p></div>
+          <div className={statCard + ((safeSummary.totalProfit || 0) >= 0 ? ' border-emerald-400/25' : ' border-rose-400/30')}>
+            <div className={'shrink-0 ' + ((safeSummary.totalProfit || 0) >= 0 ? 'icon-trending-up text-emerald-400' : 'icon-trending-down text-rose-400')}></div>
+            <div className="min-w-0">
+              <span className="block text-xs font-medium text-slate-300">总盈亏</span>
+              <p className={'gx-num text-sm font-bold tabular-nums ' + ((safeSummary.totalProfit || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300')}>
+                {(safeSummary.totalProfit || 0) >= 0 ? '+' : ''}{formatPrice(safeSummary.totalProfit, 2)} ({(safeSummary.totalProfitPercent || 0) >= 0 ? '+' : ''}{(Number(safeSummary.totalProfitPercent) || 0).toFixed(2)}%)
+              </p>
+            </div>
           </div>
         </div>
       </div>

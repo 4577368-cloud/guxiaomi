@@ -17,6 +17,18 @@
     <script src="https://resource.trickle.so/vendor_lib/unpkg/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://resource.trickle.so/vendor_lib/unpkg/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          screens: {
+            sm: "640px",
+            md: "768px",
+            lg: "1024px",
+            xl: "1280px",
+          },
+        },
+      };
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
@@ -32,23 +44,24 @@
     <style type="text/tailwindcss">
         /* 勿使用 @layer theme：部分 Tailwind CDN 版本不认该层，会导致整页样式编译失败 */
         :root {
-            --primary-color: #2563eb;
-            --primary-hover: #1d4ed8;
-            --secondary-color: #f1f5f9;
-            --success-color: #059669;
-            --danger-color: #dc2626;
-            --warning-color: #d97706;
-            --text-primary: #0f172a;
-            --text-secondary: #64748b;
-            --border-color: rgba(255, 255, 255, 0.55);
-            --glass-border: rgba(255, 255, 255, 0.65);
-            --accent-news: #db2777;
-            --accent-news-hover: #be185d;
-            --accent-analysis: #0d9488;
-            --accent-analysis-hover: #0f766e;
-            --page-gradient-1: #e0e7ff;
-            --page-gradient-2: #f8fafc;
-            --page-gradient-3: #e0f2fe;
+            --primary-color: #60a5fa;
+            --primary-hover: #93c5fd;
+            --secondary-color: #475569;
+            --success-color: #4ade80;
+            --danger-color: #fb7185;
+            --warning-color: #fcd34d;
+            --text-primary: #f8fafc;
+            --text-secondary: #cbd5e1;
+            --text-muted: #94a3b8;
+            --border-color: rgba(255, 255, 255, 0.28);
+            --glass-bg: rgba(255, 255, 255, 0.12);
+            --glass-border: rgba(255, 255, 255, 0.28);
+            --accent-news: #f472b6;
+            --accent-news-hover: #ec4899;
+            --accent-analysis: #5eead4;
+            --accent-analysis-hover: #2dd4bf;
+            --page-bg-top: #0b1120;
+            --page-bg-bottom: #1e293b;
         }
 
     @layer base {
@@ -64,13 +77,14 @@
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             color: var(--text-primary);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
             min-height: 100vh;
-            background-color: var(--page-gradient-2);
+            background-color: var(--page-bg-top);
             background-image:
-                radial-gradient(1000px 520px at 8% -5%, rgba(99, 102, 241, 0.28), transparent 50%),
-                radial-gradient(800px 480px at 95% 5%, rgba(14, 165, 233, 0.22), transparent 48%),
-                radial-gradient(700px 380px at 50% 105%, rgba(79, 70, 229, 0.12), transparent 42%),
-                linear-gradient(165deg, #e8eeff 0%, #f8fafc 38%, #eef6ff 72%, #f0f9ff 100%);
+                radial-gradient(900px 480px at 15% -10%, rgba(59, 130, 246, 0.15), transparent 55%),
+                radial-gradient(700px 400px at 90% 10%, rgba(14, 165, 233, 0.12), transparent 50%),
+                linear-gradient(165deg, var(--page-bg-top) 0%, var(--page-bg-bottom) 45%, #1e293b 100%);
             background-attachment: fixed;
         }
 
@@ -81,6 +95,7 @@
         .tabular-nums {
             font-variant-numeric: tabular-nums;
         }
+
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -89,38 +104,128 @@
             animation-iteration-count: 1 !important;
             transition-duration: 0.01ms !important;
         }
+        .btn:hover:not(:disabled) {
+            transform: none !important;
+        }
+        .btn::after {
+            display: none !important;
+        }
+        .card:hover {
+            transform: none !important;
+        }
+    }
+
+    @keyframes gx-ripple {
+        to {
+            transform: scale(2.8);
+            opacity: 0;
+        }
+    }
+
+    @keyframes gx-data-pulse {
+        0%, 100% {
+            box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+        }
+        40% {
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.45), 0 0 24px rgba(59, 130, 246, 0.2);
+        }
+    }
+
+    body.gx-data-flash #root .card {
+        animation: gx-data-pulse 0.85s ease-out 1;
     }
 
     @layer components {
-        .glass-nav {
-            @apply border-b border-indigo-200/50 bg-white/80 shadow-lg backdrop-blur-2xl;
-            box-shadow: 0 10px 15px -3px rgba(30, 27, 75, 0.08), 0 4px 6px -4px rgba(30, 27, 75, 0.06);
+        /* 金额/百分比：等宽数字 + 略增字距 */
+        .gx-num {
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.02em;
         }
 
-        /* 顶栏内：快速导航条（紧凑） */
+        .glass-nav {
+            @apply border-b shadow-lg;
+            -webkit-backdrop-filter: blur(18px) saturate(165%);
+            backdrop-filter: blur(18px) saturate(165%);
+            border-color: rgba(255, 255, 255, 0.26);
+            background: linear-gradient(
+                180deg,
+                rgba(255, 255, 255, 0.16) 0%,
+                rgba(15, 23, 42, 0.52) 100%
+            );
+            box-shadow:
+                0 10px 40px -10px rgba(0, 0, 0, 0.48),
+                inset 0 1px 0 rgba(255, 255, 255, 0.14);
+        }
+
         .glass-quick-nav {
-            @apply mt-2 border-t border-indigo-200/40 pt-2;
+            @apply mt-2 border-t pt-2;
+            border-color: rgba(255, 255, 255, 0.14);
         }
         .glass-quick-nav-inner {
-            @apply flex flex-wrap items-center gap-1.5 rounded-xl px-2 py-1.5 ring-1 ring-indigo-300/30 backdrop-blur-md md:gap-2 md:px-3 md:py-2;
-            background: linear-gradient(90deg, rgba(255, 255, 255, 0.92) 0%, rgba(238, 242, 255, 0.85) 50%, rgba(255, 255, 255, 0.92) 100%);
-            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+            @apply flex flex-wrap items-center gap-1.5 rounded-2xl px-2 py-1.5 md:gap-2 md:px-3.5 md:py-2.5;
+            -webkit-backdrop-filter: blur(22px) saturate(180%);
+            backdrop-filter: blur(22px) saturate(180%);
+            background: linear-gradient(
+                155deg,
+                rgba(255, 255, 255, 0.22) 0%,
+                rgba(255, 255, 255, 0.09) 38%,
+                rgba(15, 23, 42, 0.4) 100%
+            );
+            border: 1px solid rgba(255, 255, 255, 0.34);
+            box-shadow:
+                inset 0 1px 0 rgba(255, 255, 255, 0.28),
+                0 6px 32px rgba(0, 0, 0, 0.35),
+                0 0 0 1px rgba(0, 0, 0, 0.15) inset,
+                0 0 56px -16px rgba(251, 191, 36, 0.08);
         }
 
         .modal-overlay {
-            @apply fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm;
+            @apply fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm;
         }
 
         .modal-panel {
-            @apply w-full max-w-md rounded-2xl border border-white/60 bg-white/90 p-6 shadow-2xl backdrop-blur-xl;
-            box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.2);
+            @apply w-full max-w-md rounded-2xl p-6 shadow-2xl;
+            -webkit-backdrop-filter: blur(20px) saturate(160%);
+            backdrop-filter: blur(20px) saturate(160%);
+            background: linear-gradient(
+                165deg,
+                rgba(30, 41, 59, 0.94) 0%,
+                rgba(15, 23, 42, 0.92) 100%
+            );
+            border: 1px solid rgba(255, 255, 255, 0.32);
+            box-shadow:
+                0 25px 50px -12px rgba(0, 0, 0, 0.58),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
         }
 
         .btn {
+            position: relative;
+            overflow: hidden;
             @apply inline-flex items-center justify-center px-3 py-1.5 md:px-4 md:py-2 rounded-xl font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 text-sm md:text-base;
+            --tw-ring-offset-color: #1e293b;
         }
-        .btn:active {
-            transform: scale(0.98);
+        .btn:hover:not(:disabled) {
+            transform: scale(1.03);
+        }
+        .btn:active:not(:disabled) {
+            transform: scale(0.97);
+        }
+        .btn::after {
+            content: "";
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 120%;
+            aspect-ratio: 1;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.35) 0%, transparent 65%);
+            transform: translate(-50%, -50%) scale(0);
+            opacity: 0;
+            pointer-events: none;
+        }
+        .btn:active:not(:disabled)::after {
+            animation: gx-ripple 0.55s ease-out;
         }
 
         .btn-sm {
@@ -139,8 +244,17 @@
             @apply bg-[var(--danger-color)] text-white shadow-md shadow-red-600/20 hover:bg-red-700 focus-visible:ring-red-500;
         }
 
+        /* 勿用 hover:bg-white/18：默认透明度档位无 18，Tailwind CDN 会整段编译失败 → 全页样式丢失 */
         .btn-secondary {
-            @apply border border-white/70 bg-white/50 text-slate-700 shadow-sm backdrop-blur-sm hover:bg-white/80 focus-visible:ring-slate-400;
+            @apply border border-white/25 text-slate-100 shadow-sm hover:bg-white/20 focus-visible:ring-amber-400/60;
+            -webkit-backdrop-filter: blur(12px) saturate(150%);
+            backdrop-filter: blur(12px) saturate(150%);
+            background: linear-gradient(
+                165deg,
+                rgba(255, 255, 255, 0.14) 0%,
+                rgba(255, 255, 255, 0.06) 100%
+            );
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
         }
 
         .btn-accent-news {
@@ -160,27 +274,58 @@
         }
 
         .card {
-            @apply rounded-2xl border border-indigo-100 bg-white/90 p-3 shadow-xl backdrop-blur-md transition-all duration-300 md:p-6;
-            box-shadow: 0 20px 25px -5px rgba(15, 23, 42, 0.06), 0 8px 10px -6px rgba(15, 23, 42, 0.05);
+            @apply rounded-2xl p-3 shadow-xl transition-all duration-300 md:p-6;
+            -webkit-backdrop-filter: blur(18px) saturate(165%);
+            backdrop-filter: blur(18px) saturate(165%);
+            background: linear-gradient(
+                168deg,
+                rgba(255, 255, 255, 0.17) 0%,
+                rgba(255, 255, 255, 0.08) 48%,
+                rgba(15, 23, 42, 0.34) 100%
+            );
+            border: 1px solid rgba(255, 255, 255, 0.32);
+            box-shadow:
+                0 22px 44px -14px rgba(0, 0, 0, 0.46),
+                inset 0 1px 0 rgba(255, 255, 255, 0.16);
+            color: var(--text-primary);
         }
         .card:hover {
-            border-color: rgba(199, 210, 254, 0.95);
-            box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.1);
+            border-color: rgba(251, 191, 36, 0.38);
+            -webkit-backdrop-filter: blur(20px) saturate(185%);
+            backdrop-filter: blur(20px) saturate(185%);
+            background: linear-gradient(
+                168deg,
+                rgba(255, 255, 255, 0.22) 0%,
+                rgba(255, 255, 255, 0.1) 48%,
+                rgba(15, 23, 42, 0.38) 100%
+            );
+            transform: translateY(-2px);
+            box-shadow:
+                0 28px 56px -14px rgba(0, 0, 0, 0.52),
+                0 0 40px -10px rgba(251, 191, 36, 0.14),
+                inset 0 1px 0 rgba(255, 255, 255, 0.24);
         }
 
         .input-field {
-            @apply w-full rounded-xl border border-slate-200/90 bg-white/90 px-2 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 md:px-3 md:py-2 md:text-base;
-            box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+            @apply w-full rounded-xl px-2 py-1.5 text-sm backdrop-blur-md transition-all duration-200 md:px-3 md:py-2 md:text-base;
+            background: rgba(15, 23, 42, 0.45);
+            border: 1px solid rgba(255, 255, 255, 0.26);
+            color: var(--text-primary);
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
         }
         .input-field:hover {
-            @apply border-slate-200/90 bg-white/90;
+            border-color: rgba(147, 197, 253, 0.4);
+            background: rgba(15, 23, 42, 0.55);
         }
         .input-field:focus {
-            @apply border-blue-400/80 bg-white ring-2 ring-blue-500/25 outline-none;
+            outline: none;
+            border-color: rgba(147, 197, 253, 0.85);
+            background: rgba(15, 23, 42, 0.65);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.45);
         }
 
         .profit-text {
-            @apply text-sm font-semibold tabular-nums md:text-base;
+            @apply gx-num text-sm font-semibold md:text-base;
         }
 
         .profit-positive {
@@ -192,9 +337,165 @@
         }
 
         .hint-glass {
-            @apply rounded-xl border border-blue-400/20 bg-blue-500/10 p-3 text-sm text-slate-700 backdrop-blur-sm;
+            @apply rounded-xl border p-3 text-sm backdrop-blur-md;
+            border-color: rgba(96, 165, 250, 0.45);
+            background: rgba(59, 130, 246, 0.18);
+            color: #e2e8f0;
+        }
+
+        /* 主内容：Flex + Grid 混合（断点 640 / 768 / 1024 / 1280） */
+        .app-shell {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        @media (min-width: 768px) {
+            .app-shell {
+                gap: 1.25rem;
+            }
+        }
+        .app-stock-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+        @media (min-width: 1024px) {
+            .app-stock-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 1.25rem;
+                align-items: start;
+            }
+        }
+        @media (min-width: 1280px) {
+            .app-stock-grid {
+                gap: 1.5rem;
+            }
         }
     }
+    </style>
+
+    <!-- 深色下映射 #root 内 Tailwind 浅色工具类（避免逐文件改 class） -->
+    <style>
+        #root .bg-gray-50,
+        #root .bg-slate-50 {
+            background-color: rgba(255, 255, 255, 0.08) !important;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        #root .bg-white {
+            background-color: rgba(255, 255, 255, 0.08) !important;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        #root .border-gray-200,
+        #root .border-gray-300,
+        #root .border-slate-200 {
+            border-color: rgba(255, 255, 255, 0.18) !important;
+        }
+        #root .text-gray-800,
+        #root .text-gray-900 {
+            color: #f1f5f9 !important;
+        }
+        #root .text-gray-700 {
+            color: #e2e8f0 !important;
+        }
+        #root .text-gray-600 {
+            color: #d8dee9 !important;
+        }
+        #root .text-gray-500 {
+            color: #b4c0d0 !important;
+        }
+        #root .text-gray-400 {
+            color: #94a3b8 !important;
+        }
+        #root .text-gray-300 {
+            color: #7c8ca0 !important;
+        }
+        #root .from-gray-50 {
+            --tw-gradient-from: rgba(255, 255, 255, 0.1) var(--tw-gradient-from-position);
+            --tw-gradient-to: rgba(255, 255, 255, 0.05) var(--tw-gradient-to-position);
+            --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+        }
+        #root .to-blue-50 {
+            --tw-gradient-to: rgba(59, 130, 246, 0.15) var(--tw-gradient-to-position);
+        }
+        #root .bg-blue-50 {
+            background-color: rgba(59, 130, 246, 0.12) !important;
+        }
+        #root .border-blue-200,
+        #root .border-blue-300 {
+            border-color: rgba(96, 165, 250, 0.38) !important;
+        }
+        #root .bg-orange-50 {
+            background-color: rgba(251, 146, 60, 0.12) !important;
+        }
+        #root .border-orange-200 {
+            border-color: rgba(251, 146, 60, 0.35) !important;
+        }
+        #root .bg-cyan-50 {
+            background-color: rgba(34, 211, 238, 0.1) !important;
+        }
+        #root .border-cyan-200 {
+            border-color: rgba(34, 211, 238, 0.35) !important;
+        }
+        #root .bg-green-50 {
+            background-color: rgba(16, 185, 129, 0.12) !important;
+        }
+        #root .border-green-200 {
+            border-color: rgba(52, 211, 153, 0.35) !important;
+        }
+        #root .bg-yellow-50,
+        #root .bg-amber-50 {
+            background-color: rgba(251, 191, 36, 0.1) !important;
+        }
+        #root .border-yellow-300,
+        #root .border-amber-200 {
+            border-color: rgba(251, 191, 36, 0.35) !important;
+        }
+        #root .text-yellow-800,
+        #root .text-amber-900 {
+            color: #fde68a !important;
+        }
+        /* 原 purple 映射改为青灰玻璃，避免整页紫色调 */
+        #root .bg-purple-50 {
+            background-color: rgba(51, 65, 85, 0.35) !important;
+        }
+        #root .border-purple-200,
+        #root .border-purple-300 {
+            border-color: rgba(148, 163, 184, 0.35) !important;
+        }
+        #root .from-purple-50,
+        #root .to-pink-50 {
+            --tw-gradient-from: rgba(56, 189, 248, 0.1) var(--tw-gradient-from-position);
+            --tw-gradient-to: rgba(148, 163, 184, 0.08) var(--tw-gradient-to-position);
+        }
+        /* 原生 select 勿只改字色：白底 + 浅色字会完全看不清 */
+        #root select.input-field,
+        #root select {
+            color: #f8fafc !important;
+            background-color: rgba(15, 23, 42, 0.82) !important;
+            border: 1px solid rgba(255, 255, 255, 0.28) !important;
+            border-radius: 0.5rem;
+            padding: 0.25rem 0.5rem;
+            -webkit-appearance: none;
+            appearance: none;
+            background-image: linear-gradient(45deg, transparent 50%, #94a3b8 50%),
+                linear-gradient(135deg, #94a3b8 50%, transparent 50%);
+            background-position: calc(100% - 14px) calc(50% - 2px), calc(100% - 9px) calc(50% - 2px);
+            background-size: 5px 5px, 5px 5px;
+            background-repeat: no-repeat;
+            padding-right: 1.75rem;
+        }
+        #root select:focus {
+            outline: none;
+            border-color: rgba(56, 189, 248, 0.65) !important;
+            box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35);
+        }
+        #root select option {
+            background-color: #1e293b;
+            color: #f8fafc;
+        }
     </style>
 
     <link rel="icon" href="https://app.trickle.so/storage/app/46bdde6b-ce0a-436d-9861-f705820c2391.png">

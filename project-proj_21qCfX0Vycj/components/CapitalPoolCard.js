@@ -25,7 +25,7 @@ function CapitalPoolCard({ capitalPool, onUpdate }) {
       <div className="bg-white rounded-lg md:rounded-xl shadow-md border border-gray-300 p-3 md:p-6 mb-4 md:mb-6" data-name="capital-pool-card" data-file="components/CapitalPoolCard.js">
         <div className="flex items-center justify-between mb-3 md:mb-4">
           <h2 className="text-base md:text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
-            <div className="icon-wallet text-base md:text-lg text-[var(--primary-color)]"></div>
+            <div className="icon-wallet text-base md:text-lg text-amber-400"></div>
             我的资金池
           </h2>
           <button
@@ -82,9 +82,9 @@ function CapitalPoolCard({ capitalPool, onUpdate }) {
               <span className="text-xs text-gray-600 block mb-1">美元</span>
               <p className="text-base md:text-lg font-bold text-green-800">${(capitalPool?.usd || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
             </div>
-            <div className="text-center p-3 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+            <div className="text-center p-3 bg-gradient-to-br from-amber-500/15 to-amber-600/10 rounded-lg border border-amber-400/35">
               <span className="text-xs text-gray-600 block mb-1">港币</span>
-              <p className="text-base md:text-lg font-bold text-blue-800">HK${(capitalPool?.hkd || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+              <p className="text-base md:text-lg font-bold text-amber-300 tabular-nums">HK${(capitalPool?.hkd || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
             </div>
             <div className="text-center p-3 bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg border border-orange-200">
               <span className="text-xs text-gray-600 block mb-1">人民币</span>

@@ -26,6 +26,15 @@
   }
 })();
 
+/** 深色玻璃卡片上图表：坐标轴与图例用高对比浅色 */
+var GX_CHART_AXIS_COLOR = '#e8eef7';
+var GX_CHART_GRID_COLOR = 'rgba(241, 245, 249, 0.14)';
+var GX_CHART_GRID_ZERO = 'rgba(248, 250, 252, 0.35)';
+/** 收盘价折线：亮青蓝，避免发灰的 blue-600 */
+var GX_PRICE_LINE = 'rgba(56, 189, 248, 1)';
+var GX_PRICE_FILL = 'rgba(56, 189, 248, 0.18)';
+var GX_PRICE_POINT = '#7dd3fc';
+
 function StockCharts({ stock }) {
   const dailyProfitChartRef = React.useRef(null);
   const priceTrendChartRef = React.useRef(null);
@@ -285,6 +294,11 @@ function StockCharts({ stock }) {
               clip: false,
             },
             tooltip: {
+              backgroundColor: 'rgba(15, 23, 42, 0.94)',
+              titleColor: '#f8fafc',
+              bodyColor: '#e2e8f0',
+              borderColor: 'rgba(148, 163, 184, 0.35)',
+              borderWidth: 1,
               callbacks: {
                 label: function (context) {
                   var value = context.parsed && context.parsed.y;
@@ -307,10 +321,20 @@ function StockCharts({ stock }) {
             },
           },
           scales: {
+            x: {
+              ticks: {
+                color: GX_CHART_AXIS_COLOR,
+                maxRotation: 45,
+                font: { size: 11, weight: '600' },
+              },
+              grid: { color: GX_CHART_GRID_COLOR },
+            },
             y: {
               beginAtZero: true,
               grace: '10%',
               ticks: {
+                color: GX_CHART_AXIS_COLOR,
+                font: { size: 11, weight: '600' },
                 callback: function (value) {
                   var n = Number(value);
                   if (!Number.isFinite(n)) n = 0;
@@ -330,9 +354,9 @@ function StockCharts({ stock }) {
               grid: {
                 color: function (context) {
                   if (context.tick.value === 0) {
-                    return 'rgba(0, 0, 0, 0.3)';
+                    return GX_CHART_GRID_ZERO;
                   }
-                  return 'rgba(0, 0, 0, 0.1)';
+                  return GX_CHART_GRID_COLOR;
                 },
               },
             },
@@ -397,13 +421,16 @@ function StockCharts({ stock }) {
             {
               label: '收盘价',
               data: prices,
-              borderColor: 'rgba(37, 99, 235, 1)',
-              backgroundColor: 'rgba(37, 99, 235, 0.12)',
-              borderWidth: 2,
+              borderColor: GX_PRICE_LINE,
+              backgroundColor: GX_PRICE_FILL,
+              borderWidth: 3,
               fill: true,
               tension: 0.35,
-              pointRadius: 3,
-              pointHoverRadius: 5,
+              pointRadius: 4,
+              pointHoverRadius: 6,
+              pointBackgroundColor: GX_PRICE_POINT,
+              pointBorderColor: '#f8fafc',
+              pointBorderWidth: 1.5,
             },
           ],
         },
@@ -417,16 +444,20 @@ function StockCharts({ stock }) {
             legend: {
               display: true,
               position: 'top',
-              labels: { boxWidth: 12, font: { size: 11 } },
+              labels: {
+                boxWidth: 14,
+                color: '#f1f5f9',
+                font: { size: 12, weight: '700' },
+              },
             },
             datalabels: {
               display: showPriceLabel,
               formatter: function (value) {
                 return formatMoney(value, priceDecimals);
               },
-              color: '#172554',
-              backgroundColor: 'rgba(255,255,255,0.94)',
-              borderColor: 'rgba(37, 99, 235, 0.5)',
+              color: '#0c4a6e',
+              backgroundColor: 'rgba(255,255,255,0.96)',
+              borderColor: 'rgba(56, 189, 248, 0.75)',
               borderWidth: 1,
               borderRadius: 4,
               padding: { top: 2, right: 5, bottom: 2, left: 5 },
@@ -440,6 +471,11 @@ function StockCharts({ stock }) {
               clip: false,
             },
             tooltip: {
+              backgroundColor: 'rgba(15, 23, 42, 0.94)',
+              titleColor: '#f8fafc',
+              bodyColor: '#e2e8f0',
+              borderColor: 'rgba(56, 189, 248, 0.4)',
+              borderWidth: 1,
               callbacks: {
                 title: function (items) {
                   var i = items && items[0] && items[0].dataIndex;
@@ -456,14 +492,25 @@ function StockCharts({ stock }) {
             },
           },
           scales: {
+            x: {
+              ticks: {
+                color: GX_CHART_AXIS_COLOR,
+                maxRotation: 45,
+                font: { size: 11, weight: '600' },
+              },
+              grid: { color: GX_CHART_GRID_COLOR },
+            },
             y: {
               ticks: {
+                color: GX_CHART_AXIS_COLOR,
+                font: { size: 11, weight: '600' },
                 callback: function (value) {
                   var n = Number(value);
                   if (!Number.isFinite(n)) n = 0;
                   return formatMoney(n, priceDecimals);
                 },
               },
+              grid: { color: GX_CHART_GRID_COLOR },
             },
           },
         },
@@ -483,9 +530,9 @@ function StockCharts({ stock }) {
 
   if (!effectiveHistory || effectiveHistory.length === 0) {
     return (
-      <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200 text-center">
-        <div className="icon-bar-chart text-4xl text-gray-300 mb-2 flex justify-center" />
-        <p className="text-sm text-gray-500">
+      <div className="card mb-6 p-4 text-center">
+        <div className="icon-bar-chart mb-2 flex justify-center text-4xl text-slate-500" />
+        <p className="text-sm text-slate-300">
           暂无历史数据，请刷新后获取价格。若已获取请稍等数秒。
         </p>
       </div>
@@ -496,29 +543,29 @@ function StockCharts({ stock }) {
 
   return (
     <div className="mb-6 space-y-4">
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <div className="flex items-center justify-between mb-2">
-          <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-            <div className="icon-bar-chart text-sm text-green-600" />
+      <div className="card p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-100">
+            <div className="icon-bar-chart text-sm text-emerald-400" />
             每日盈亏（按持仓推算）
           </h4>
           {hasMoreData && (
-            <span className="text-xs text-gray-500">最近约 30 天</span>
+            <span className="text-xs font-medium text-slate-300">最近约 30 天</span>
           )}
         </div>
-        <p className="text-xs text-gray-500 mb-2 leading-relaxed">
+        <p className="mb-2 text-xs leading-relaxed text-slate-200">
           柱状图表示：若持仓不变，仅因股价变动，每个交易日大约盈亏多少（与上方持仓分析一致）。
         </p>
         {profitSummary && (
-          <div className="mb-2 rounded-md bg-emerald-50/60 border border-emerald-100/80 px-2.5 py-1.5 text-sm">
-            <span className="text-gray-600">最近交易日 </span>
-            <span className="font-mono text-gray-800">{profitSummary.date}</span>
-            <span className="text-gray-600"> 当日约 </span>
+          <div className="mb-2 rounded-md border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1.5 text-sm">
+            <span className="text-slate-300">最近交易日 </span>
+            <span className="font-mono text-slate-100">{profitSummary.date}</span>
+            <span className="text-slate-300"> 当日约 </span>
             <span
               className={
                 profitSummary.profit >= 0
-                  ? 'font-semibold text-red-600'
-                  : 'font-semibold text-emerald-700'
+                  ? 'font-semibold text-rose-400'
+                  : 'font-semibold text-emerald-400'
               }
             >
               {profitSummary.profit >= 0 ? '+' : ''}
@@ -531,36 +578,36 @@ function StockCharts({ stock }) {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 mb-2">
-          <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-            <div className="icon-trending-up text-sm text-blue-600" />
+      <div className="card p-4">
+        <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-100">
+            <div className="icon-trending-up text-sm text-amber-400" />
             收盘价走势
           </h4>
-          <span className="text-xs text-gray-500">
+          <span className="text-xs font-medium text-slate-300">
             最近约 {Math.min(windowSize, effectiveHistory.length)} 个交易日
           </span>
         </div>
-        <p className="text-xs text-gray-500 mb-2 leading-relaxed">
+        <p className="mb-2 text-xs leading-relaxed text-slate-200">
           下图只有一条线：历史收盘价。关键数字已写在下面，无需对准曲线才能看价。
         </p>
         {priceSummary && (
-          <div className="mb-3 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2.5 space-y-1.5">
-            <div className="text-sm text-slate-800">
-              <span className="text-gray-500">最新 </span>
-              <span className="font-mono font-medium">{priceSummary.lastDate}</span>
-              <span className="mx-1.5 text-gray-300">|</span>
-              <span className="font-mono text-lg font-bold text-blue-700 tabular-nums">
+          <div className="mb-3 space-y-1.5 rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2.5 backdrop-blur-sm">
+            <div className="text-sm text-slate-100">
+              <span className="text-slate-400">最新 </span>
+              <span className="font-mono font-medium text-slate-200">{priceSummary.lastDate}</span>
+              <span className="mx-1.5 text-slate-500">|</span>
+              <span className="gx-num font-mono text-lg font-bold text-amber-300 tabular-nums">
                 {formatMoney(priceSummary.lastPrice)}
               </span>
               {priceSummary.dayChg != null &&
                 Number.isFinite(priceSummary.dayChg) && (
                   <span
                     className={
-                      'ml-2 text-sm font-medium tabular-nums ' +
+                      'gx-num ml-2 text-sm font-medium tabular-nums ' +
                       (priceSummary.dayChg >= 0
-                        ? 'text-red-600'
-                        : 'text-emerald-600')
+                        ? 'text-rose-400'
+                        : 'text-emerald-400')
                     }
                   >
                     较前一交易日{' '}
@@ -580,12 +627,12 @@ function StockCharts({ stock }) {
                   </span>
                 )}
             </div>
-            <div className="text-xs text-gray-600 leading-relaxed">
+            <div className="text-xs leading-relaxed text-slate-300">
               区间内最低 {formatMoney(priceSummary.min)}（{priceSummary.minDate || '—'}）
-              <span className="mx-1.5 text-gray-300">·</span>
+              <span className="mx-1.5 text-slate-500">·</span>
               最高 {formatMoney(priceSummary.max)}（{priceSummary.maxDate || '—'}）
             </div>
-            <p className="text-[11px] text-gray-400">
+            <p className="text-[11px] text-slate-300">
               悬停曲线可查看任意一天的收盘价。
             </p>
           </div>

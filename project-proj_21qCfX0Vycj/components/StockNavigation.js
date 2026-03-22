@@ -18,10 +18,10 @@ function StockNavigation({ portfolio }) {
       <div className="glass-quick-nav" data-name="stock-navigation" data-file="components/StockNavigation.js">
         <div className="glass-quick-nav-inner">
           <div className="flex shrink-0 items-center gap-1.5">
-            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-600/10 ring-1 ring-indigo-500/20 md:h-7 md:w-7">
-              <div className="icon-navigation text-sm text-indigo-600 md:text-base"></div>
+            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400/35 to-amber-600/15 shadow-[0_0_16px_-4px_rgba(251,191,36,0.55)] ring-1 ring-amber-300/40 md:h-7 md:w-7">
+              <div className="icon-navigation text-sm text-amber-50 drop-shadow-sm md:text-base"></div>
             </div>
-            <span className="font-display text-[11px] font-bold uppercase tracking-wide text-indigo-600/90 md:text-xs">
+            <span className="font-display text-[11px] font-bold uppercase tracking-[0.12em] text-white drop-shadow-sm md:text-xs">
               快速导航
             </span>
           </div>
@@ -36,16 +36,16 @@ function StockNavigation({ portfolio }) {
                   type="button"
                   onClick={() => scrollToStock(stock.id)}
                   title={`跳转到 ${stock.symbol}`}
-                  className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums shadow-sm transition-all duration-200 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 md:px-2.5 md:py-1 md:text-sm ${
+                  className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-bold tabular-nums transition-all duration-200 hover:scale-[1.04] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:px-2.5 md:py-1 md:text-sm ${
                     isProfit
-                      ? "border border-emerald-300/60 bg-gradient-to-b from-emerald-50 to-emerald-100/90 text-emerald-900 hover:border-emerald-400/80 hover:from-emerald-100 hover:to-emerald-50"
-                      : "border border-rose-300/60 bg-gradient-to-b from-rose-50 to-rose-100/90 text-rose-900 hover:border-rose-400/80 hover:from-rose-100 hover:to-rose-50"
+                      ? "border border-emerald-300/60 bg-gradient-to-br from-emerald-400/30 to-emerald-700/20 text-white shadow-[0_0_22px_-6px_rgba(52,211,153,0.55)] hover:border-emerald-200/70 hover:from-emerald-400/42 hover:to-emerald-700/28 hover:shadow-[0_0_28px_-4px_rgba(52,211,153,0.65)]"
+                      : "border border-rose-300/60 bg-gradient-to-br from-rose-400/30 to-rose-700/22 text-white shadow-[0_0_22px_-6px_rgba(251,113,133,0.5)] hover:border-rose-200/70 hover:from-rose-400/42 hover:to-rose-700/30 hover:shadow-[0_0_28px_-4px_rgba(251,113,133,0.6)]"
                   }`}
                 >
-                  <span>{stock.symbol}</span>
+                  <span className="drop-shadow-sm">{stock.symbol}</span>
                   <span
-                    className={`text-sm font-bold leading-none md:text-base ${
-                      isProfit ? "text-emerald-600" : "text-rose-600"
+                    className={`text-sm font-extrabold leading-none md:text-base ${
+                      isProfit ? "text-emerald-100" : "text-rose-100"
                     }`}
                     aria-hidden
                   >

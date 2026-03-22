@@ -466,12 +466,32 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
           <div className="mt-2 flex flex-wrap items-center gap-1.5 text-sm">
             <span className="text-[var(--text-secondary)]">备注关键词：</span>
             {keywords.map((kw, idx) => {
-              const tagColors = ['#059669', '#2563eb', '#7c3aed', '#dc2626', '#ea580c', '#0891b2', '#4f46e5'];
-              const color = tagColors[idx % tagColors.length];
+              const tagStyles = [
+                { bg: 'rgba(52, 211, 153, 0.28)', text: '#d1fae5', border: 'rgba(52, 211, 153, 0.65)' },
+                { bg: 'rgba(56, 189, 248, 0.28)', text: '#e0f2fe', border: 'rgba(56, 189, 248, 0.65)' },
+                { bg: 'rgba(251, 191, 36, 0.28)', text: '#fef3c7', border: 'rgba(251, 191, 36, 0.65)' },
+                { bg: 'rgba(251, 113, 133, 0.28)', text: '#ffe4e6', border: 'rgba(251, 113, 133, 0.65)' },
+                { bg: 'rgba(45, 212, 191, 0.28)', text: '#ccfbf1', border: 'rgba(45, 212, 191, 0.65)' },
+                { bg: 'rgba(249, 115, 22, 0.28)', text: '#ffedd5', border: 'rgba(249, 115, 22, 0.65)' },
+                { bg: 'rgba(14, 165, 233, 0.28)', text: '#e0f2fe', border: 'rgba(14, 165, 233, 0.65)' },
+              ];
+              const s = tagStyles[idx % tagStyles.length];
               return (
-                <span key={idx} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded border" style={{ backgroundColor: color + '18', color, borderColor: color + '60' }}>
+                <span
+                  key={idx}
+                  className="inline-flex items-center gap-0.5 rounded-md border px-2 py-0.5 text-xs font-semibold shadow-sm"
+                  style={{ backgroundColor: s.bg, color: s.text, borderColor: s.border }}
+                >
                   {kw}
-                  <button type="button" onClick={() => handleRemoveKeyword(idx)} className="opacity-70 hover:opacity-100 p-0.5" aria-label="删除" style={{ color }}>×</button>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveKeyword(idx)}
+                    className="ml-0.5 rounded px-0.5 hover:bg-white/15"
+                    aria-label="删除"
+                    style={{ color: s.text }}
+                  >
+                    ×
+                  </button>
                 </span>
               );
             })}
@@ -480,7 +500,7 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
               value={newKeyword}
               onChange={(e) => setNewKeyword(e.target.value)}
               placeholder="添加关键词（如美团、外卖）"
-              className="w-32 px-2 py-0.5 text-sm border border-gray-300 rounded"
+              className="input-field w-36 py-1 text-sm"
               onKeyDown={(e) => { if (e.key === 'Enter') { handleAddKeyword(newKeyword); setNewKeyword(''); } }}
             />
             <button type="button" onClick={() => { handleAddKeyword(newKeyword); setNewKeyword(''); }} className="btn btn-secondary btn-sm">添加</button>

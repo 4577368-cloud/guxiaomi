@@ -5,11 +5,20 @@
 - **不要使用 `@layer theme`**：当前使用的 Tailwind Play CDN（`type="text/tailwindcss"`）多为 v3 行为，不识别 `theme` 层会导致**整段 Tailwind 编译失败、全页无 utility**。设计变量放在顶层的 `:root { }` 即可。
 - `@apply` 内避免过于生僻的组合（如极低透明度的 `shadow-*/*`）；复杂阴影可改用普通 `box-shadow`。
 
-## ✅ 第一阶段（已完成）
+## ✅ 深色 + 玻璃 + 动效 + 响应式（当前）
 
-- `project-proj_21qCfX0Vycj/index.html`：Inter + Plus Jakarta Sans、**加强版页面渐变**、`html { scroll-padding-top }`（锚点不被顶栏挡住）、`prefers-reduced-motion`、设计 token（`:root`）、`.glass-nav`、`.glass-quick-nav` / `.glass-quick-nav-inner`、`.modal-*`、玻璃 `.card`、`.input-field` / `.btn-*`、`.hint-glass`、`.tabular-nums`。
-- `app.js`：顶栏 `sticky` + 玻璃；**快速导航（`StockNavigation`）并入顶栏、与主操作区同列置顶**；标题 `font-display`；新闻/分析 token 按钮；`<main>` 布局；空状态玻璃卡片；错误边界玻璃面板。
-- `StockNavigation.js`：**玻璃渐变条 + 圆角胶囊股码**、图标徽标、hover 微抬起；仍仅在持仓 **多于 1 只** 时显示。
+- **页面**：背景渐变 `#0F172A → #1E293B`，主文字 `#F1F5F9`（`:root` token）。
+- **玻璃**：顶栏 / 卡片 / 模态 / 输入框等统一 `backdrop-blur-md`（顶栏 `blur` 更强）+ `bg-white/10` 量级 + `border-white/20`。
+- **按钮**：悬停 `scale(1.03)`、点击 `scale(0.97)` + `::after` 涟漪动画（`prefers-reduced-motion` 下关闭）。
+- **数据刷新**：批量「刷新价格」完成后 `body` 短暂加 `gx-data-flash`，`.card` 蓝色描边脉冲（`gx-data-pulse`）。
+- **布局**：`tailwind.config` 显式断点 `640 / 768 / 1024 / 1280`；`main` 使用 `.app-shell`（Flex 纵排）；持仓列表 `.app-stock-grid` 在 **≥1024px** 为 **2 列 CSS Grid**，`&lt;1024` 为单列。
+- **#root 映射**：第二段 `<style>` 将大量 `bg-gray-50`、`text-gray-*`、`border-gray-*` 等浅色类映射为深色玻璃可读色；**文案灰阶已整体提亮**（`text-gray-500/600` 等）便于辨认。
+- **仓位分配**：`PositionAllocationCard` 改为 **环形图（doughnut）+ 右侧紧凑图例**，去掉大块双卡片与长进度条区；配色与主图例色点一致。
+- **数字**：`.gx-num`（等宽数字 + 略增字距）+ 全局 token 提亮（主字 `#f8fafc`、涨跌 `#4ade80` / `#fb7185`）。
+
+## ✅ 第一阶段（历史）
+
+- 顶栏 sticky、快速导航、`scroll-padding-top`、`StockNavigation` 等仍保留。
 - `AddStockModal.js` / `PositionForm.js`：统一 `modal-overlay` + `modal-panel`。
 
 ## 🔜 第二阶段（建议下一步）

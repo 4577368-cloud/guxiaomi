@@ -1,3 +1,97 @@
+/** localStorage / 云端反序列化后 positions 偶为 JSON 字符串 */
+function coercePositionsArray(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const p = JSON.parse(raw);
+      return Array.isArray(p) ? p : [];
+    } catch (_) {
+      return [];
+    }
+  }
+  return [];
+}
+
+/** 同一市场下港股 03690 与 3690 视为同一标的，便于合并多笔持仓到一条卡片 */
+function normalizePortfolioSymbol(symbol, market) {
+  const s = String(symbol || '').trim();
+  const m = String(market || '').toUpperCase();
+  if (m === 'HK' && /^\d+$/.test(s)) {
+    const n = parseInt(s, 10);
+    return Number.isFinite(n) ? String(n).padStart(5, '0') : s.toUpperCase();
+  }
+  if (m === 'CN' && /^\d+$/.test(s)) {
+    const n = parseInt(s, 10);
+    return Number.isFinite(n) ? String(n).padStart(6, '0') : s.toUpperCase();
+  }
+  return s.toUpperCase();
+}
+
+function portfolioMergeKey(stock) {
+  const m = String(stock.market || '').toUpperCase();
+  return m + '::' + normalizePortfolioSymbol(stock.symbol, stock.market);
+}
+
+function mergePriceHistoryByDate(a, b) {
+  const m = new Map();
+  (Array.isArray(a) ? a : []).forEach((item) => {
+    if (item && item.date) m.set(item.date, item);
+  });
+  (Array.isArray(b) ? b : []).forEach((item) => {
+    if (item && item.date) m.set(item.date, item);
+  });
+  return Array.from(m.values())
+    .slice()
+    .sort((x, y) => new Date(x.date).getTime() - new Date(y.date).getTime())
+    .slice(-365);
+}
+
+/**
+ * 若用户曾用「03690」「3690」各加过一次同一只股票，会得到两条 portfolio 记录；
+ * 合并为一条并拼接 positions，持仓明细汇总才能看到全部分批。
+ */
+function mergeDuplicatePortfolioStocks(portfolio) {
+  if (!Array.isArray(portfolio) || portfolio.length === 0) return { list: portfolio, changed: false };
+  const map = new Map();
+  for (const stock of portfolio) {
+    if (!stock) continue;
+    const positions = coercePositionsArray(stock.positions);
+    const sym = normalizePortfolioSymbol(stock.symbol, stock.market);
+    const key = portfolioMergeKey({ ...stock, symbol: sym });
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, { ...stock, symbol: sym, positions: [...positions] });
+    } else {
+      const mergedPos = [...coercePositionsArray(existing.positions), ...positions];
+      const nextPrice = Number(stock.currentPrice);
+      const usePrice =
+        Number.isFinite(nextPrice) && nextPrice > 0
+          ? nextPrice
+          : existing.currentPrice;
+      map.set(key, {
+        ...existing,
+        id: existing.id,
+        symbol: sym,
+        positions: mergedPos,
+        currentPrice: usePrice,
+        priceHistory: mergePriceHistoryByDate(existing.priceHistory, stock.priceHistory),
+        marketData:
+          stock.marketData && Object.keys(stock.marketData || {}).length
+            ? { ...existing.marketData, ...stock.marketData }
+            : existing.marketData,
+        technicalIndicators: stock.technicalIndicators || existing.technicalIndicators,
+        brokerChannel: stock.brokerChannel || existing.brokerChannel,
+        positionEventHistory: [
+          ...(existing.positionEventHistory || []),
+          ...(stock.positionEventHistory || []),
+        ],
+      });
+    }
+  }
+  const list = Array.from(map.values());
+  return { list, changed: list.length !== portfolio.length };
+}
+
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -15,10 +109,10 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'linear-gradient(165deg, #eef2ff 0%, #f8fafc 50%, #f0f9ff 100%)' }}>
-          <div className="text-center max-w-md rounded-2xl border border-white/60 bg-white/75 p-8 shadow-xl shadow-slate-900/10 backdrop-blur-xl">
-            <h1 className="font-display text-xl font-bold text-slate-900 mb-2">页面渲染错误</h1>
-            <p className="text-gray-600 text-sm mb-4">
+        <div className="flex min-h-screen items-center justify-center px-4" style={{ background: 'linear-gradient(165deg, #0f172a 0%, #1e293b 100%)' }}>
+          <div className="max-w-md rounded-2xl border border-white/20 bg-white/10 p-8 text-center shadow-xl backdrop-blur-md">
+            <h1 className="font-display mb-2 text-xl font-bold text-slate-100">页面渲染错误</h1>
+            <p className="mb-4 text-sm text-slate-400">
               可点击刷新重试。若反复出现，请打开开发者工具查看控制台报错。
             </p>
             <button
@@ -91,7 +185,10 @@ function App() {
     try {
       const localPortfolio = loadPortfolio();
       normalized = (Array.isArray(localPortfolio) ? localPortfolio : []).map(stock => {
-        const persistedHistory = window.loadStockPriceHistory ? window.loadStockPriceHistory(stock.symbol, stock.market) : [];
+        const symNorm = normalizePortfolioSymbol(stock.symbol, stock.market);
+        const persistedHistory = window.loadStockPriceHistory
+          ? window.loadStockPriceHistory(symNorm, stock.market)
+          : [];
 
         // 合并本次存储与 localStorage 历史，优先保留本次已存在日期数据
         const combinedHistoryMap = new Map();
@@ -109,11 +206,19 @@ function App() {
 
         return {
           ...stock,
+          symbol: symNorm,
+          positions: coercePositionsArray(stock.positions),
           priceHistory: mergedHistory
         };
       });
+      const mergedDup = mergeDuplicatePortfolioStocks(normalized);
+      if (mergedDup.changed) {
+        normalized = mergedDup.list;
+      }
       // 组合数据 + 存量历史同步，以便重新启动后无需再手动获取历史数据
-      if (JSON.stringify(normalized) !== JSON.stringify(localPortfolio)) {
+      const shouldSaveNorm =
+        JSON.stringify(normalized) !== JSON.stringify(localPortfolio) || mergedDup.changed;
+      if (shouldSaveNorm) {
         savePortfolio(normalized);
       }
       setPortfolio(normalized);
@@ -147,8 +252,10 @@ function App() {
   const handleAddStock = (stockData) => {
     if (!stockData || !stockData.symbol) return;
     const id = Date.now().toString();
+    const symNorm = normalizePortfolioSymbol(stockData.symbol, stockData.market);
     const newStock = {
       ...stockData,
+      symbol: symNorm,
       id,
       positions: [],
       currentPrice: Number(stockData.currentPrice) || 0,
@@ -243,6 +350,12 @@ function App() {
         setPortfolio(updatedPortfolio);
         savePortfolio(updatedPortfolio);
         console.log('批量刷新完成');
+        if (typeof document !== 'undefined') {
+          document.body.classList.add('gx-data-flash');
+          window.setTimeout(function () {
+            document.body.classList.remove('gx-data-flash');
+          }, 900);
+        }
       } catch (e) {
         console.error('批量刷新异常', e);
       } finally {
@@ -269,7 +382,7 @@ function App() {
 
     return (
       <>
-        <div className="min-h-screen" data-name="app" data-file="app.js">
+        <div className="flex min-h-screen flex-col" data-name="app" data-file="app.js">
           <header className="glass-nav sticky top-0 z-40">
             <div className="container mx-auto px-2 py-2 md:px-4 md:py-2.5">
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between md:gap-3">
@@ -333,7 +446,7 @@ function App() {
             </div>
           </header>
 
-          <main className="container mx-auto px-2 pb-8 pt-4 md:px-4 md:pb-12 md:pt-6">
+          <main className="app-shell container mx-auto px-2 pb-8 pt-3 md:px-4 md:pb-12 md:pt-4">
           {/* Position Allocation Card */}
           {portfolio.length > 0 && (
             <PositionAllocationCard 
@@ -356,15 +469,15 @@ function App() {
             <HoldingsSummaryTable portfolio={portfolio} />
           )}
 
-          {/* Stock Cards */}
-          <div className="space-y-6">
+          {/* Stock Cards：lg+ 双列 Grid */}
+          <div className="app-stock-grid">
             {portfolio.length === 0 ? (
-              <div className="rounded-2xl border border-white/60 bg-white/45 px-4 py-10 text-center shadow-xl shadow-slate-900/5 backdrop-blur-md md:py-14">
-                <div className="icon-trending-up mb-3 flex justify-center text-4xl text-indigo-300 md:mb-4 md:text-6xl"></div>
-                <h3 className="font-display text-lg font-semibold text-slate-600 md:text-xl mb-2">
+              <div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-10 text-center shadow-xl backdrop-blur-md md:py-14">
+                <div className="icon-trending-up mb-3 flex justify-center text-4xl text-blue-400/80 md:mb-4 md:text-6xl"></div>
+                <h3 className="font-display mb-2 text-lg font-semibold text-slate-200 md:text-xl">
                   还没有添加任何股票
                 </h3>
-                <p className="mb-4 max-w-md mx-auto text-sm text-slate-500 md:mb-6 md:text-base px-4">
+                <p className="mx-auto mb-4 max-w-md px-4 text-sm text-slate-400 md:mb-6 md:text-base">
                   点击「新增股票」开始管理您的投资组合
                 </p>
                 <button

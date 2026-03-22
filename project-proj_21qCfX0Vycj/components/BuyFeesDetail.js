@@ -16,21 +16,22 @@ function BuyFeesDetail({ buyFees, stock, onClose }) {
   };
 
   return (
-    <div className="mt-2 p-2 bg-blue-50 rounded border">
-      <div className="flex justify-between items-center mb-2">
-        <span className="text-xs font-medium text-blue-800">买入手续费明细</span>
+    <div className="mt-2 rounded-lg border border-amber-400/35 bg-slate-900/50 p-2 backdrop-blur-sm">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-semibold text-amber-200">买入手续费明细</span>
         <button
+          type="button"
           onClick={onClose}
-          className="text-blue-600 hover:text-blue-800"
+          className="text-amber-300 hover:text-yellow-300"
         >
           <div className="icon-x text-xs"></div>
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-1 text-xs">
+      <div className="grid grid-cols-2 gap-1 text-xs text-slate-200">
         {Object.entries(buyFees).map(([key, value]) => (
-          <div key={key} className="flex justify-between">
-            <span className="text-gray-600">{feeNames[key] || key}:</span>
-            <span className="font-medium" dangerouslySetInnerHTML={{ __html: `${currencyPrefix}${formatPrice(value, 2)}` }} />
+          <div key={key} className="flex justify-between gap-2">
+            <span className="text-slate-400">{feeNames[key] || key}:</span>
+            <span className="font-medium tabular-nums text-amber-100" dangerouslySetInnerHTML={{ __html: `${currencyPrefix}${formatPrice(value, 2)}` }} />
           </div>
         ))}
       </div>

@@ -128,6 +128,51 @@ function mergeHistoryListItems(serverItems, cachedItems) {
   return out;
 }
 
+/** 与 api_server._infer_stock_from_base_name 一致，用于列表项缺 stock_code 时补全 */
+function inferStockFromReportBaseName(baseName) {
+  var m = String(baseName || "").match(/^(A股|港股|美股)_([^_]+)_/);
+  if (!m) return { stock_code: "", market: "" };
+  var mm = { A股: "A 股", 港股: "港股", 美股: "美股" };
+  return {
+    stock_code: (m[2] || "").trim().toUpperCase(),
+    market: mm[m[1]] || "",
+  };
+}
+
+/**
+ * 历史报告筛选用：港股 03690 / 3690 / 03690.HK 视为同一代码；A 股 6 位补齐。
+ */
+function normalizeReportStockCode(code, market) {
+  var c = String(code || "").trim().toUpperCase();
+  if (!c) return "";
+  var mk = String(market || "").trim();
+  var isHK = mk.indexOf("港") >= 0 || mk === "HK";
+  var isCN = mk.indexOf("A") >= 0 || mk.indexOf("CN") >= 0 || mk === "A 股";
+  c = c.replace(/\.HK$/i, "");
+  if (/^\d+$/.test(c)) {
+    var n = parseInt(c, 10);
+    if (!Number.isFinite(n)) return c;
+    if (isCN) return String(n).padStart(6, "0");
+    if (isHK) return String(n).padStart(5, "0");
+    if (c.length >= 6) return String(n).padStart(6, "0");
+    return String(n).padStart(5, "0");
+  }
+  return c;
+}
+
+function enrichHistoryListItem(it) {
+  if (!it) return it;
+  var inf = inferStockFromReportBaseName(it.base_name);
+  var sc = String(it.stock_code || "").trim();
+  var mk = String(it.market || "").trim();
+  if (!sc && inf.stock_code) sc = inf.stock_code;
+  if (!mk && inf.market) mk = inf.market;
+  return Object.assign({}, it, {
+    stock_code: sc.toUpperCase(),
+    market: mk,
+  });
+}
+
 function listItemFromReportPayload(r) {
   if (!r || !r.base_name) return null;
   var ga = (r.生成时间 && String(r.生成时间).trim()) || "";
@@ -203,6 +248,7 @@ function upsertHistoryFromPayload(payload) {
   if (!item) return;
   var merged = mergeHistoryListItems([item], loadHistoryListCache());
   merged = filterOutDeletedReportItems(merged);
+  merged = merged.map(enrichHistoryListItem);
   saveHistoryListCache(merged);
   return merged;
 }
@@ -1130,9 +1176,9 @@ function AnalysisApp() {
     const palette = [
       "bg-slate-200/55 text-slate-800 border border-white/50 hover:bg-slate-300/50",
       "bg-slate-300/40 text-slate-800 border border-white/50 hover:bg-slate-300/60",
-      "bg-blue-100/50 text-blue-900 border border-white/50 hover:bg-blue-100/80",
+      "bg-sky-100/55 text-sky-950 border border-sky-200/60 hover:bg-sky-100/85",
       "bg-cyan-100/45 text-cyan-900 border border-white/50 hover:bg-cyan-100/75",
-      "bg-violet-100/45 text-violet-900 border border-white/50 hover:bg-violet-100/75",
+      "bg-emerald-100/45 text-emerald-900 border border-white/50 hover:bg-emerald-100/75",
       "bg-teal-100/45 text-teal-900 border border-white/50 hover:bg-teal-100/75",
     ];
     const hash = [...code].reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
@@ -1174,10 +1220,13 @@ function AnalysisApp() {
           data.ok && Array.isArray(data.items) ? data.items : [];
         var merged = mergeHistoryListItems(serverItems, cached);
         merged = filterOutDeletedReportItems(merged);
+        merged = merged.map(enrichHistoryListItem);
         saveHistoryListCache(merged);
         setHistoryList(merged);
       } catch (_) {
-        var fallback = filterOutDeletedReportItems(loadHistoryListCache());
+        var fallback = filterOutDeletedReportItems(loadHistoryListCache()).map(
+          enrichHistoryListItem,
+        );
         setHistoryList(fallback);
       } finally {
         if (initial) setHistoryLoading(false);
@@ -1543,17 +1592,20 @@ function AnalysisApp() {
   const stockTags = React.useMemo(() => {
     const codes = new Set();
     historyList.forEach((item) => {
-      const code = (item.stock_code || "") + "";
-      if (code && code.trim()) codes.add(code.trim().toUpperCase());
+      const row = enrichHistoryListItem(item);
+      const norm = normalizeReportStockCode(row.stock_code, row.market);
+      if (norm) codes.add(norm);
     });
     return Array.from(codes).sort();
   }, [historyList]);
 
   const filteredHistoryList = React.useMemo(() => {
     if (!selectedStockCode) return historyList;
-    return historyList.filter(
-      (item) => (item.stock_code || "").toUpperCase() === selectedStockCode,
-    );
+    return historyList.filter((item) => {
+      const row = enrichHistoryListItem(item);
+      const norm = normalizeReportStockCode(row.stock_code, row.market);
+      return norm === selectedStockCode;
+    });
   }, [historyList, selectedStockCode]);
 
   React.useEffect(() => {
@@ -1770,9 +1822,14 @@ function AnalysisApp() {
             setReport(fromCache);
             setActiveTab("summary");
             setSelectedStockCode(
-              fromCache.stock_code
-                ? String(fromCache.stock_code).toUpperCase()
-                : "",
+              normalizeReportStockCode(
+                enrichHistoryListItem({
+                  base_name: fromCache.base_name,
+                  stock_code: fromCache.stock_code,
+                  market: fromCache.market,
+                }).stock_code,
+                fromCache.market,
+              ) || "",
             );
             setChatMessages(
               loadChatHistoryFromStorage(
@@ -1799,7 +1856,14 @@ function AnalysisApp() {
       setReport(data);
       setActiveTab("summary");
       setSelectedStockCode(
-        data.stock_code ? data.stock_code.toUpperCase() : "",
+        normalizeReportStockCode(
+          enrichHistoryListItem({
+            base_name: data.base_name || baseName,
+            stock_code: data.stock_code,
+            market: data.market,
+          }).stock_code,
+          data.market,
+        ) || "",
       );
       setChatMessages(
         loadChatHistoryFromStorage(data.stock_code || "", data.market || ""),
@@ -2003,7 +2067,7 @@ function AnalysisApp() {
   const deepTabOff =
     "bg-white/35 text-slate-900 border-white/45 hover:bg-white/55";
   const deepTabOn =
-    "bg-white/60 text-slate-900 border-white/65 shadow-[inset_0_-2px_0_rgba(139,92,246,0.85),0_0_28px_rgba(139,92,246,0.20)] ring-2 ring-violet-200/40 animate-pulse";
+    "bg-white/60 text-slate-900 border-white/65 shadow-[inset_0_-2px_0_rgba(14,165,233,0.9),0_0_28px_rgba(56,189,248,0.22)] ring-2 ring-sky-200/50 animate-pulse";
   const exportTabMd =
     "bg-white/35 text-slate-900 border-white/45 hover:bg-white/55";
   const exportTabHtml =
@@ -2237,9 +2301,12 @@ function AnalysisApp() {
         </h2>
 
         {stockTags.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 mb-4 shrink-0">
-            <span className="text-slate-500 text-sm font-medium shrink-0">
-              按代码过滤
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-2 mb-4 shrink-0">
+            <span className="text-slate-800 text-sm font-semibold shrink-0">
+              历史报告筛选
+            </span>
+            <span className="text-slate-600 text-xs leading-snug max-w-[min(100%,20rem)] shrink-0">
+              点下方股票代码 → 只显示该标的；点「全部」→ 显示全部报告。
             </span>
             <button
               type="button"
@@ -2281,7 +2348,12 @@ function AnalysisApp() {
               aria-label="历史报告列表"
             >
               {pagedHistoryList.map((item, i) => {
-                const titleLine = `${item.stock_code ? item.stock_code + " · " : ""}${item.base_name}`;
+                const row = enrichHistoryListItem(item);
+                const codeLabel =
+                  normalizeReportStockCode(row.stock_code, row.market) ||
+                  row.stock_code ||
+                  "";
+                const titleLine = `${codeLabel ? codeLabel + " · " : ""}${item.base_name}`;
                 const rowKey =
                   (item.base_name || "") +
                   "|" +
@@ -2300,7 +2372,7 @@ function AnalysisApp() {
                       onClick={() => loadHistoryReport(item.base_name)}
                     >
                       <span className="font-semibold text-slate-900 text-sm leading-snug block truncate">
-                        {item.stock_code ? `${item.stock_code} · ` : ""}
+                        {codeLabel ? `${codeLabel} · ` : ""}
                         {item.base_name}
                       </span>
                       <span className="text-slate-500 text-xs mt-0.5 block tabular-nums">
