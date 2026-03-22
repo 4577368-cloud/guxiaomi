@@ -87,8 +87,8 @@ function HoldingsSummaryTable({ portfolio }) {
                   </span>
                 </div>
                 <div className="text-right">
-                  <div className={`gx-num text-sm font-bold tabular-nums ${pos.profitLoss >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} dangerouslySetInnerHTML={{ __html: `${pos.profitLoss >= 0 ? '+' : ''}${pos.currencySymbol}${formatPrice(pos.profitLoss, 2)}` }} />
-                  <div className={`gx-num text-xs tabular-nums font-semibold ${pos.dailyProfitLoss >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  <div className={`gx-num text-sm font-bold tabular-nums ${pos.profitLoss >= 0 ? 'text-emerald-400' : 'text-lime-400'}`} dangerouslySetInnerHTML={{ __html: `${pos.profitLoss >= 0 ? '+' : ''}${pos.currencySymbol}${formatPrice(pos.profitLoss, 2)}` }} />
+                  <div className={`gx-num text-xs tabular-nums font-semibold ${pos.dailyProfitLoss >= 0 ? 'text-emerald-400' : 'text-lime-400'}`}>
                     今日: {pos.dailyProfitLoss >= 0 ? '+' : ''}{pos.currencySymbol}{formatPrice(Math.abs(pos.dailyProfitLoss), 2)}
                   </div>
                 </div>
@@ -159,14 +159,14 @@ function HoldingsSummaryTable({ portfolio }) {
                   <td className="px-4 py-3 text-center text-slate-200">{pos.holdingDays}天</td>
                   <td className="gx-num px-4 py-3 font-medium tabular-nums" dangerouslySetInnerHTML={{ __html: `${pos.currencySymbol}${formatPrice(pos.currentPrice, 3)}` }} />
                   <td className="px-4 py-3 text-right">
-                    <div className={`gx-num font-bold tabular-nums ${pos.dailyProfitLoss >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} dangerouslySetInnerHTML={{ __html: `${pos.dailyProfitLoss >= 0 ? '+' : ''}${pos.currencySymbol}${formatPrice(Math.abs(pos.dailyProfitLoss), 2)}` }} />
-                    <div className={`gx-num text-xs font-semibold tabular-nums ${pos.dailyProfitLoss >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    <div className={`gx-num font-bold tabular-nums ${pos.dailyProfitLoss >= 0 ? 'text-emerald-400' : 'text-lime-400'}`} dangerouslySetInnerHTML={{ __html: `${pos.dailyProfitLoss >= 0 ? '+' : ''}${pos.currencySymbol}${formatPrice(Math.abs(pos.dailyProfitLoss), 2)}` }} />
+                    <div className={`gx-num text-xs font-semibold tabular-nums ${pos.dailyProfitLoss >= 0 ? 'text-emerald-400' : 'text-lime-400'}`}>
                       ({(Number(pos.dailyChange) >= 0 ? '+' : '')}{(Number.isFinite(Number(pos.dailyChange)) ? Number(pos.dailyChange) : 0).toFixed(2)}%)
                     </div>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <div className={`gx-num font-bold tabular-nums ${pos.profitLoss >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} dangerouslySetInnerHTML={{ __html: `${pos.profitLoss >= 0 ? '+' : ''}${pos.currencySymbol}${formatPrice(pos.profitLoss, 2)}` }} />
-                    <div className={`gx-num text-xs font-semibold tabular-nums ${pos.profitLoss >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    <div className={`gx-num font-bold tabular-nums ${pos.profitLoss >= 0 ? 'text-emerald-400' : 'text-lime-400'}`} dangerouslySetInnerHTML={{ __html: `${pos.profitLoss >= 0 ? '+' : ''}${pos.currencySymbol}${formatPrice(pos.profitLoss, 2)}` }} />
+                    <div className={`gx-num text-xs font-semibold tabular-nums ${pos.profitLoss >= 0 ? 'text-emerald-400' : 'text-lime-400'}`}>
                       ({(Number(pos.profitLossPercent) >= 0 ? '+' : '')}{(Number.isFinite(Number(pos.profitLossPercent)) ? Number(pos.profitLossPercent) : 0).toFixed(2)}%)
                     </div>
                   </td>

@@ -221,7 +221,7 @@ function StockCharts({ stock }) {
         return Number(item.dailyProfit) || 0;
       });
       var colors = profits.map(function (p) {
-        return p >= 0 ? 'rgba(5, 150, 105, 0.8)' : 'rgba(220, 38, 38, 0.8)';
+        return p >= 0 ? 'rgba(5, 150, 105, 0.8)' : 'rgba(163, 230, 53, 0.88)';
       });
 
       var maxAbsIdx = 0;
@@ -275,7 +275,7 @@ function StockCharts({ stock }) {
               },
               color: function (ctx) {
                 var v = ctx.dataset.data[ctx.dataIndex];
-                return v >= 0 ? '#065f46' : '#991b1b';
+                return v >= 0 ? '#065f46' : '#4d7c0f';
               },
               backgroundColor: 'rgba(255,255,255,0.94)',
               borderRadius: 4,
@@ -284,7 +284,7 @@ function StockCharts({ stock }) {
                 var v = ctx.dataset.data[ctx.dataIndex];
                 return v >= 0
                   ? 'rgba(5, 150, 105, 0.45)'
-                  : 'rgba(220, 38, 38, 0.45)';
+                  : 'rgba(132, 204, 22, 0.5)';
               },
               padding: { top: 2, right: 4, bottom: 2, left: 4 },
               font: { size: 10, weight: '600' },
@@ -564,7 +564,7 @@ function StockCharts({ stock }) {
             <span
               className={
                 profitSummary.profit >= 0
-                  ? 'font-semibold text-rose-400'
+                  ? 'font-semibold text-lime-400'
                   : 'font-semibold text-emerald-400'
               }
             >
@@ -606,7 +606,7 @@ function StockCharts({ stock }) {
                     className={
                       'gx-num ml-2 text-sm font-medium tabular-nums ' +
                       (priceSummary.dayChg >= 0
-                        ? 'text-rose-400'
+                        ? 'text-lime-400'
                         : 'text-emerald-400')
                     }
                   >

@@ -470,7 +470,7 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
                 { bg: 'rgba(52, 211, 153, 0.28)', text: '#d1fae5', border: 'rgba(52, 211, 153, 0.65)' },
                 { bg: 'rgba(56, 189, 248, 0.28)', text: '#e0f2fe', border: 'rgba(56, 189, 248, 0.65)' },
                 { bg: 'rgba(251, 191, 36, 0.28)', text: '#fef3c7', border: 'rgba(251, 191, 36, 0.65)' },
-                { bg: 'rgba(251, 113, 133, 0.28)', text: '#ffe4e6', border: 'rgba(251, 113, 133, 0.65)' },
+                { bg: 'rgba(163, 230, 53, 0.22)', text: '#ecfccb', border: 'rgba(190, 242, 100, 0.65)' },
                 { bg: 'rgba(45, 212, 191, 0.28)', text: '#ccfbf1', border: 'rgba(45, 212, 191, 0.65)' },
                 { bg: 'rgba(249, 115, 22, 0.28)', text: '#ffedd5', border: 'rgba(249, 115, 22, 0.65)' },
                 { bg: 'rgba(14, 165, 233, 0.28)', text: '#e0f2fe', border: 'rgba(14, 165, 233, 0.65)' },

@@ -5,7 +5,7 @@ var ALLOCATION_CHART_COLORS = [
   "#34d399",
   "#fbbf24",
   "#84cc16",
-  "#fb7185",
+  "#bef264",
   "#2dd4bf",
   "#f97316",
   "#60a5fa",
@@ -219,7 +219,7 @@ function PositionAllocationCard({ portfolio, capitalPool }) {
                     <span
                       className={
                         "gx-num shrink-0 tabular-nums text-xs font-semibold " +
-                        (pos.profit >= 0 ? "text-emerald-400" : "text-rose-400")
+                        (pos.profit >= 0 ? "text-emerald-400" : "text-lime-400")
                       }
                     >
                       {pos.profitPercent >= 0 ? "+" : ""}

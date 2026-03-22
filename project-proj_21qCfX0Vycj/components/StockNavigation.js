@@ -39,13 +39,13 @@ function StockNavigation({ portfolio }) {
                   className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-bold tabular-nums transition-all duration-200 hover:scale-[1.04] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:px-2.5 md:py-1 md:text-sm ${
                     isProfit
                       ? "border border-emerald-300/60 bg-gradient-to-br from-emerald-400/30 to-emerald-700/20 text-white shadow-[0_0_22px_-6px_rgba(52,211,153,0.55)] hover:border-emerald-200/70 hover:from-emerald-400/42 hover:to-emerald-700/28 hover:shadow-[0_0_28px_-4px_rgba(52,211,153,0.65)]"
-                      : "border border-rose-300/60 bg-gradient-to-br from-rose-400/30 to-rose-700/22 text-white shadow-[0_0_22px_-6px_rgba(251,113,133,0.5)] hover:border-rose-200/70 hover:from-rose-400/42 hover:to-rose-700/30 hover:shadow-[0_0_28px_-4px_rgba(251,113,133,0.6)]"
+                      : "border border-lime-400/50 bg-gradient-to-br from-lime-400/35 to-lime-700/25 text-white shadow-[0_0_22px_-6px_rgba(163,230,53,0.45)] hover:border-lime-300/70 hover:from-lime-400/48 hover:to-lime-700/32 hover:shadow-[0_0_28px_-4px_rgba(190,242,100,0.5)]"
                   }`}
                 >
                   <span className="drop-shadow-sm">{stock.symbol}</span>
                   <span
                     className={`text-sm font-extrabold leading-none md:text-base ${
-                      isProfit ? "text-emerald-100" : "text-rose-100"
+                      isProfit ? "text-emerald-100" : "text-lime-100"
                     }`}
                     aria-hidden
                   >

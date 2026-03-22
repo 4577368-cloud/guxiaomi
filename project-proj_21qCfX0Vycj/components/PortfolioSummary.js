@@ -68,7 +68,7 @@ function PortfolioSummary({ summary, capitalPool, onUpdateCapitalPool }) {
                 <div className="mt-0.5 flex items-center gap-1">
                   <input type="number" step="0.01" value={typeof editCapital === 'string' ? editCapital : String(editCapital ?? '')} onChange={(e) => setEditCapital(e.target.value == null ? '' : String(e.target.value))} onKeyDown={(e) => { if (e.key === 'Enter') handleCapitalSave(); }} className="input-field w-24 rounded px-1.5 py-0.5 text-xs" autoFocus />
                   <button onClick={handleCapitalSave} className="p-0.5 text-emerald-400" title="保存"><div className="icon-check text-xs"></div></button>
-                  <button onClick={handleCapitalCancel} className="p-0.5 text-rose-400" title="取消"><div className="icon-x text-xs"></div></button>
+                  <button onClick={handleCapitalCancel} className="p-0.5 text-lime-400" title="取消"><div className="icon-x text-xs"></div></button>
                 </div>
               ) : (
                 <button onClick={handleCapitalEdit} className="block text-left">
@@ -87,11 +87,11 @@ function PortfolioSummary({ summary, capitalPool, onUpdateCapitalPool }) {
               <p className="gx-num text-sm font-bold tabular-nums text-amber-200">{formatPrice(safeSummary.totalCost, 2)}</p>
             </div>
           </div>
-          <div className={statCard + (remainingCapital >= 0 ? ' border-emerald-400/25' : ' border-rose-400/30')}>
-            <div className={'shrink-0 ' + (remainingCapital >= 0 ? 'icon-piggy-bank text-emerald-400' : 'icon-alert-circle text-rose-400')}></div>
+          <div className={statCard + (remainingCapital >= 0 ? ' border-emerald-400/25' : ' border-lime-400/35')}>
+            <div className={'shrink-0 ' + (remainingCapital >= 0 ? 'icon-piggy-bank text-emerald-400' : 'icon-alert-circle text-lime-400')}></div>
             <div className="min-w-0">
               <span className="block text-xs font-medium text-slate-300">剩余资金</span>
-              <p className={'gx-num text-sm font-bold tabular-nums ' + (remainingCapital >= 0 ? 'text-emerald-300' : 'text-rose-300')}>
+              <p className={'gx-num text-sm font-bold tabular-nums ' + (remainingCapital >= 0 ? 'text-emerald-300' : 'text-lime-300')}>
                 {remainingCapital >= 0 ? '' : '-'}{formatPrice(Math.abs(remainingCapital), 2)}
               </p>
             </div>
@@ -103,11 +103,11 @@ function PortfolioSummary({ summary, capitalPool, onUpdateCapitalPool }) {
               <p className="gx-num text-sm font-bold tabular-nums text-amber-200">{formatPrice(safeSummary.totalValue, 2)}</p>
             </div>
           </div>
-          <div className={statCard + ((safeSummary.totalProfit || 0) >= 0 ? ' border-emerald-400/25' : ' border-rose-400/30')}>
-            <div className={'shrink-0 ' + ((safeSummary.totalProfit || 0) >= 0 ? 'icon-trending-up text-emerald-400' : 'icon-trending-down text-rose-400')}></div>
+          <div className={statCard + ((safeSummary.totalProfit || 0) >= 0 ? ' border-emerald-400/25' : ' border-lime-400/35')}>
+            <div className={'shrink-0 ' + ((safeSummary.totalProfit || 0) >= 0 ? 'icon-trending-up text-emerald-400' : 'icon-trending-down text-lime-400')}></div>
             <div className="min-w-0">
               <span className="block text-xs font-medium text-slate-300">总盈亏</span>
-              <p className={'gx-num text-sm font-bold tabular-nums ' + ((safeSummary.totalProfit || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300')}>
+              <p className={'gx-num text-sm font-bold tabular-nums ' + ((safeSummary.totalProfit || 0) >= 0 ? 'text-emerald-300' : 'text-lime-300')}>
                 {(safeSummary.totalProfit || 0) >= 0 ? '+' : ''}{formatPrice(safeSummary.totalProfit, 2)} ({(safeSummary.totalProfitPercent || 0) >= 0 ? '+' : ''}{(Number(safeSummary.totalProfitPercent) || 0).toFixed(2)}%)
               </p>
             </div>

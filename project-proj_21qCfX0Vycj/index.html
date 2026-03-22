@@ -48,7 +48,8 @@
             --primary-hover: #93c5fd;
             --secondary-color: #475569;
             --success-color: #4ade80;
-            --danger-color: #fb7185;
+            /* 盈亏/删除等原深红改亮绿（与 success 区分：亏损用 lime 更亮） */
+            --danger-color: #a3e635;
             --warning-color: #fcd34d;
             --text-primary: #f8fafc;
             --text-secondary: #cbd5e1;
@@ -241,7 +242,7 @@
         }
 
         .btn-danger {
-            @apply bg-[var(--danger-color)] text-white shadow-md shadow-red-600/20 hover:bg-red-700 focus-visible:ring-red-500;
+            @apply bg-[var(--danger-color)] text-slate-950 shadow-md shadow-lime-500/35 hover:brightness-110 focus-visible:ring-lime-400;
         }
 
         /* 勿用 hover:bg-white/18：默认透明度档位无 18，Tailwind CDN 会整段编译失败 → 全页样式丢失 */
