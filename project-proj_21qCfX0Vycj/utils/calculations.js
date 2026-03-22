@@ -270,17 +270,18 @@ function closestIntegerSharesForTargetProfit(stock, brokerChannel, unitPrice, ta
         if (x >= 1 && x <= maxShares) candidates.add(x);
       }
     } else {
+      // 单价偏低时净盈利可能随股数递减：找「最大 s 仍 ≥ 目标」与相邻点
       let lo = 1;
       let hi = maxShares;
-      let lb = maxShares;
+      let cut = 0;
       while (lo <= hi) {
         const mid = (lo + hi) >> 1;
         if (np(mid) >= targetNetProfit) {
-          lb = mid;
-          hi = mid - 1;
-        } else lo = mid + 1;
+          cut = mid;
+          lo = mid + 1;
+        } else hi = mid - 1;
       }
-      for (const x of [lb - 1, lb, lb + 1]) {
+      for (const x of [cut, cut + 1, 1, maxShares]) {
         if (x >= 1 && x <= maxShares) candidates.add(x);
       }
       const stride = Math.ceil(maxShares / 300);

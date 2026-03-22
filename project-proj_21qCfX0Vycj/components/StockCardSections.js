@@ -483,7 +483,7 @@ function SellSimulationSection({
           净盈利目标 → 卖出规模
         </h5>
         <p className="text-[11px] text-purple-800/90 leading-relaxed mb-3">
-          反推「该笔卖出」净盈利约等于目标时，需卖出的<strong>总价</strong>与<strong>股数/参考单价</strong>。持仓浮亏时必须在足够高的价位卖够量才能实现正净盈利，不是「随便卖一部分就净赚」。
+          以<strong>当前持仓总股数</strong>为上限：优先按<strong>现价（无则保本/均价）</strong>算出需卖<strong>多少股</strong>才能接近目标净盈利；若现价下满仓也达不到目标，会给出<strong>一次性卖光</strong>时约需的<strong>单价</strong>。不再用「成交额最小」误选成只卖 1 股。
         </p>
         
         <div className="space-y-3">
@@ -521,6 +521,11 @@ function SellSimulationSection({
 
           {profitSimResult ? (
             <div className="mt-3 p-3 bg-white rounded-lg border border-purple-300">
+              {profitSimResult.planHint && (
+                <p className="text-[11px] text-purple-900/90 leading-relaxed mb-3 pb-2 border-b border-purple-100">
+                  {profitSimResult.planHint}
+                </p>
+              )}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                 <div className="col-span-2 sm:col-span-1">
                   <span className="text-gray-600 block mb-1">卖出总价（毛）</span>
