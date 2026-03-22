@@ -15,8 +15,8 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center text-white">
+        <div className="min-h-screen flex items-center justify-center bg-slate-950">
+          <div className="text-center text-slate-100">
             <h1 className="text-2xl font-bold mb-4">出现错误</h1>
             <button
               onClick={() => window.location.reload()}
@@ -1635,14 +1635,14 @@ ${allStocksData}
               const sizeClass = item.level === 1 ? 'text-2xl' : item.level === 2 ? 'text-xl' : 'text-lg';
               return React.createElement(
                 HeadingTag,
-                { key: index, className: `${sizeClass} font-bold text-[var(--text-primary)] mb-3 mt-6` },
+                { key: index, className: `${sizeClass} font-bold text-slate-100 mb-3 mt-6` },
                 item.content
               );
             }
             
             if (item.type === 'section') {
               return (
-                <div key={index} className="text-xl font-bold text-white bg-gradient-to-r from-purple-600 to-blue-600 px-4 py-3 rounded-lg my-4 shadow-md">
+                <div key={index} className="text-lg md:text-xl font-bold text-slate-50 px-4 py-3 rounded-xl my-4 border border-cyan-500/25 bg-gradient-to-r from-slate-800/95 via-cyan-950/40 to-slate-900/95 shadow-lg shadow-cyan-500/10">
                   {item.content}
                 </div>
               );
@@ -1668,12 +1668,12 @@ ${allStocksData}
               }
               
               return (
-                <div key={index} className="overflow-x-auto my-4 shadow-lg rounded-lg">
-                  <table className="min-w-full bg-white border border-gray-300">
-                    <thead className="bg-gradient-to-r from-purple-100 to-blue-100">
+                <div key={index} className="overflow-x-auto my-4 rounded-xl border border-white/10 shadow-xl shadow-black/30">
+                  <table className="min-w-full bg-slate-950/50 border-collapse">
+                    <thead className="bg-slate-800/90">
                       <tr>
                         {headerRow.map((cell, i) => (
-                          <th key={i} className="px-4 py-3 text-left text-sm font-bold text-gray-800 border-b-2 border-purple-300">
+                          <th key={i} className="px-4 py-3 text-left text-xs md:text-sm font-bold text-cyan-100 border-b border-cyan-500/25">
                             {cell}
                           </th>
                         ))}
@@ -1681,9 +1681,9 @@ ${allStocksData}
                     </thead>
                     <tbody>
                       {dataRows.map((row, i) => (
-                        <tr key={i} className={i % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                        <tr key={i} className={i % 2 === 0 ? 'bg-slate-900/35' : 'bg-slate-950/25'}>
                           {row.map((cell, j) => (
-                            <td key={j} className="px-4 py-3 text-sm text-gray-700 border-b border-gray-200">
+                            <td key={j} className="px-4 py-3 text-sm text-slate-300 border-b border-white/5">
                               {cell}
                             </td>
                           ))}
@@ -1699,8 +1699,8 @@ ${allStocksData}
               // Check if it's a list item
               if (item.content.match(/^[•\-\*]\s/)) {
                 return (
-                  <div key={index} className="flex gap-2 ml-4 text-gray-700">
-                    <span className="text-purple-600 font-bold">•</span>
+                  <div key={index} className="flex gap-2 ml-4 text-slate-300">
+                    <span className="text-cyan-400 font-bold">•</span>
                     <span>{item.content.replace(/^[•\-\*]\s/, '')}</span>
                   </div>
                 );
@@ -1709,8 +1709,8 @@ ${allStocksData}
               // Check if it's a numbered item
               if (item.content.match(/^\d+[\.)]\s/)) {
                 return (
-                  <div key={index} className="flex gap-2 ml-4 text-gray-700">
-                    <span className="text-purple-600 font-bold">{item.content.match(/^\d+[\.)]/)[0]}</span>
+                  <div key={index} className="flex gap-2 ml-4 text-slate-300">
+                    <span className="text-cyan-400 font-bold tabular-nums">{item.content.match(/^\d+[\.)]/)[0]}</span>
                     <span>{item.content.replace(/^\d+[\.)]\s/, '')}</span>
                   </div>
                 );
@@ -1720,15 +1720,15 @@ ${allStocksData}
               let formattedContent = item.content;
               
               // Handle **bold** - remove the ** markers and make text bold
-              formattedContent = formattedContent.replace(/\*\*(.+?)\*\*/g, '<strong class="font-bold text-gray-900">$1</strong>');
-              formattedContent = formattedContent.replace(/__(.+?)__/g, '<strong class="font-bold text-gray-900">$1</strong>');
+              formattedContent = formattedContent.replace(/\*\*(.+?)\*\*/g, '<strong class="font-bold text-slate-100">$1</strong>');
+              formattedContent = formattedContent.replace(/__(.+?)__/g, '<strong class="font-bold text-slate-100">$1</strong>');
               
               // Handle *italic* or _italic_ (only single * or _, not double)
               formattedContent = formattedContent.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em class="italic">$1</em>');
               formattedContent = formattedContent.replace(/(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/g, '<em class="italic">$1</em>');
               
               return (
-                <p key={index} className="text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ __html: formattedContent }} />
+                <p key={index} className="text-slate-300 leading-relaxed" dangerouslySetInnerHTML={{ __html: formattedContent }} />
               );
             }
             
@@ -1744,19 +1744,22 @@ ${allStocksData}
 
     return (
       <>
-        <div className="min-h-screen py-3 md:py-8 px-2 md:px-4" data-name="ziwei-app" data-file="ziwei-app.js">
+        <div className="relative z-10 min-h-screen py-3 md:py-8 px-2 md:px-4" data-name="ziwei-app" data-file="ziwei-app.js">
           <div className="max-w-6xl mx-auto">
-          <div className="bg-white rounded-xl shadow-lg p-3 md:p-6 mb-4 md:mb-6">
+          <div className="zi-card p-3 md:p-6 mb-4 md:mb-6">
             <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 md:gap-4">
+              <div className="flex items-center gap-2 md:gap-4 min-w-0">
                 <img 
                   src="https://imgus.tangbuy.com/static/images/2025-09-26/e9e9e871b0b2477697e4b59f6da02ab5-17588742994027430860421454933872.png"
                   alt="股小蜜 Logo"
-                  className="w-8 h-8 md:w-12 md:h-12 rounded-lg shadow-md"
+                  className="w-8 h-8 md:w-12 md:h-12 rounded-xl shadow-lg shadow-cyan-500/10 ring-1 ring-white/10 shrink-0"
                 />
-                <h1 className="text-lg md:text-2xl font-bold text-[var(--text-primary)]">
-                  紫微斗数金融排盘
-                </h1>
+                <div className="min-w-0">
+                  <p className="zi-mono-label text-[10px] md:text-xs text-cyan-400/90 uppercase mb-0.5">AI · 命盘解析引擎</p>
+                  <h1 className="text-lg md:text-2xl font-bold text-slate-50 tracking-tight truncate">
+                    紫微斗数金融排盘
+                  </h1>
+                </div>
               </div>
               <button
                 onClick={() => {
@@ -1777,11 +1780,11 @@ ${allStocksData}
           </div>
 
           {portfolioStocks.length > 0 && (
-            <div className="bg-white rounded-xl shadow-lg p-3 md:p-4 mb-4 md:mb-6">
+            <div className="zi-card p-3 md:p-4 mb-4 md:mb-6">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <div className="icon-briefcase text-base text-green-600 bg-green-100 p-1.5 rounded-lg"></div>
-                  <h2 className="text-sm md:text-base font-semibold text-[var(--text-primary)]">
+                  <div className="icon-briefcase text-base text-emerald-300 bg-emerald-500/15 p-1.5 rounded-lg ring-1 ring-emerald-400/25"></div>
+                  <h2 className="text-sm md:text-base font-semibold text-slate-100">
                     持仓股票分析 ({portfolioStocks.length}只)
                   </h2>
                 </div>
@@ -1807,17 +1810,17 @@ ${allStocksData}
             </div>
           )}
 
-          <div className="bg-white rounded-xl shadow-lg p-3 md:p-6 mb-4 md:mb-6">
+          <div className="zi-card p-3 md:p-6 mb-4 md:mb-6">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 md:gap-4 mb-3 md:mb-4">
               <div className="flex items-center gap-2">
-                <h2 className="text-base md:text-xl font-bold text-[var(--text-primary)] flex items-center gap-2">
-                  <div className="icon-edit-3 text-base md:text-xl text-white bg-[var(--primary-color)] p-1.5 md:p-2 rounded-lg"></div>
+                <h2 className="text-base md:text-xl font-bold text-slate-100 flex items-center gap-2">
+                  <div className="icon-edit-3 text-base md:text-xl text-slate-950 bg-gradient-to-br from-cyan-400 to-teal-500 p-1.5 md:p-2 rounded-lg shadow-lg shadow-cyan-500/25"></div>
                   输入命盘信息
                 </h2>
                 {(basicReport || wealthReport) && (
                   <button
                     onClick={() => setShowInputText(!showInputText)}
-                    className="text-[var(--primary-color)] hover:text-purple-700 p-1"
+                    className="text-cyan-400 hover:text-cyan-300 p-1"
                     title={showInputText ? "折叠" : "展开"}
                   >
                     <div className={`icon-chevron-${showInputText ? 'up' : 'down'} text-lg`}></div>
@@ -1850,12 +1853,12 @@ ${allStocksData}
             </div>
             
             {showHistory && historyList.length > 0 && (
-              <div className="mb-4 p-4 bg-purple-50 rounded-lg border border-purple-200">
+              <div className="mb-4 p-4 rounded-xl border border-cyan-500/20 bg-slate-950/50 backdrop-blur-sm">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold text-purple-900">历史命盘记录</h3>
+                  <h3 className="font-semibold text-slate-100">历史命盘记录</h3>
                   <button
                     onClick={() => setShowHistory(false)}
-                    className="text-purple-600 hover:text-purple-800"
+                    className="text-slate-400 hover:text-cyan-400"
                   >
                     <div className="icon-x text-lg"></div>
                   </button>
@@ -1871,7 +1874,7 @@ ${allStocksData}
                     ].filter(r => r).length;
                     
                     return (
-                    <div key={index} className="flex items-center justify-between p-3 bg-white rounded-lg border border-purple-100 hover:border-purple-300 transition-colors">
+                    <div key={index} className="flex items-center justify-between p-3 rounded-lg border border-white/10 bg-slate-900/60 hover:border-cyan-500/30 transition-colors">
                       <div className="flex-1">
                         {renamingHistory === item.timeName ? (
                           <div className="flex items-center gap-2">
@@ -1879,7 +1882,7 @@ ${allStocksData}
                               type="text"
                               value={newHistoryName}
                               onChange={(e) => setNewHistoryName(e.target.value)}
-                              className="flex-1 px-2 py-1 text-sm border border-purple-300 rounded focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                              className="flex-1 px-2 py-1 text-sm rounded-lg bg-slate-950 border border-white/15 text-slate-100 focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500/40"
                               placeholder="输入新名称"
                               autoFocus
                             />
@@ -1904,12 +1907,12 @@ ${allStocksData}
                         ) : (
                           <>
                             <div className="flex items-center gap-2">
-                              <div className="font-medium text-purple-900">{item.timeName}</div>
-                              <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">
+                              <div className="font-medium text-slate-100">{item.timeName}</div>
+                              <span className="text-xs zi-mono-label bg-cyan-500/15 text-cyan-300 px-2 py-0.5 rounded border border-cyan-400/20">
                                 {reportCount}份报告
                               </span>
                             </div>
-                            <div className="text-xs text-gray-500 mt-1">{item.timestamp}</div>
+                            <div className="text-xs text-slate-500 mt-1">{item.timestamp}</div>
                           </>
                         )}
                       </div>
@@ -1917,7 +1920,7 @@ ${allStocksData}
                         <div className="flex gap-2">
                           <button
                             onClick={() => viewHistoryReport(item)}
-                            className="text-purple-600 hover:text-purple-800 p-2"
+                            className="text-cyan-400 hover:text-cyan-300 p-2"
                             title="加载命盘和报告"
                           >
                             <div className="icon-folder-open text-lg"></div>
@@ -1961,7 +1964,7 @@ ${allStocksData}
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   placeholder="请输入您的紫微斗数命盘信息..."
-                  className="w-full h-32 md:h-40 p-3 md:p-4 border border-[var(--border-color)] rounded-lg focus:ring-2 focus:ring-[var(--primary-color)] focus:border-transparent resize-y text-sm md:text-base"
+                  className="w-full h-32 md:h-40 p-3 md:p-4 rounded-xl border border-white/10 bg-slate-950/80 text-slate-100 placeholder:text-slate-500 focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500/30 resize-y text-sm md:text-base shadow-inner"
                 />
                 
                 <div className="flex gap-3 mt-4 justify-center">
@@ -1989,20 +1992,19 @@ ${allStocksData}
 
           {/* Flow Report Generation Button */}
           {(wealthReport || stockAnalysisReport) && inputText.trim() && (
-            <div className="bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl shadow-md border-2 border-orange-200 p-3 md:p-4 mb-4 md:mb-6">
+            <div className="rounded-2xl border border-amber-400/25 bg-gradient-to-br from-slate-900/90 via-slate-900/70 to-slate-950/90 p-3 md:p-4 mb-4 md:mb-6 shadow-xl shadow-amber-500/5">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="icon-calendar text-2xl text-orange-600 bg-white p-2 rounded-lg shadow-sm"></div>
+                  <div className="icon-calendar text-2xl text-amber-300 bg-amber-500/10 p-2 rounded-xl ring-1 ring-amber-400/30"></div>
                   <div>
-                    <h3 className="text-base md:text-lg font-bold text-orange-900">流月流日精准分析</h3>
-                    <p className="text-xs md:text-sm text-orange-700 mt-1">基于命盘信息的流月流日运势分析，结合财富密码和持仓技术分析</p>
+                    <h3 className="text-base md:text-lg font-bold text-slate-100">流月流日精准分析</h3>
+                    <p className="text-xs md:text-sm text-slate-400 mt-1">基于命盘信息的流月流日运势分析，结合财富密码和持仓技术分析</p>
                   </div>
                 </div>
                 <button
                   onClick={handleGenerateFlow}
                   disabled={isGeneratingFlow}
-                  className="btn btn-primary disabled:opacity-50 flex items-center gap-2 w-full sm:w-auto justify-center"
-                  style={{backgroundColor: '#ea580c'}}
+                  className="btn disabled:opacity-50 flex items-center gap-2 w-full sm:w-auto justify-center rounded-xl font-semibold text-white bg-gradient-to-r from-amber-600 to-orange-600 shadow-lg shadow-amber-500/15 hover:brightness-110 border-0"
                 >
                   {isGeneratingFlow ? (
                     <>
@@ -2022,14 +2024,17 @@ ${allStocksData}
 
             <div className="space-y-4 md:space-y-6">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg md:text-2xl font-bold text-white flex items-center gap-2">
-                <div className="icon-file-text text-lg md:text-2xl"></div>
-                分析报告
-              </h2>
+              <div>
+                <p className="zi-mono-label text-[10px] md:text-xs text-cyan-500/90 uppercase mb-1">智能报告 · 流式输出</p>
+                <h2 className="text-lg md:text-2xl font-bold text-slate-50 flex items-center gap-2">
+                  <div className="icon-file-text text-lg md:text-2xl text-cyan-400"></div>
+                  分析报告
+                </h2>
+              </div>
               {(basicReport || wealthReport || portfolioAnalysisReport || stockAnalysisReport || flowReport) && (
                 <button
                   onClick={copyAllReports}
-                  className="text-white hover:text-gray-200 transition-colors p-2"
+                  className="text-slate-400 hover:text-cyan-300 transition-colors p-2 rounded-lg hover:bg-white/5"
                   title="复制所有报告"
                 >
                   <div className="icon-copy text-xl"></div>
@@ -2037,99 +2042,99 @@ ${allStocksData}
               )}
             </div>
             
-            <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-              <div className="overflow-x-auto border-b border-gray-200">
+            <div className="zi-card overflow-hidden">
+              <div className="overflow-x-auto border-b border-white/10 bg-slate-950/40">
                 <div className="flex min-w-max md:min-w-0">
                   <button
                     onClick={() => setActiveReportTab('basic')}
-                    className={`flex-1 px-3 md:px-6 py-3 md:py-4 font-semibold transition-colors whitespace-nowrap text-xs md:text-base ${
+                    className={`flex-1 px-3 md:px-6 py-3 md:py-4 font-semibold transition-all whitespace-nowrap text-xs md:text-base ${
                       activeReportTab === 'basic'
-                        ? 'bg-[var(--primary-color)] text-white'
-                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                        ? 'bg-gradient-to-b from-cyan-600 to-cyan-800 text-white shadow-[inset_0_-2px_0_rgba(34,211,238,0.5)]'
+                        : 'bg-transparent text-slate-500 hover:text-slate-200 hover:bg-white/5'
                     }`}
                   >
                     命盘全析
                   </button>
                   <button
                     onClick={() => setActiveReportTab('wealth')}
-                    className={`flex-1 px-3 md:px-6 py-3 md:py-4 font-semibold transition-colors whitespace-nowrap text-xs md:text-base ${
+                    className={`flex-1 px-3 md:px-6 py-3 md:py-4 font-semibold transition-all whitespace-nowrap text-xs md:text-base ${
                       activeReportTab === 'wealth'
-                        ? 'text-white'
-                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                        ? 'text-white shadow-[inset_0_-2px_0_rgba(251,191,36,0.5)]'
+                        : 'bg-transparent text-slate-500 hover:text-slate-200 hover:bg-white/5'
                     }`}
-                    style={activeReportTab === 'wealth' ? {backgroundColor: '#d97706'} : {}}
+                    style={activeReportTab === 'wealth' ? {background: 'linear-gradient(180deg, #d97706 0%, #b45309 100%)'} : {}}
                   >
                     财富密码
                   </button>
                   <button
                     onClick={() => setActiveReportTab('portfolio')}
-                    className={`flex-1 px-3 md:px-6 py-3 md:py-4 font-semibold transition-colors whitespace-nowrap text-xs md:text-base ${
+                    className={`flex-1 px-3 md:px-6 py-3 md:py-4 font-semibold transition-all whitespace-nowrap text-xs md:text-base ${
                       activeReportTab === 'portfolio'
-                        ? 'text-white'
-                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                        ? 'text-white shadow-[inset_0_-2px_0_rgba(34,211,238,0.45)]'
+                        : 'bg-transparent text-slate-500 hover:text-slate-200 hover:bg-white/5'
                     }`}
-                    style={activeReportTab === 'portfolio' ? {backgroundColor: '#0891b2'} : {}}
+                    style={activeReportTab === 'portfolio' ? {background: 'linear-gradient(180deg, #0e7490 0%, #155e75 100%)'} : {}}
                   >
                     持仓排盘
                   </button>
                   <button
                     onClick={() => setActiveReportTab('stock')}
-                    className={`flex-1 px-3 md:px-6 py-3 md:py-4 font-semibold transition-colors whitespace-nowrap text-xs md:text-base ${
+                    className={`flex-1 px-3 md:px-6 py-3 md:py-4 font-semibold transition-all whitespace-nowrap text-xs md:text-base ${
                       activeReportTab === 'stock'
-                        ? 'text-white'
-                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                        ? 'text-white shadow-[inset_0_-2px_0_rgba(52,211,153,0.5)]'
+                        : 'bg-transparent text-slate-500 hover:text-slate-200 hover:bg-white/5'
                     }`}
-                    style={activeReportTab === 'stock' ? {backgroundColor: '#059669'} : {}}
+                    style={activeReportTab === 'stock' ? {background: 'linear-gradient(180deg, #059669 0%, #047857 100%)'} : {}}
                   >
                     技术分析
                   </button>
                   <button
                     onClick={() => setActiveReportTab('flow')}
-                    className={`flex-1 px-3 md:px-6 py-3 md:py-4 font-semibold transition-colors whitespace-nowrap text-xs md:text-base ${
+                    className={`flex-1 px-3 md:px-6 py-3 md:py-4 font-semibold transition-all whitespace-nowrap text-xs md:text-base ${
                       activeReportTab === 'flow'
-                        ? 'text-white'
-                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                        ? 'text-white shadow-[inset_0_-2px_0_rgba(251,146,60,0.5)]'
+                        : 'bg-transparent text-slate-500 hover:text-slate-200 hover:bg-white/5'
                     }`}
-                    style={activeReportTab === 'flow' ? {backgroundColor: '#ea580c'} : {}}
+                    style={activeReportTab === 'flow' ? {background: 'linear-gradient(180deg, #ea580c 0%, #c2410c 100%)'} : {}}
                   >
                     流月流日
                   </button>
                 </div>
               </div>
                 
-                <div className="p-3 md:p-6">
+                <div className="p-3 md:p-6 bg-slate-950/20">
                   {activeReportTab === 'basic' && (
                     <>
                       {isGeneratingBasic ? (
                         <div className="flex flex-col items-center justify-center py-12">
-                          <div className="icon-loader text-6xl text-[var(--primary-color)] mb-4 animate-spin flex justify-center"></div>
-                          <h3 className="text-xl font-semibold text-gray-700 mb-2">正在生成命盘全析报告...</h3>
-                          <p className="text-gray-500">请稍候，AI正在分析您的命盘信息</p>
+                          <div className="icon-loader text-6xl text-cyan-400 mb-4 animate-spin flex justify-center drop-shadow-[0_0_12px_rgba(34,211,238,0.45)]"></div>
+                          <h3 className="text-xl font-semibold text-slate-200 mb-2">正在生成命盘全析报告...</h3>
+                          <p className="text-slate-400">请稍候，AI 正在分析您的命盘信息</p>
                         </div>
                       ) : basicReport ? (
                         <>
-                      <div className="mb-4 pb-4 border-b">
+                      <div className="mb-4 pb-4 border-b border-white/10">
                         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-4">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="text-base md:text-lg font-bold text-[var(--text-primary)]">
+                            <h3 className="text-base md:text-lg font-bold text-slate-100">
                               {basicReport.title}
                             </h3>
                           </div>
                           <div className="flex items-center justify-between md:justify-end gap-2">
-                            <span className="text-xs md:text-sm text-[var(--text-secondary)]">
+                            <span className="text-xs md:text-sm text-slate-400">
                               {basicReport.timestamp}
                             </span>
                             <div className="flex items-center gap-1">
                               <button
                                 onClick={() => copyReport(`【紫微斗数基础命盘全析】\n生成时间: ${basicReport.timestamp}\n\n${basicReport.content}`)}
-                                className="text-blue-600 hover:text-blue-800 p-1.5 md:p-2"
+                                className="text-cyan-400 hover:text-cyan-300 p-1.5 md:p-2"
                                 title="复制当前报告"
                               >
                                 <div className="icon-copy text-base md:text-lg"></div>
                               </button>
                               <button
                                 onClick={() => toggleReportCollapse('basic')}
-                                className="text-gray-600 hover:text-gray-800 p-1.5 md:p-2"
+                                className="text-slate-400 hover:text-slate-200 p-1.5 md:p-2"
                                 title={collapsedReports['basic'] ? "展开" : "折叠"}
                               >
                                 <div className={`icon-chevron-${collapsedReports['basic'] ? 'down' : 'up'} text-base md:text-lg`}></div>
@@ -2146,9 +2151,9 @@ ${allStocksData}
                         </>
                       ) : (
                         <div className="text-center py-12">
-                          <div className="icon-file-text text-6xl text-gray-300 mb-4 flex justify-center"></div>
-                          <h3 className="text-xl font-semibold text-gray-500 mb-2">还没有生成命盘全析报告</h3>
-                          <p className="text-gray-400">请点击"生成报告"按钮开始分析</p>
+                          <div className="icon-file-text text-6xl text-slate-600 mb-4 flex justify-center"></div>
+                          <h3 className="text-xl font-semibold text-slate-400 mb-2">还没有生成命盘全析报告</h3>
+                          <p className="text-slate-500">请点击「生成报告」按钮开始分析</p>
                         </div>
                       )}
                     </>
@@ -2159,33 +2164,33 @@ ${allStocksData}
                       {isGeneratingWealth ? (
                         <div className="flex flex-col items-center justify-center py-12">
                           <div className="icon-loader text-6xl text-orange-600 mb-4 animate-spin flex justify-center"></div>
-                          <h3 className="text-xl font-semibold text-gray-700 mb-2">正在生成财富密码报告...</h3>
-                          <p className="text-gray-500">请稍候，AI正在分析您的财富运势</p>
+                          <h3 className="text-xl font-semibold text-slate-200 mb-2">正在生成财富密码报告...</h3>
+                          <p className="text-slate-400">请稍候，AI 正在分析您的财富运势</p>
                         </div>
                       ) : wealthReport ? (
                         <>
-                      <div className="mb-4 pb-4 border-b">
+                      <div className="mb-4 pb-4 border-b border-white/10">
                         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-4">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="text-base md:text-lg font-bold text-[var(--text-primary)]">
+                            <h3 className="text-base md:text-lg font-bold text-slate-100">
                               {wealthReport.title}
                             </h3>
                           </div>
                           <div className="flex items-center justify-between md:justify-end gap-2">
-                            <span className="text-xs md:text-sm text-[var(--text-secondary)]">
+                            <span className="text-xs md:text-sm text-slate-400">
                               {wealthReport.timestamp}
                             </span>
                             <div className="flex items-center gap-1">
                               <button
                                 onClick={() => copyReport(`【紫微斗数财富密码】\n生成时间: ${wealthReport.timestamp}\n\n${wealthReport.content}`)}
-                                className="text-blue-600 hover:text-blue-800 p-1.5 md:p-2"
+                                className="text-cyan-400 hover:text-cyan-300 p-1.5 md:p-2"
                                 title="复制当前报告"
                               >
                                 <div className="icon-copy text-base md:text-lg"></div>
                               </button>
                               <button
                                 onClick={() => toggleReportCollapse('wealth')}
-                                className="text-gray-600 hover:text-gray-800 p-1.5 md:p-2"
+                                className="text-slate-400 hover:text-slate-200 p-1.5 md:p-2"
                                 title={collapsedReports['wealth'] ? "展开" : "折叠"}
                               >
                                 <div className={`icon-chevron-${collapsedReports['wealth'] ? 'down' : 'up'} text-base md:text-lg`}></div>
@@ -2202,9 +2207,9 @@ ${allStocksData}
                         </>
                       ) : (
                         <div className="text-center py-12">
-                          <div className="icon-trending-up text-6xl text-gray-300 mb-4 flex justify-center"></div>
-                          <h3 className="text-xl font-semibold text-gray-500 mb-2">还没有生成财富密码报告</h3>
-                          <p className="text-gray-400">请点击"生成报告"按钮开始分析</p>
+                          <div className="icon-trending-up text-6xl text-slate-600 mb-4 flex justify-center"></div>
+                          <h3 className="text-xl font-semibold text-slate-400 mb-2">还没有生成财富密码报告</h3>
+                          <p className="text-slate-500">请点击「生成报告」按钮开始分析</p>
                         </div>
                       )}
                     </>
@@ -2215,33 +2220,33 @@ ${allStocksData}
                       {isGeneratingPortfolio ? (
                         <div className="flex flex-col items-center justify-center py-12">
                           <div className="icon-loader text-6xl text-cyan-600 mb-4 animate-spin flex justify-center"></div>
-                          <h3 className="text-xl font-semibold text-gray-700 mb-2">正在生成持仓组合分析...</h3>
-                          <p className="text-gray-500">请稍候，AI正在分析您的持仓组合</p>
+                          <h3 className="text-xl font-semibold text-slate-200 mb-2">正在生成持仓组合分析...</h3>
+                          <p className="text-slate-400">请稍候，AI 正在分析您的持仓组合</p>
                         </div>
                       ) : portfolioAnalysisReport ? (
                         <>
-                      <div className="mb-4 pb-4 border-b">
+                      <div className="mb-4 pb-4 border-b border-white/10">
                         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-4">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="text-base md:text-lg font-bold text-[var(--text-primary)]">
+                            <h3 className="text-base md:text-lg font-bold text-slate-100">
                               {portfolioAnalysisReport.title}
                             </h3>
                           </div>
                           <div className="flex items-center justify-between md:justify-end gap-2">
-                            <span className="text-xs md:text-sm text-[var(--text-secondary)]">
+                            <span className="text-xs md:text-sm text-slate-400">
                               {portfolioAnalysisReport.timestamp}
                             </span>
                             <div className="flex items-center gap-1">
                               <button
                                 onClick={() => copyReport(`【紫微斗数持仓组合分析】\n生成时间: ${portfolioAnalysisReport.timestamp}\n\n${portfolioAnalysisReport.content}`)}
-                                className="text-blue-600 hover:text-blue-800 p-1.5 md:p-2"
+                                className="text-cyan-400 hover:text-cyan-300 p-1.5 md:p-2"
                                 title="复制当前报告"
                               >
                                 <div className="icon-copy text-base md:text-lg"></div>
                               </button>
                               <button
                                 onClick={() => toggleReportCollapse('portfolio')}
-                                className="text-gray-600 hover:text-gray-800 p-1.5 md:p-2"
+                                className="text-slate-400 hover:text-slate-200 p-1.5 md:p-2"
                                 title={collapsedReports['portfolio'] ? "展开" : "折叠"}
                               >
                                 <div className={`icon-chevron-${collapsedReports['portfolio'] ? 'down' : 'up'} text-base md:text-lg`}></div>
@@ -2258,9 +2263,9 @@ ${allStocksData}
                         </>
                       ) : (
                         <div className="text-center py-12">
-                          <div className="icon-briefcase text-6xl text-gray-300 mb-4 flex justify-center"></div>
-                          <h3 className="text-xl font-semibold text-gray-500 mb-2">还没有生成持仓组合分析报告</h3>
-                          <p className="text-gray-400">当您有持仓股票时，生成报告会自动包含持仓组合分析</p>
+                          <div className="icon-briefcase text-6xl text-slate-600 mb-4 flex justify-center"></div>
+                          <h3 className="text-xl font-semibold text-slate-400 mb-2">还没有生成持仓组合分析报告</h3>
+                          <p className="text-slate-500">当您有持仓股票时，生成报告会自动包含持仓组合分析</p>
                         </div>
                       )}
                     </>
@@ -2271,34 +2276,34 @@ ${allStocksData}
                       {isAnalyzingStock ? (
                         <div className="flex flex-col items-center justify-center py-12">
                           <div className="icon-loader text-6xl text-green-600 mb-4 animate-spin flex justify-center"></div>
-                          <h3 className="text-xl font-semibold text-gray-700 mb-2">正在生成技术持仓分析...</h3>
-                          <p className="text-gray-500">请稍候，AI正在分析股票数据</p>
+                          <h3 className="text-xl font-semibold text-slate-200 mb-2">正在生成技术持仓分析...</h3>
+                          <p className="text-slate-400">请稍候，AI 正在分析股票数据</p>
                         </div>
 
                       ) : stockAnalysisReport ? (
                         <>
-                      <div className="mb-4 pb-4 border-b">
+                      <div className="mb-4 pb-4 border-b border-white/10">
                         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-4">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="text-base md:text-lg font-bold text-[var(--text-primary)]">
+                            <h3 className="text-base md:text-lg font-bold text-slate-100">
                               {stockAnalysisReport.title}
                             </h3>
                           </div>
                           <div className="flex items-center justify-between md:justify-end gap-2">
-                            <span className="text-xs md:text-sm text-[var(--text-secondary)]">
+                            <span className="text-xs md:text-sm text-slate-400">
                               {stockAnalysisReport.timestamp}
                             </span>
                             <div className="flex items-center gap-1">
                               <button
                                 onClick={() => copyReport(`【持仓组合技术分析与评估】\n生成时间: ${stockAnalysisReport.timestamp}\n\n${stockAnalysisReport.content}`)}
-                                className="text-blue-600 hover:text-blue-800 p-1.5 md:p-2"
+                                className="text-cyan-400 hover:text-cyan-300 p-1.5 md:p-2"
                                 title="复制当前报告"
                               >
                                 <div className="icon-copy text-base md:text-lg"></div>
                               </button>
                               <button
                                 onClick={() => toggleReportCollapse('stock')}
-                                className="text-gray-600 hover:text-gray-800 p-1.5 md:p-2"
+                                className="text-slate-400 hover:text-slate-200 p-1.5 md:p-2"
                                 title={collapsedReports['stock'] ? "展开" : "折叠"}
                               >
                                 <div className={`icon-chevron-${collapsedReports['stock'] ? 'down' : 'up'} text-base md:text-lg`}></div>
@@ -2315,9 +2320,9 @@ ${allStocksData}
                         </>
                       ) : (
                         <div className="text-center py-12">
-                          <div className="icon-bar-chart text-6xl text-gray-300 mb-4 flex justify-center"></div>
-                          <h3 className="text-xl font-semibold text-gray-500 mb-2">还没有生成股票分析报告</h3>
-                          <p className="text-gray-400">请先输入命盘信息，然后点击持仓股票进行分析</p>
+                          <div className="icon-bar-chart text-6xl text-slate-600 mb-4 flex justify-center"></div>
+                          <h3 className="text-xl font-semibold text-slate-400 mb-2">还没有生成股票分析报告</h3>
+                          <p className="text-slate-500">请先输入命盘信息，然后点击持仓股票进行分析</p>
                         </div>
                       )}
                     </>
@@ -2328,33 +2333,33 @@ ${allStocksData}
                       {isGeneratingFlow ? (
                         <div className="flex flex-col items-center justify-center py-12">
                           <div className="icon-loader text-6xl text-orange-600 mb-4 animate-spin flex justify-center"></div>
-                          <h3 className="text-xl font-semibold text-gray-700 mb-2">正在生成流月流日分析...</h3>
-                          <p className="text-gray-500">请稍候，AI正在进行流月流日排盘分析</p>
+                          <h3 className="text-xl font-semibold text-slate-200 mb-2">正在生成流月流日分析...</h3>
+                          <p className="text-slate-400">请稍候，AI 正在进行流月流日排盘分析</p>
                         </div>
                       ) : flowReport ? (
                         <>
-                      <div className="mb-4 pb-4 border-b">
+                      <div className="mb-4 pb-4 border-b border-white/10">
                         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-4">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="text-base md:text-lg font-bold text-[var(--text-primary)]">
+                            <h3 className="text-base md:text-lg font-bold text-slate-100">
                               {flowReport.title}
                             </h3>
                           </div>
                           <div className="flex items-center justify-between md:justify-end gap-2">
-                            <span className="text-xs md:text-sm text-[var(--text-secondary)]">
+                            <span className="text-xs md:text-sm text-slate-400">
                               {flowReport.timestamp}
                             </span>
                             <div className="flex items-center gap-1">
                               <button
                                 onClick={() => copyReport(`【紫微斗数流月流日分析】\n生成时间: ${flowReport.timestamp}\n\n${flowReport.content}`)}
-                                className="text-blue-600 hover:text-blue-800 p-1.5 md:p-2"
+                                className="text-cyan-400 hover:text-cyan-300 p-1.5 md:p-2"
                                 title="复制当前报告"
                               >
                                 <div className="icon-copy text-base md:text-lg"></div>
                               </button>
                               <button
                                 onClick={() => toggleReportCollapse('flow')}
-                                className="text-gray-600 hover:text-gray-800 p-1.5 md:p-2"
+                                className="text-slate-400 hover:text-slate-200 p-1.5 md:p-2"
                                 title={collapsedReports['flow'] ? "展开" : "折叠"}
                               >
                                 <div className={`icon-chevron-${collapsedReports['flow'] ? 'down' : 'up'} text-base md:text-lg`}></div>
@@ -2371,9 +2376,9 @@ ${allStocksData}
                         </>
                       ) : (
                         <div className="text-center py-12">
-                          <div className="icon-calendar text-6xl text-gray-300 mb-4 flex justify-center"></div>
-                          <h3 className="text-xl font-semibold text-gray-500 mb-2">还没有生成流月流日分析</h3>
-                          <p className="text-gray-400">请先生成命盘全析和财富密码，然后点击"生成分析"按钮</p>
+                          <div className="icon-calendar text-6xl text-slate-600 mb-4 flex justify-center"></div>
+                          <h3 className="text-xl font-semibold text-slate-400 mb-2">还没有生成流月流日分析</h3>
+                          <p className="text-slate-500">请先生成命盘全析和财富密码，然后点击「生成分析」按钮</p>
                         </div>
                       )}
                     </>
@@ -2388,34 +2393,35 @@ ${allStocksData}
 
         {/* Fixed Bottom Chat Bar - Only show when reports exist */}
         {(basicReport || wealthReport || portfolioAnalysisReport || stockAnalysisReport || flowReport) && (
-          <div className="fixed bottom-0 left-0 right-0 z-50 bg-white shadow-2xl border-t-2 border-green-600">
+          <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-cyan-500/30 bg-slate-950/92 backdrop-blur-xl shadow-[0_-8px_40px_rgba(0,0,0,0.55)]">
             {!isChatExpanded ? (
               /* Collapsed State */
               <div 
                 onClick={() => setIsChatExpanded(true)}
-                className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-white/5 transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <div className="icon-message-circle text-xl text-green-600"></div>
-                  <span className="font-semibold text-gray-800">AI智能对话</span>
+                  <div className="icon-message-circle text-xl text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.4)]"></div>
+                  <span className="font-semibold text-slate-100 zi-mono-label text-xs tracking-wider">AI 助理</span>
+                  <span className="text-sm text-slate-400 hidden sm:inline">智能对话</span>
                   {chatMessages.length > 0 && (
-                    <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
-                      {Math.floor(chatMessages.length / 2)}轮
+                    <span className="text-xs bg-cyan-500/15 text-cyan-300 px-2 py-1 rounded border border-cyan-400/25">
+                      {Math.floor(chatMessages.length / 2)} 轮
                     </span>
                   )}
                 </div>
-                <div className="icon-chevron-up text-xl text-gray-600"></div>
+                <div className="icon-chevron-up text-xl text-slate-500"></div>
               </div>
             ) : (
               /* Expanded State */
               <div ref={chatSectionRef} className="max-h-[600px] flex flex-col">
-                <div className="bg-gradient-to-r from-green-600 to-teal-600 text-white p-3 flex items-center justify-between">
+                <div className="text-white p-3 flex items-center justify-between border-b border-cyan-500/20 bg-gradient-to-r from-slate-900 via-cyan-950/80 to-slate-900">
                   <div className="flex items-center gap-2">
-                    <div className="icon-message-circle text-lg"></div>
-                    <h3 className="font-bold">AI智能对话</h3>
+                    <div className="icon-message-circle text-lg text-cyan-300"></div>
+                    <h3 className="font-bold text-slate-50">AI 智能对话</h3>
                     {chatMessages.length > 0 && (
-                      <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">
-                        {Math.floor(chatMessages.length / 2)}轮
+                      <span className="text-xs bg-cyan-400/15 text-cyan-200 px-2 py-1 rounded border border-cyan-400/25">
+                        {Math.floor(chatMessages.length / 2)} 轮
                       </span>
                     )}
                   </div>
@@ -2425,14 +2431,14 @@ ${allStocksData}
                         setChatMessages([]);
                         setSuggestedQuestions([]);
                       }}
-                      className="text-white hover:text-gray-200 transition-colors p-1"
+                      className="text-slate-300 hover:text-white transition-colors p-1"
                       title="清空对话"
                     >
                       <div className="icon-trash-2 text-lg"></div>
                     </button>
                     <button
                       onClick={() => setIsChatExpanded(false)}
-                      className="text-white hover:text-gray-200 transition-colors p-1"
+                      className="text-slate-300 hover:text-white transition-colors p-1"
                       title="收起"
                     >
                       <div className="icon-chevron-down text-lg"></div>
@@ -2440,11 +2446,11 @@ ${allStocksData}
                   </div>
                 </div>
                 
-                <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 bg-gray-50" style={{maxHeight: '400px'}}>
+                <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 bg-slate-950/80" style={{maxHeight: '400px'}}>
                   {chatMessages.length === 0 && !streamingMessage ? (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-400">
-                      <div className="icon-message-square text-4xl mb-2"></div>
-                      <p className="text-sm text-center">开始与AI对话，讨论您的投资策略和命理分析</p>
+                    <div className="flex flex-col items-center justify-center h-full text-slate-500">
+                      <div className="icon-message-square text-4xl mb-2 text-cyan-500/40"></div>
+                      <p className="text-sm text-center max-w-xs">与 AI 对话，讨论投资策略与命盘解读</p>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -2454,10 +2460,10 @@ ${allStocksData}
                           className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                         >
                           <div
-                            className={`max-w-[80%] rounded-lg p-3 ${
+                            className={`max-w-[80%] rounded-xl p-3 ${
                               msg.role === 'user'
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-white border border-gray-200 text-gray-800'
+                                ? 'bg-gradient-to-br from-cyan-600 to-teal-700 text-white shadow-lg shadow-cyan-500/15'
+                                : 'bg-slate-900/90 border border-white/10 text-slate-200'
                             }`}
                           >
                             <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
@@ -2466,12 +2472,12 @@ ${allStocksData}
                       ))}
                       {streamingMessage && (
                         <div className="flex justify-start">
-                          <div className="max-w-[80%] bg-white border border-gray-200 rounded-lg p-3">
-                            <div className="text-sm whitespace-pre-wrap">{streamingMessage}</div>
+                          <div className="max-w-[80%] bg-slate-900/90 border border-cyan-500/20 rounded-xl p-3">
+                            <div className="text-sm whitespace-pre-wrap text-slate-200">{streamingMessage}</div>
                             <div className="flex gap-1 mt-2">
-                              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
-                              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
-                              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+                              <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-pulse"></div>
+                              <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
+                              <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
                             </div>
                           </div>
                         </div>
@@ -2481,10 +2487,10 @@ ${allStocksData}
                   )}
                 </div>
                 
-                <div className="p-3 bg-white border-t border-gray-200">
+                <div className="p-3 bg-slate-900/90 border-t border-white/10">
                   {suggestedQuestions.length > 0 && (
                     <div className="mb-2">
-                      <p className="text-xs text-gray-500 mb-1">💡 您可能想问：</p>
+                      <p className="text-xs text-slate-500 mb-1">建议追问</p>
                       <div className="flex flex-wrap gap-1">
                         {suggestedQuestions.map((question, index) => (
                           <button
@@ -2493,7 +2499,7 @@ ${allStocksData}
                               setChatInput(question);
                               setSuggestedQuestions([]);
                             }}
-                            className="text-xs bg-green-50 hover:bg-green-100 text-green-700 px-2 py-1 rounded border border-green-200 transition-colors"
+                            className="text-xs bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-200 px-2 py-1 rounded-lg border border-cyan-500/25 transition-colors"
                           >
                             {question}
                           </button>
@@ -2508,14 +2514,13 @@ ${allStocksData}
                       onChange={(e) => setChatInput(e.target.value)}
                       onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleChatSubmit()}
                       placeholder="输入您的问题..."
-                      className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      className="flex-1 px-3 py-2 text-sm rounded-xl border border-white/10 bg-slate-950 text-slate-100 placeholder:text-slate-500 focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500/30"
                       disabled={isChatting}
                     />
                     <button
                       onClick={handleChatSubmit}
                       disabled={!chatInput.trim() || isChatting}
                       className="btn btn-primary disabled:opacity-50 px-4"
-                      style={{backgroundColor: '#059669'}}
                     >
                       {isChatting ? (
                         <div className="icon-loader text-base animate-spin"></div>
@@ -2524,8 +2529,8 @@ ${allStocksData}
                       )}
                     </button>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    AI仅回答金融股票投资和紫微斗数命理相关问题
+                  <p className="text-xs text-slate-500 mt-1">
+                    AI 仅回答金融投资与紫微斗数命理相关问题
                   </p>
                 </div>
               </div>
@@ -2534,18 +2539,19 @@ ${allStocksData}
         )}
 
         {showSaveDialog && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
-              <h2 className="text-xl font-bold text-[var(--text-primary)] mb-4">保存报告</h2>
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+            <div className="zi-card w-full max-w-md p-6 border-cyan-500/20">
+              <h2 className="text-xl font-bold text-slate-100 mb-1">保存报告</h2>
+              <p className="text-xs text-slate-500 zi-mono-label mb-4">仅存本机浏览器</p>
               <div className="mb-4">
-                <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
+                <label className="block text-sm font-medium text-slate-400 mb-2">
                   报告名称
                 </label>
                 <input
                   type="text"
                   value={saveDialogName}
                   onChange={(e) => setSaveDialogName(e.target.value)}
-                  className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg focus:ring-2 focus:ring-[var(--primary-color)] focus:border-transparent"
+                  className="w-full px-3 py-2 rounded-xl border border-white/10 bg-slate-950 text-slate-100 focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500/30"
                   placeholder="请输入报告名称"
                   autoFocus
                 />

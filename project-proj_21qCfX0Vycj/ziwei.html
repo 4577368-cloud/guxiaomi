@@ -10,44 +10,88 @@
     <script src="https://resource.trickle.so/vendor_lib/unpkg/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://resource.trickle.so/vendor_lib/unpkg/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
     <link href="https://resource.trickle.so/vendor_lib/unpkg/lucide-static@0.516.0/font/lucide.css" rel="stylesheet">
 
     <style type="text/tailwindcss">
-        @layer theme {
-            :root {
-                --primary-color: #7c3aed;
-                --secondary-color: #f3f4f6;
-                --success-color: #059669;
-                --danger-color: #dc2626;
-                --text-primary: #111827;
-                --text-secondary: #6b7280;
-                --border-color: #e5e7eb;
-            }
+        /* 勿用 @layer theme：部分 Tailwind CDN 不认，易整段编译失败 */
+        :root {
+            --primary-color: #22d3ee;
+            --primary-hover: #06b6d4;
+            --success-color: #34d399;
+            --danger-color: #fb7185;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border-color: rgba(148, 163, 184, 0.22);
         }
 
         @layer base {
+            html {
+                scroll-behavior: smooth;
+            }
             body {
                 font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: var(--text-primary);
                 min-height: 100vh;
+                -webkit-font-smoothing: antialiased;
+                background-color: #020617;
+                background-image:
+                    radial-gradient(1200px 600px at 50% -15%, rgba(34, 211, 238, 0.14), transparent 58%),
+                    radial-gradient(800px 500px at 100% 30%, rgba(45, 212, 191, 0.07), transparent 50%),
+                    radial-gradient(700px 400px at 0% 70%, rgba(56, 189, 248, 0.06), transparent 48%),
+                    linear-gradient(165deg, #020617 0%, #0f172a 42%, #020617 100%);
+                background-attachment: fixed;
+            }
+            body::before {
+                content: "";
+                position: fixed;
+                inset: 0;
+                pointer-events: none;
+                z-index: 0;
+                opacity: 0.35;
+                background-image:
+                    linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(148, 163, 184, 0.06) 1px, transparent 1px);
+                background-size: 48px 48px;
+                mask-image: radial-gradient(ellipse 90% 70% at 50% 40%, black 15%, transparent 70%);
             }
         }
 
         @layer components {
+            .zi-card {
+                border-radius: 1rem;
+                border: 1px solid rgba(255, 255, 255, 0.09);
+                background: rgba(15, 23, 42, 0.62);
+                backdrop-filter: blur(20px) saturate(165%);
+                -webkit-backdrop-filter: blur(20px) saturate(165%);
+                box-shadow:
+                    0 25px 50px -12px rgba(0, 0, 0, 0.5),
+                    0 0 0 1px rgba(34, 211, 238, 0.05),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+            }
             .btn {
-                @apply px-4 py-2 md:px-4 md:py-2 rounded-lg font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 text-sm md:text-base;
+                @apply px-4 py-2 md:px-4 md:py-2 rounded-xl font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-950 focus:ring-cyan-400/50 text-sm md:text-base;
             }
-            
             .btn-sm {
-                @apply px-3 py-1.5 text-xs md:text-sm;
+                @apply px-3 py-1.5 text-xs md:text-sm rounded-lg;
             }
-            
             .btn-primary {
-                @apply bg-[var(--primary-color)] text-white hover:bg-purple-700 focus:ring-purple-500;
+                @apply text-white border-0;
+                background: linear-gradient(135deg, #0891b2 0%, #0d9488 100%);
+                box-shadow: 0 4px 24px -4px rgba(34, 211, 238, 0.35);
             }
-            
+            .btn-primary:hover:not(:disabled) {
+                filter: brightness(1.08);
+                box-shadow: 0 6px 28px -4px rgba(34, 211, 238, 0.45);
+            }
             .btn-secondary {
-                @apply bg-gray-200 text-gray-800 hover:bg-gray-300 focus:ring-gray-500;
+                @apply bg-slate-800/85 text-slate-200 border border-white/10 hover:bg-slate-700/90 hover:border-cyan-400/25;
+            }
+            .zi-mono-label {
+                font-family: 'JetBrains Mono', ui-monospace, monospace;
+                letter-spacing: 0.12em;
             }
         }
     </style>
