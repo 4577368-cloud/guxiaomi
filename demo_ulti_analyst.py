@@ -21,7 +21,7 @@ import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Sequence
 from dataclasses import dataclass, field, fields
 from datetime import datetime
 from pathlib import Path
@@ -112,6 +112,93 @@ def _fmt_pb(pb: Optional[float]) -> str:
 def _fmt_range_cn(low: float, high: float) -> str:
     """90 日等价格区间：统一为「低～高」，避免模型写成 80100 这类连读"""
     return f"{_fmt_price(low)}～{_fmt_price(high)}"
+
+
+def _tech_summary_from_closes(
+    closes_oldest_first: Sequence[float],
+    *,
+    unit_suffix: str = "元",
+) -> str:
+    """由日收盘价序列（时间升序：最早→最新）生成技术指标简述。
+
+    统一口径（与多源 K 线共用）：5/20 日均线、RSI(14)、MACD(12,26,9)、布林带(20,2σ)、近 30 日（或不足则全长）区间。
+    MACD 至少约 35 根 K 后末值较稳定；布林至少 20 根。不依赖用户备注。
+    """
+    try:
+        import pandas as pd
+
+        vals = [float(x) for x in closes_oldest_first if x == x and float(x) > 0]
+        if len(vals) < 5:
+            return ""
+        s = pd.Series(vals, dtype=float)
+        span = min(30, len(s))
+        recent = s.iloc[-span:]
+        rng = f"近{span}日区间{_fmt_range_cn(float(recent.min()), float(recent.max()))}{unit_suffix}"
+        if len(s) < 20:
+            sma5 = float(s.iloc[-5:].mean())
+            return f"5日均线{round(sma5, 2)}；{rng}"
+        sma5 = float(s.iloc[-5:].mean())
+        sma20 = float(s.iloc[-20:].mean())
+        delta = s.diff()
+        gain = delta.where(delta > 0, 0.0).rolling(14).mean().iloc[-1]
+        loss = (-delta.where(delta < 0, 0.0)).rolling(14).mean().iloc[-1]
+        rsi = 100 - (100 / (1 + gain / loss)) if loss and loss != 0 else None
+        parts = [f"5日均线{round(sma5, 2)}", f"20日均线{round(sma20, 2)}"]
+        if rsi is not None and pd.notna(rsi):
+            parts.append(f"RSI(14){round(float(rsi), 1)}")
+
+        # MACD：EMA12/EMA26 的 DIF，DEA 为 DIF 的 9 日 EMA，柱 = DIF−DEA
+        if len(s) >= 35:
+            ema12 = s.ewm(span=12, adjust=False).mean()
+            ema26 = s.ewm(span=26, adjust=False).mean()
+            dif = ema12 - ema26
+            dea = dif.ewm(span=9, adjust=False).mean()
+            bar = dif - dea
+            d0, d1 = float(dif.iloc[-1]), float(dif.iloc[-2])
+            e0, e1 = float(dea.iloc[-1]), float(dea.iloc[-2])
+            h0 = float(bar.iloc[-1])
+            if all(x == x for x in (d0, d1, e0, e1, h0)):
+                hint = ""
+                if d0 > e0 and d1 <= e1:
+                    hint = "（DIF上穿DEA·金叉）"
+                elif d0 < e0 and d1 >= e1:
+                    hint = "（DIF下穿DEA·死叉）"
+                elif h0 > 0:
+                    hint = "（柱为正·DIF在DEA上）"
+                elif h0 < 0:
+                    hint = "（柱为负·DIF在DEA下）"
+                parts.append(
+                    f"MACD DIF{round(d0, 4)} DEA{round(e0, 4)} 柱{round(h0, 4)}{hint}"
+                )
+
+        # 布林带：中轨 20SMA，上下轨 ±2 倍 20 日标准差
+        mid20 = s.rolling(20).mean()
+        std20 = s.rolling(20).std()
+        up = mid20 + 2.0 * std20
+        lo = mid20 - 2.0 * std20
+        u0 = float(up.iloc[-1])
+        m0 = float(mid20.iloc[-1])
+        b0 = float(lo.iloc[-1])
+        last = float(s.iloc[-1])
+        if all(x == x for x in (u0, m0, b0, last)) and m0 > 0:
+            width_pct = (u0 - b0) / m0 * 100.0
+            if last >= u0:
+                pos = "收盘在上轨附近或上方"
+            elif last <= b0:
+                pos = "收盘在下轨附近或下方"
+            elif last > m0:
+                pos = "收盘在中轨上方"
+            else:
+                pos = "收盘在中轨下方"
+            parts.append(
+                f"布林 上{_fmt_price(u0)} 中{_fmt_price(m0)} 下{_fmt_price(b0)}"
+                f"（带宽约{round(width_pct, 1)}%；{pos}）"
+            )
+
+        parts.append(rng)
+        return "；".join(parts)
+    except Exception:
+        return ""
 
 
 def _strip_md_headings_with_keywords(
@@ -813,6 +900,17 @@ class StockDataService:
             if (not (out.估值分位 or "").strip() or out.估值分位 == "暂无数据") and (sd.估值分位 or "").strip():
                 out.估值分位 = sd.估值分位
 
+            # 主源技术指标偏旧/偏短时，用次源更完整的一版（含 RSI / MACD / 布林等）
+            _ot = (out.技术指标简述 or "").strip()
+            _st = (sd.技术指标简述 or "").strip()
+            if _st and (
+                not _ot
+                or ("RSI" not in _ot and "RSI" in _st)
+                or ("MACD" not in _ot and "MACD" in _st)
+                or ("布林" not in _ot and "布林" in _st)
+            ):
+                out.技术指标简述 = _st
+
             if self._stats_degenerate(out) and not self._stats_degenerate(sd):
                 out.九十日均价 = sd.九十日均价
                 out.九十日最高 = sd.九十日最高
@@ -1037,10 +1135,9 @@ class StockDataService:
                 high_90 = float(close_prices[-n:].max())
                 low_90 = float(close_prices[-n:].min())
                 volatility = float(close_prices[-n:].std() / avg_90 * 100) if avg_90 > 0 else 0.0
-                if len(close_prices) >= 20:
-                    sma5 = float(close_prices[-5:].mean())
-                    sma20 = float(close_prices[-20:].mean())
-                    技术指标简述_a = f"5日均线{round(sma5, 2)}；20日均线{round(sma20, 2)}；近{n}日区间{_fmt_range_cn(low_90, high_90)}元"
+                技术指标简述_a = _tech_summary_from_closes(
+                    list(close_prices), unit_suffix="元",
+                )
             else:
                 avg_90 = price
                 high_90 = price
@@ -1194,12 +1291,9 @@ class StockDataService:
         if not risk_flags:
             risk_flags.append("✅ 暂无明显风险信号")
 
-        if len(closes) >= 20:
-            sma5 = float(df["close"].iloc[-5:].mean())
-            sma20 = float(df["close"].iloc[-20:].mean())
-            技术指标简述_a = f"5日均线{round(sma5, 2)}；20日均线{round(sma20, 2)}；近{n}日区间{_fmt_range_cn(low_90, high_90)}元"
-        else:
-            技术指标简述_a = ""
+        技术指标简述_a = _tech_summary_from_closes(
+            df["close"].astype(float).tolist(), unit_suffix="元",
+        )
 
         pe_percentile = "暂无数据"
 
@@ -1280,15 +1374,7 @@ class StockDataService:
         if not risk_flags:
             risk_flags.append("✅ 暂无明显风险信号")
 
-        if len(seg) >= 20:
-            sma5 = float(pd.Series(closes[-5:]).mean())
-            sma20 = float(pd.Series(closes[-20:]).mean())
-            tech = (
-                f"5日均线{round(sma5, 2)}；20日均线{round(sma20, 2)}；"
-                f"近{n}日区间{_fmt_range_cn(low_90, high_90)}元"
-            )
-        else:
-            tech = f"近{n}日区间{_fmt_range_cn(low_90, high_90)}元"
+        tech = _tech_summary_from_closes(closes, unit_suffix="元")
 
         return StockData(
             股票名称=name,
@@ -1342,15 +1428,7 @@ class StockDataService:
             risk_flags.append("⚠️ 短期跌幅较深（超过 5%）")
         if not risk_flags:
             risk_flags.append("✅ 暂无明显风险信号")
-        if len(seg) >= 20:
-            sma5 = float(pd.Series(closes[-5:]).mean())
-            sma20 = float(pd.Series(closes[-20:]).mean())
-            tech = (
-                f"5日均线{round(sma5, 2)}；20日均线{round(sma20, 2)}；"
-                f"近{n}日区间{_fmt_range_cn(low_90, high_90)}港元"
-            )
-        else:
-            tech = f"近{n}日区间{_fmt_range_cn(low_90, high_90)}港元"
+        tech = _tech_summary_from_closes(closes, unit_suffix="港元")
 
         return StockData(
             股票名称=name,
@@ -1535,26 +1613,12 @@ class StockDataService:
             return self._mock_stock_data(display_code, market)
 
     def _yf_tech_summary(self, hist) -> str:
-        """从 yfinance 历史数据计算技术指标简述"""
+        """从 yfinance 历史数据计算技术指标简述（与腾讯/akshare 等同源统一用收盘价序列函数）。"""
         try:
-            import pandas as pd
-            if hist is None or len(hist) < 20:
+            if hist is None or len(hist) < 5:
                 return ""
             close = hist["Close"]
-            sma5 = close.rolling(5).mean().iloc[-1]
-            sma20 = close.rolling(20).mean().iloc[-1]
-            delta = close.diff()
-            gain = delta.where(delta > 0, 0.0).rolling(14).mean().iloc[-1]
-            loss = (-delta.where(delta < 0, 0.0)).rolling(14).mean().iloc[-1]
-            rsi = 100 - (100 / (1 + gain / loss)) if loss and loss != 0 else None
-            parts = [f"5日均线{round(sma5, 2)}", f"20日均线{round(sma20, 2)}"]
-            if rsi is not None and pd.notna(rsi):
-                parts.append(f"RSI(14){round(rsi, 1)}")
-            recent = close.iloc[-min(30, len(close)):]
-            parts.append(
-                f"近30日区间{_fmt_range_cn(float(recent.min()), float(recent.max()))}元"
-            )
-            return "；".join(parts)
+            return _tech_summary_from_closes(close.tolist(), unit_suffix="元")
         except Exception:
             return ""
 
@@ -1704,12 +1768,10 @@ class StockDataService:
         pe_percentile = "暂无数据"
         if pe > 0:
             pe_percentile = "低估区间（历史后 30%）" if pe < 15 else "合理区间（历史 30%-70%）" if pe < 30 else "高估区间（历史前 30%）"
-        if len(closes) >= 20:
-            sma5 = sum(closes[-5:]) / 5
-            sma20 = sum(closes[-20:]) / 20
-            技术指标简述 = f"5日均线{round(sma5, 2)}；20日均线{round(sma20, 2)}；近{len(closes)}日区间{_fmt_range_cn(low_90, high_90)}元"
-        else:
-            技术指标简述 = ""
+        # AV 日线为「最新在前」，与统一函数要求的「最旧在前」相反
+        chrono = list(reversed(closes)) if closes else []
+        unit = "港元" if market == "港股" else "元"
+        技术指标简述 = _tech_summary_from_closes(chrono, unit_suffix=unit)
 
         return StockData(
             股票名称=name,
