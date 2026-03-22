@@ -82,13 +82,14 @@ function AddStockModal({ onAdd, onClose }) {
     };
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" data-name="add-stock-modal" data-file="components/AddStockModal.js">
-      <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4">
+      <div className="modal-overlay" data-name="add-stock-modal" data-file="components/AddStockModal.js">
+      <div className="modal-panel mx-auto max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">添加新股票</h3>
+          <h3 className="font-display text-lg font-semibold text-slate-900">添加新股票</h3>
           <button
+            type="button"
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            className="rounded-lg p-1 text-slate-400 transition-colors hover:bg-white/60 hover:text-slate-600"
           >
             <div className="icon-x text-xl"></div>
           </button>
@@ -138,7 +139,7 @@ function AddStockModal({ onAdd, onClose }) {
             </select>
           </div>
 
-          <div className="text-sm text-[var(--text-secondary)] bg-blue-50 p-3 rounded-lg">
+          <div className="hint-glass text-[var(--text-secondary)]">
             <p className="font-medium mb-1">提示:</p>
             <ul className="space-y-1">
               <li>• 美股代码示例: AAPL, TSLA, MSFT</li>

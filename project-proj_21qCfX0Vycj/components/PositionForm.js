@@ -24,13 +24,13 @@ function PositionForm({ stock, position, onAdd, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">
+    <div className="modal-overlay">
+      <div className="modal-panel mx-auto max-h-[90vh] overflow-y-auto">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="font-display text-lg font-semibold text-slate-900">
             {position ? '编辑持仓记录' : '添加持仓记录'}
           </h3>
-          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <button type="button" onClick={onClose} className="rounded-lg p-1 text-slate-400 transition-colors hover:bg-white/60 hover:text-slate-600">
             <div className="icon-x text-xl"></div>
           </button>
         </div>
