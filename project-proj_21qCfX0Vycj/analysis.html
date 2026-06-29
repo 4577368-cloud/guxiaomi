@@ -104,6 +104,8 @@
     <script src="env.js"></script>
     <!-- 与持仓页同源：浏览器拉腾讯行情；生成报告时随请求带给后端，缓解 Vercel 服务端连不通 gtimg -->
     <script src="utils/stockAPI.js"></script>
+    <!-- 监控列表存储功能 -->
+    <script type="text/babel" src="utils/storage.js"></script>
     <!-- 须在 analysis-app 之前加载，才能收到 stock-analysis-complete（同步直出时无 job 轮询） -->
     <script src="analysis-notify.js"></script>
     <script type="text/babel" src="analysis-app.js"></script>

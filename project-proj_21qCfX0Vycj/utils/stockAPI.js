@@ -1,12 +1,93 @@
 // Stock API utility functions for US, HK and CN markets
 const API_CONFIG = {
-  ALPHA_VANTAGE_KEY: '9555C3GN360DR3OW',
-  BIYING_SECRET_KEY: 'A48A2FA7-E039-4B2D-B551-4C10A53D9BDD',
-  CN_STOCK_API_KEY: 'a4e5c8be774842f162cf08886ff442dfbfe38eb1c64f712434d6303f',
+  ALPHA_VANTAGE_KEY: window.API_CONFIG?.ALPHA_VANTAGE_KEY || 'YOUR_ALPHA_VANTAGE_KEY',
+  BIYING_SECRET_KEY: window.API_CONFIG?.BIYING_SECRET_KEY || 'YOUR_BIYING_SECRET_KEY',
+  CN_STOCK_API_KEY: window.API_CONFIG?.CN_STOCK_API_KEY || 'YOUR_CN_STOCK_API_KEY',
+  PROXY_BASE: window.API_CONFIG?.PROXY_BASE || '',
   HK_EXCHANGE_RATE: 7.78, // USD to HKD
   CN_EXCHANGE_RATE: 1, // CNY to CNY
   REQUEST_TIMEOUT: 10000 // 10 seconds timeout
 };
+
+// 检查是否配置了API密钥
+function checkApiConfig() {
+  const missing = [];
+  if (!window.API_CONFIG?.ALPHA_VANTAGE_KEY || window.API_CONFIG.ALPHA_VANTAGE_KEY === 'YOUR_ALPHA_VANTAGE_KEY') {
+    missing.push('Alpha Vantage (美股)');
+  }
+  if (!window.API_CONFIG?.CN_STOCK_API_KEY || window.API_CONFIG.CN_STOCK_API_KEY === 'YOUR_CN_STOCK_API_KEY') {
+    missing.push('A股 API');
+  }
+  if (missing.length > 0) {
+    console.warn(`⚠️ 股小蜜: 以下API未配置，将使用模拟数据: ${missing.join(', ')}`);
+    console.warn('请编辑 env.js 文件配置API密钥，或复制 env.js 为 env.local.js 并填入密钥');
+  }
+}
+
+// 页面加载时检查配置
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', checkApiConfig);
+} else {
+  checkApiConfig();
+}
+
+let exchangeRateLastUpdated = null;
+
+async function fetchExchangeRates() {
+  try {
+    const now = Date.now();
+    if (exchangeRateLastUpdated && now - exchangeRateLastUpdated < 60 * 60 * 1000) {
+      console.log('汇率缓存未过期，跳过获取');
+      return;
+    }
+    
+    console.log('开始获取实时汇率...');
+    const response = await fetch('https://api.frankfurter.app/latest?from=USD&to=HKD,CNY');
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    if (data.rates && data.rates.HKD) {
+      API_CONFIG.HK_EXCHANGE_RATE = data.rates.HKD;
+    }
+    if (data.rates && data.rates.CNY) {
+      API_CONFIG.CN_EXCHANGE_RATE = data.rates.CNY;
+    }
+    
+    exchangeRateLastUpdated = now;
+    console.log(`汇率更新成功: USD/HKD=${API_CONFIG.HK_EXCHANGE_RATE}, USD/CNY=${API_CONFIG.CN_EXCHANGE_RATE}`);
+  } catch (error) {
+    console.warn(`获取汇率失败，使用默认值: ${error.message}`);
+  }
+}
+
+function getExchangeRate(market) {
+  if (market === 'HK') return API_CONFIG.HK_EXCHANGE_RATE;
+  if (market === 'CN') return API_CONFIG.CN_EXCHANGE_RATE;
+  return 1;
+}
+
+function debounce(fn, delay) {
+  let timer = null;
+  return function(...args) {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
+
+function throttle(fn, limit) {
+  let inThrottle = false;
+  return function(...args) {
+    if (!inThrottle) {
+      fn.apply(this, args);
+      inThrottle = true;
+      setTimeout(() => inThrottle = false, limit);
+    }
+  };
+}
 
 async function getStockPrice(symbol, market) {
   try {
@@ -38,7 +119,6 @@ async function getStockPrice(symbol, market) {
   } catch (error) {
     console.error(`获取 ${symbol} 股价失败:`, error.message);
     
-    // Return appropriate mock data based on market
     if (market === 'HK') {
       return generateMockHKData(symbol);
     } else if (market === 'CN') {
@@ -87,16 +167,6 @@ function formatVolume(volume) {
     return (v / 1000).toFixed(0) + "K";
   }
   return String(v);
-}
-
-function formatPrice(price, precision = 3) {
-  const num = Number(price).toFixed(precision);
-  const parts = num.split('.');
-  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  if (parts[1]) {
-    return `${parts[0]}.<span style="font-size: 0.7em; vertical-align: baseline;">${parts[1]}</span>`;
-  }
-  return parts[0];
 }
 
 function convertCurrency(amount, fromMarket, toMarket = 'HK', exchangeRate = 7.78) {

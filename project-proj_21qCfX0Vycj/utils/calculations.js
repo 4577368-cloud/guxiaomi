@@ -5,20 +5,29 @@ function formatPrice(value, decimals = 2) {
   
   const num = parseFloat(value);
   
-  // For values >= 100,000, display in wan (万) format
   if (Math.abs(num) >= 100000) {
     const wanValue = num / 10000;
-    return wanValue.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }) + '万';
+    const formatted = wanValue.toLocaleString('en-US', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals
+    });
+    const parts = formatted.split('.');
+    if (parts[1]) {
+      return `${parts[0]}.<span style="font-size: 0.7em; vertical-align: baseline;">${parts[1]}</span>万`;
+    }
+    return formatted + '万';
   }
   
-  // For values < 100,000, display normally
-  return num.toLocaleString('en-US', {
+  const formatted = num.toLocaleString('en-US', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals
   });
+  const parts = formatted.split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  if (parts[1]) {
+    return `${parts[0]}.<span style="font-size: 0.7em; vertical-align: baseline;">${parts[1]}</span>`;
+  }
+  return parts[0];
 }
 
 function calculateDailyProfitLoss(stock) {

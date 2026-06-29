@@ -1,12 +1,58 @@
 // Local storage utility functions for portfolio management
 const PORTFOLIO_STORAGE_KEY = 'stock_portfolio_data';
+const CURRENT_VERSION = '1.1';
+
+function validateStockData(stock) {
+  if (!stock || typeof stock !== 'object') return false;
+  if (!stock.symbol || !stock.market) return false;
+  if (stock.currentPrice !== undefined && (!Number.isFinite(stock.currentPrice) || stock.currentPrice < 0)) {
+    return false;
+  }
+  return true;
+}
+
+function sanitizeStockData(stock) {
+  if (!stock || typeof stock !== 'object') return null;
+  return {
+    ...stock,
+    currentPrice: stock.currentPrice !== undefined && Number.isFinite(stock.currentPrice) && stock.currentPrice >= 0
+      ? stock.currentPrice
+      : 0,
+    positions: Array.isArray(stock.positions) ? stock.positions : [],
+    priceHistory: Array.isArray(stock.priceHistory) ? stock.priceHistory : [],
+    technicalIndicators: stock.technicalIndicators || {},
+    marketData: stock.marketData || {}
+  };
+}
+
+function migratePortfolioData(data) {
+  if (!data) return { portfolio: [], version: CURRENT_VERSION };
+  
+  let portfolio = data.portfolio || [];
+  
+  portfolio = portfolio.map(stock => {
+    const sanitized = sanitizeStockData(stock);
+    if (!sanitized) return null;
+    return {
+      ...sanitized,
+      id: sanitized.id || Date.now().toString()
+    };
+  }).filter(Boolean);
+  
+  return {
+    portfolio: portfolio,
+    version: CURRENT_VERSION,
+    lastUpdated: data.lastUpdated || new Date().toISOString()
+  };
+}
 
 function savePortfolio(portfolio) {
   try {
+    const sanitizedPortfolio = portfolio.map(sanitizeStockData).filter(Boolean);
     const dataToSave = {
-      portfolio: portfolio,
+      portfolio: sanitizedPortfolio,
       lastUpdated: new Date().toISOString(),
-      version: '1.0'
+      version: CURRENT_VERSION
     };
     localStorage.setItem(PORTFOLIO_STORAGE_KEY, JSON.stringify(dataToSave));
     console.log('投资组合数据已保存');
@@ -19,9 +65,23 @@ function loadPortfolio() {
   try {
     const savedData = localStorage.getItem(PORTFOLIO_STORAGE_KEY);
     if (savedData) {
-      const parsedData = JSON.parse(savedData);
-      console.log('投资组合数据已加载, 最后更新:', parsedData.lastUpdated);
-      return parsedData.portfolio || [];
+      let parsedData;
+      try {
+        parsedData = JSON.parse(savedData);
+      } catch (parseError) {
+        console.error('解析投资组合数据失败:', parseError);
+        return [];
+      }
+      
+      const migratedData = migratePortfolioData(parsedData);
+      
+      if (migratedData.version !== parsedData?.version) {
+        savePortfolio(migratedData.portfolio);
+        console.log('投资组合数据已迁移到新版本:', CURRENT_VERSION);
+      }
+      
+      console.log('投资组合数据已加载, 最后更新:', migratedData.lastUpdated);
+      return migratedData.portfolio || [];
     }
     return [];
   } catch (error) {
@@ -161,4 +221,129 @@ function updateStockPriceHistory(stock, newPrice, previousClose) {
   saveStockPriceHistory(stock.symbol, stock.market, trimmed);
   return trimmed;
 }
+
+// ============== 监控列表功能 ==============
+const WATCHLIST_STORAGE_KEY = 'stock_watchlist_data';
+
+function validateWatchlistItem(item) {
+  if (!item || typeof item !== 'object') return false;
+  if (!item.symbol || !item.market) return false;
+  return true;
+}
+
+function sanitizeWatchlistItem(item) {
+  if (!item || typeof item !== 'object') return null;
+  return {
+    id: item.id || `${item.market}_${item.symbol}_${Date.now()}`,
+    symbol: item.symbol.toUpperCase(),
+    market: item.market.toUpperCase(),
+    name: item.name || item.symbol,
+    currentPrice: item.currentPrice || 0,
+    previousClose: item.previousClose || null,
+    change: item.change || 0,
+    changePercent: item.changePercent || 0,
+    marketData: item.marketData || {},
+    priceHistory: Array.isArray(item.priceHistory) ? item.priceHistory : [],
+    addedAt: item.addedAt || new Date().toISOString(),
+    notes: item.notes || '',
+    alertEnabled: item.alertEnabled || false,
+    alertThreshold: item.alertThreshold || 5 // 涨跌幅超过5%提醒
+  };
+}
+
+function saveWatchlist(watchlist) {
+  try {
+    const sanitized = watchlist
+      .map(item => sanitizeWatchlistItem(item))
+      .filter(Boolean);
+    const dataToSave = {
+      watchlist: sanitized,
+      lastUpdated: new Date().toISOString(),
+      version: '1.0'
+    };
+    localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(dataToSave));
+    console.log('监控列表已保存');
+  } catch (error) {
+    console.error('保存监控列表失败:', error);
+  }
+}
+
+function loadWatchlist() {
+  try {
+    const savedData = localStorage.getItem(WATCHLIST_STORAGE_KEY);
+    if (savedData) {
+      const parsedData = JSON.parse(savedData);
+      console.log('监控列表已加载');
+      return parsedData.watchlist || [];
+    }
+    return [];
+  } catch (error) {
+    console.error('加载监控列表失败:', error);
+    return [];
+  }
+}
+
+function addToWatchlist(item) {
+  const watchlist = loadWatchlist();
+  const key = `${item.market}_${item.symbol}`.toUpperCase();
+
+  // 检查是否已存在
+  const exists = watchlist.some(w => `${w.market}_${w.symbol}`.toUpperCase() === key);
+  if (exists) {
+    console.warn(`${item.symbol} 已在监控列表中`);
+    return { success: false, message: '该股票已在监控列表中' };
+  }
+
+  watchlist.push(sanitizeWatchlistItem({
+    ...item,
+    addedAt: new Date().toISOString()
+  }));
+  saveWatchlist(watchlist);
+  return { success: true, watchlist };
+}
+
+function removeFromWatchlist(symbol, market) {
+  const watchlist = loadWatchlist();
+  const key = `${market}_${symbol}`.toUpperCase();
+  const filtered = watchlist.filter(w => `${w.market}_${w.symbol}`.toUpperCase() !== key);
+  saveWatchlist(filtered);
+  return { success: true, watchlist: filtered };
+}
+
+function updateWatchlistItem(symbol, market, updates) {
+  const watchlist = loadWatchlist();
+  const key = `${market}_${symbol}`.toUpperCase();
+  const updated = watchlist.map(w => {
+    if (`${w.market}_${w.symbol}`.toUpperCase() === key) {
+      return sanitizeWatchlistItem({ ...w, ...updates });
+    }
+    return w;
+  });
+  saveWatchlist(updated);
+  return { success: true, watchlist: updated };
+}
+
+function isInWatchlist(symbol, market) {
+  const watchlist = loadWatchlist();
+  const key = `${market}_${symbol}`.toUpperCase();
+  return watchlist.some(w => `${w.market}_${w.symbol}`.toUpperCase() === key);
+}
+
+function clearWatchlist() {
+  try {
+    localStorage.removeItem(WATCHLIST_STORAGE_KEY);
+    console.log('监控列表已清除');
+  } catch (error) {
+    console.error('清除监控列表失败:', error);
+  }
+}
+
+// 导出为全局函数
+window.loadWatchlist = loadWatchlist;
+window.saveWatchlist = saveWatchlist;
+window.addToWatchlist = addToWatchlist;
+window.removeFromWatchlist = removeFromWatchlist;
+window.updateWatchlistItem = updateWatchlistItem;
+window.isInWatchlist = isInWatchlist;
+window.clearWatchlist = clearWatchlist;
 

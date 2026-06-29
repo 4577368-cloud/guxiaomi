@@ -133,9 +133,11 @@ class ErrorBoundary extends React.Component {
 
 function App() {
     const [portfolio, setPortfolio] = React.useState([]);
+    const [watchlist, setWatchlist] = React.useState([]);
     const [capitalPool, setCapitalPool] = React.useState({ usd: 0, hkd: 0, cny: 0 });
     const [showAddModal, setShowAddModal] = React.useState(false);
     const [isRefreshing, setIsRefreshing] = React.useState(false);
+    const [isLoading, setIsLoading] = React.useState(true);
     const [collapsedStocks, setCollapsedStocks] = React.useState({});
 
     React.useEffect(() => {
@@ -183,6 +185,8 @@ function App() {
   const loadInitialData = async () => {
     let normalized = [];
     try {
+      setIsLoading(true);
+      fetchExchangeRates().catch(() => {});
       const localPortfolio = loadPortfolio();
       normalized = (Array.isArray(localPortfolio) ? localPortfolio : []).map(stock => {
         const symNorm = normalizePortfolioSymbol(stock.symbol, stock.market);
@@ -247,6 +251,17 @@ function App() {
     } catch (e) {
       console.error('加载资金池失败', e);
     }
+    // 加载监控列表
+    try {
+      const savedWatchlist = window.loadWatchlist ? window.loadWatchlist() : [];
+      setWatchlist(savedWatchlist || []);
+      console.log('监控列表已加载:', savedWatchlist?.length || 0, '只股票');
+    } catch (e) {
+      console.error('加载监控列表失败', e);
+      setWatchlist([]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleAddStock = (stockData) => {
@@ -273,20 +288,91 @@ function App() {
 
   const handleUpdateStock = (stockId, updatedStock) => {
     try {
-      const updatedPortfolio = portfolio.map(stock =>
-        stock.id === stockId ? updatedStock : stock
-      );
-      setPortfolio(updatedPortfolio);
-      savePortfolio(updatedPortfolio);
+      setPortfolio(prev => {
+        const updated = prev.map(stock =>
+          stock.id === stockId ? updatedStock : stock
+        );
+        savePortfolio(updated);
+        return updated;
+      });
     } catch (err) {
       console.error('更新股票失败', err);
     }
   };
 
   const handleDeleteStock = (stockId) => {
-    const updatedPortfolio = portfolio.filter(stock => stock.id !== stockId);
-    setPortfolio(updatedPortfolio);
-    savePortfolio(updatedPortfolio);
+    setPortfolio(prev => {
+      const updated = prev.filter(stock => stock.id !== stockId);
+      savePortfolio(updated);
+      return updated;
+    });
+  };
+
+  // 监控列表处理函数
+  const handleAddToWatchlist = (stockData) => {
+    if (!stockData || !stockData.symbol) return;
+    if (window.addToWatchlist) {
+      const result = window.addToWatchlist(stockData);
+      if (result.success) {
+        setWatchlist(result.watchlist);
+        console.log(`已将 ${stockData.symbol} 添加到监控列表`);
+      } else {
+        console.warn(result.message);
+      }
+    }
+  };
+
+  const handleRemoveFromWatchlist = (item) => {
+    if (window.removeFromWatchlist) {
+      const key = `${item.market}_${item.symbol}`.toUpperCase();
+      const result = window.removeFromWatchlist(item.symbol, item.market);
+      if (result.success) {
+        setWatchlist(result.watchlist);
+        console.log(`已将 ${item.symbol} 从监控列表移除`);
+      }
+    }
+  };
+
+  const handleRefreshWatchlistItem = async (item) => {
+    try {
+      const priceData = await getStockPrice(item.symbol, item.market);
+      if (window.updateWatchlistItem) {
+        const result = window.updateWatchlistItem(item.symbol, item.market, {
+          currentPrice: priceData.price,
+          previousClose: priceData.previousClose,
+          change: priceData.change,
+          changePercent: priceData.changePercent,
+          marketData: priceData
+        });
+        if (result.success) {
+          setWatchlist([...result.watchlist]);
+        }
+      }
+    } catch (error) {
+      console.error(`刷新 ${item.symbol} 价格失败:`, error);
+    }
+  };
+
+  const handleRefreshAllWatchlist = async () => {
+    console.log('开始刷新监控列表...');
+    for (const item of watchlist) {
+      await handleRefreshWatchlistItem(item);
+    }
+    console.log('监控列表刷新完成');
+  };
+
+  const handleAddPositionFromWatchlist = (item) => {
+    // 将监控列表中的股票添加到持仓
+    handleAddStock({
+      symbol: item.symbol,
+      market: item.market,
+      name: item.name,
+      currentPrice: item.currentPrice,
+      marketData: item.marketData,
+      positions: []
+    });
+    // 可选：从监控列表移除
+    // handleRemoveFromWatchlist(item);
   };
 
 
@@ -311,41 +397,48 @@ function App() {
     const handleRefreshAll = async () => {
       setIsRefreshing(true);
       console.log('开始批量刷新所有股票价格和技术指标...');
-      const updatedPortfolio = [];
       try {
-        for (const stock of portfolio) {
+        const refreshPromises = portfolio.map(async (stock) => {
           try {
             console.log(`正在刷新股票 ${stock.symbol} 的价格...`);
-            const priceData = await getStockPrice(stock.symbol, stock.market);
+            const [priceData, indicators] = await Promise.all([
+              getStockPrice(stock.symbol, stock.market),
+              (stock.market === 'HK' || stock.market === 'CN')
+                ? getHistoricalDataAndIndicators(stock.symbol, stock.market)
+                : Promise.resolve(stock.technicalIndicators)
+            ]);
 
-            let indicators = stock.technicalIndicators;
-
-            if (stock.market === 'HK' || stock.market === 'CN') {
-              try {
-                console.log(`正在获取 ${stock.symbol} 的技术指标...`);
-                indicators = await getHistoricalDataAndIndicators(stock.symbol, stock.market);
-                console.log(`${stock.symbol} 技术指标获取成功:`, indicators);
-              } catch (error) {
-                console.error(`获取 ${stock.symbol} 技术指标失败:`, error);
-              }
+            if (indicators) {
+              console.log(`${stock.symbol} 技术指标获取成功`);
             }
 
             const priceHistory = updateStockPriceHistory(stock, priceData.price, priceData.previousClose);
 
-            updatedPortfolio.push({
+            console.log(`${stock.symbol} 价格更新成功: ${priceData.price}`);
+
+            // 检查价格提醒
+            if (window.checkPriceAlert && stock.currentPrice > 0) {
+              const alert = window.checkPriceAlert(stock, priceData.price, stock.currentPrice);
+              if (alert) {
+                console.log(`🔔 价格提醒: ${alert.message}`);
+                window.sendPriceNotification?.(alert);
+              }
+            }
+
+            return {
               ...stock,
               currentPrice: priceData.price,
               marketData: priceData,
-              technicalIndicators: indicators,
+              technicalIndicators: indicators || stock.technicalIndicators,
               priceHistory: priceHistory
-            });
-
-            console.log(`${stock.symbol} 价格更新成功: ${priceData.price}`);
+            };
           } catch (error) {
             console.error(`获取股票 ${stock.symbol} 价格失败:`, error);
-            updatedPortfolio.push(stock);
+            return stock;
           }
-        }
+        });
+
+        const updatedPortfolio = await Promise.all(refreshPromises);
 
         setPortfolio(updatedPortfolio);
         savePortfolio(updatedPortfolio);
@@ -384,87 +477,110 @@ function App() {
       <>
         <div className="flex min-h-screen flex-col" data-name="app" data-file="app.js">
           <header className="glass-nav sticky top-0 z-40">
-            <div className="container mx-auto px-2 py-2 md:px-4 md:py-2.5">
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between md:gap-3">
-              <div className="flex min-w-0 items-center gap-2 md:gap-3">
-              <img
-                src="https://imgus.tangbuy.com/static/images/2025-09-26/e9e9e871b0b2477697e4b59f6da02ab5-17588742994027430860421454933872.png"
-                alt="股小蜜 Logo"
-                className="h-7 w-7 shrink-0 rounded-lg shadow-sm shadow-slate-900/10 ring-1 ring-white/60 md:h-9 md:w-9 md:rounded-xl"
-              />
-              <h1 className="font-display truncate text-base font-bold leading-tight tracking-tight text-[var(--text-primary)] md:text-xl">
-                股小蜜～懂理财，更懂你！
-              </h1>
+            <div className="container mx-auto px-2 py-2.5 md:px-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <img
+                      src="https://imgus.tangbuy.com/static/images/2025-09-26/e9e9e871b0b2477697e4b59f6da02ab5-17588742994027430860421454933872.png"
+                      alt="股小蜜 Logo"
+                      className="h-9 w-9 rounded-xl shadow-lg shadow-slate-900/20 ring-2 ring-white/70"
+                    />
+                    <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-400 ring-2 ring-slate-900"></div>
+                  </div>
+                  <div className="flex flex-col">
+                    <h1 className="font-display text-base font-bold tracking-tight text-[var(--text-primary)] md:text-lg">
+                      股小蜜
+                    </h1>
+                    <p className="text-[10px] text-slate-400 md:text-xs">
+                      懂理财，更懂你
+                    </p>
+                  </div>
+                  {isLoading && (
+                    <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent"></span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddModal(true)}
+                    className="btn btn-primary flex items-center gap-1.5 px-3 py-1.5 md:px-4 md:py-2"
+                  >
+                    <div className="icon-plus text-sm"></div>
+                    <span className="hidden sm:inline">新增</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRefreshAll}
+                    disabled={isRefreshing || portfolio.length === 0}
+                    className="btn btn-secondary flex items-center gap-1.5 px-3 py-1.5 md:px-4 md:py-2 disabled:opacity-50"
+                  >
+                    <div className={`icon-refresh-cw text-sm ${isRefreshing ? 'animate-spin' : ''}`}></div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { window.location.href = 'news.html'; }}
+                    className="btn btn-secondary flex items-center gap-1.5 px-3 py-1.5 md:px-4 md:py-2"
+                  >
+                    <div className="icon-newspaper text-sm"></div>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary flex items-center gap-1.5 px-3 py-1.5 md:px-4 md:py-2 hidden sm:flex"
+                  >
+                    <div className="icon-bar-chart-2 text-sm"></div>
+                  </button>
+                </div>
               </div>
-            
 
-
-
-
-              <div className="flex flex-wrap items-center gap-1.5 md:shrink-0 md:justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(true)}
-                  className="btn btn-sm btn-primary flex items-center gap-1"
-                >
-                  <div className="icon-plus text-xs sm:text-sm"></div>
-                  <span className="hidden sm:inline">新增股票</span>
-                  <span className="sm:hidden">新增</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRefreshAll}
-                  disabled={isRefreshing || portfolio.length === 0}
-                  className="btn btn-sm btn-success flex items-center gap-1 disabled:pointer-events-none disabled:opacity-50"
-                >
-                  <div className={`icon-refresh-cw text-xs sm:text-sm ${isRefreshing ? 'animate-spin' : ''}`}></div>
-                  <span className="hidden sm:inline">{isRefreshing ? '刷新中...' : '刷新价格'}</span>
-                  <span className="sm:hidden">{isRefreshing ? '刷新' : '刷新'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { window.location.href = 'news.html'; }}
-                  className="btn btn-sm btn-accent-news flex items-center gap-1"
-                >
-                  <div className="icon-newspaper text-xs sm:text-sm"></div>
-                  <span className="hidden sm:inline">新闻</span>
-                  <span className="sm:hidden">新闻</span>
-                </button>
-                <a
-                  href="ziwei.html"
-                  className="btn btn-sm btn-secondary flex items-center gap-1"
-                >
-                  <div className="icon-sparkles text-xs sm:text-sm"></div>
-                  <span className="hidden sm:inline">紫微排盘</span>
-                  <span className="sm:hidden">紫微</span>
-                </a>
-                <a
-                  href="analysis.html"
-                  className="btn btn-sm btn-accent-analysis flex items-center gap-1"
-                >
-                  <div className="icon-bar-chart-2 text-xs sm:text-sm"></div>
-                  <span className="hidden sm:inline">股票分析</span>
-                  <span className="sm:hidden">分析</span>
-                </a>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {portfolio.length > 1 && (
+                  <StockNavigation portfolio={portfolio} />
+                )}
+                <div className="flex items-center gap-2 ml-auto">
+                  <a href="analysis.html" className="hidden md:flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors">
+                    <div className="icon-bar-chart-2"></div>
+                    股票分析
+                  </a>
+                  <a href="ziwei.html" className="hidden md:flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors">
+                    <div className="icon-sparkles"></div>
+                    紫微排盘
+                  </a>
+                </div>
               </div>
-            </div>
-            {portfolio.length > 1 && (
-              <StockNavigation portfolio={portfolio} />
-            )}
             </div>
           </header>
 
           <main className="app-shell container mx-auto px-2 pb-8 pt-3 md:px-4 md:pb-12 md:pt-4">
           {/* Position Allocation Card */}
-          {portfolio.length > 0 && (
-            <PositionAllocationCard 
+          {isLoading ? (
+            <div className="card animate-pulse">
+              <div className="h-6 w-32 rounded bg-white/20 mb-4"></div>
+              <div className="h-32 rounded bg-white/10"></div>
+            </div>
+          ) : portfolio.length > 0 && (
+            <PositionAllocationCard
               portfolio={portfolio}
               capitalPool={capitalPool}
             />
           )}
 
           {/* Portfolio Summary */}
-          {portfolio.length > 0 && (
+          {isLoading ? (
+            <div className="card animate-pulse">
+              <div className="flex justify-between items-center mb-4">
+                <div className="h-6 w-24 rounded bg-white/20"></div>
+                <div className="h-8 w-32 rounded bg-white/15"></div>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="h-16 rounded bg-white/10"></div>
+                <div className="h-16 rounded bg-white/10"></div>
+                <div className="h-16 rounded bg-white/10"></div>
+                <div className="h-16 rounded bg-white/10"></div>
+              </div>
+            </div>
+          ) : portfolio.length > 0 && (
             <PortfolioSummary 
               summary={portfolioSummary}
               capitalPool={capitalPool}
@@ -473,13 +589,62 @@ function App() {
           )}
 
           {/* Holdings Summary Table */}
-          {portfolio.length > 0 && (
+          {isLoading ? (
+            <div className="card animate-pulse overflow-hidden">
+              <div className="h-6 w-24 rounded bg-white/20 mb-4"></div>
+              <div className="space-y-2">
+                <div className="h-10 rounded bg-white/10"></div>
+                <div className="h-10 rounded bg-white/10"></div>
+                <div className="h-10 rounded bg-white/10"></div>
+              </div>
+            </div>
+          ) : portfolio.length > 0 && (
             <HoldingsSummaryTable portfolio={portfolio} />
           )}
 
+          {/* Watchlist Section */}
+          <WatchlistSection
+            watchlist={watchlist}
+            onRemoveItem={handleRemoveFromWatchlist}
+            onRefreshItem={handleRefreshWatchlistItem}
+            onAddPosition={handleAddPositionFromWatchlist}
+            onRefreshAll={handleRefreshAllWatchlist}
+          />
+
           {/* Stock Cards：lg+ 双列 Grid */}
           <div className="app-stock-grid">
-            {portfolio.length === 0 ? (
+            {isLoading ? (
+              <>
+                <div className="rounded-2xl border border-white/20 bg-white/10 p-6 shadow-xl backdrop-blur-md animate-pulse">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="h-6 w-24 rounded bg-white/20"></div>
+                    <div className="h-8 w-8 rounded-full bg-white/20"></div>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="h-4 w-3/4 rounded bg-white/10"></div>
+                    <div className="h-4 w-1/2 rounded bg-white/10"></div>
+                  </div>
+                  <div className="mt-4 flex gap-2">
+                    <div className="h-8 w-20 rounded bg-white/15"></div>
+                    <div className="h-8 w-20 rounded bg-white/15"></div>
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-white/20 bg-white/10 p-6 shadow-xl backdrop-blur-md animate-pulse">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="h-6 w-24 rounded bg-white/20"></div>
+                    <div className="h-8 w-8 rounded-full bg-white/20"></div>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="h-4 w-3/4 rounded bg-white/10"></div>
+                    <div className="h-4 w-1/2 rounded bg-white/10"></div>
+                  </div>
+                  <div className="mt-4 flex gap-2">
+                    <div className="h-8 w-20 rounded bg-white/15"></div>
+                    <div className="h-8 w-20 rounded bg-white/15"></div>
+                  </div>
+                </div>
+              </>
+            ) : portfolio.length === 0 ? (
               <div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-10 text-center shadow-xl backdrop-blur-md md:py-14">
                 <div className="icon-trending-up mb-3 flex justify-center text-4xl text-blue-400/80 md:mb-4 md:text-6xl"></div>
                 <h3 className="font-display mb-2 text-lg font-semibold text-slate-200 md:text-xl">
@@ -520,6 +685,7 @@ function App() {
             <AddStockModal
               onAdd={handleAddStock}
               onClose={() => setShowAddModal(false)}
+              onAddToWatchlist={handleAddToWatchlist}
             />
           )}
           </main>

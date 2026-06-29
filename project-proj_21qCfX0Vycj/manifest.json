@@ -1,0 +1,28 @@
+{
+  "name": "股小蜜～懂理财，更懂你！",
+  "short_name": "股小蜜",
+  "description": "支持美股港股A股的投资组合管理工具，实时跟踪持仓盈亏，模拟补仓操作",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#0b1120",
+  "theme_color": "#0b1120",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "https://app.trickle.so/storage/app/46bdde6b-ce0a-436d-9861-f705820c2391.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://app.trickle.so/storage/app/46bdde6b-ce0a-436d-9861-f705820c2391.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["finance", "productivity"],
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "prefer_related_applications": false
+}

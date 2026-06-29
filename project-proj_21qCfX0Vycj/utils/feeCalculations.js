@@ -18,6 +18,11 @@ function getBrokerFeeStructure(brokerChannel, market) {
         '交易活动费': '$0.000166/股，最低$0.01，最高$8.3 (仅卖出)',
         '交收费': '$0.003/股，最高交易额7%',
         '审计跟踪费': '$0.000046/股，最低$0.01'
+      },
+      CN: {
+        '经纪佣金': '0.03%，最低¥5',
+        '过户费': '0.001%，最低¥0.01',
+        '印花税': '0.1%，最低¥1 (仅卖出)'
       }
     },
     longbridge: {
@@ -34,6 +39,11 @@ function getBrokerFeeStructure(brokerChannel, market) {
         '交易活动费': '$0.000166/股，最低$0.01，最高$8.3 (仅卖出)',
         '交收费': '$0.003/股，最高7%*交易金额',
         '审计跟踪费': '$0.000046/股，最低$0.01'
+      },
+      CN: {
+        '经纪佣金': '0.03%，最低¥5',
+        '过户费': '0.001%，最低¥0.01',
+        '印花税': '0.1%，最低¥1 (仅卖出)'
       }
     },
     boc: {
@@ -47,6 +57,11 @@ function getBrokerFeeStructure(brokerChannel, market) {
       },
       US: {
         '经纪佣金': '$0.02/股，最低$5/笔'
+      },
+      CN: {
+        '经纪佣金': '0.03%，最低¥5',
+        '过户费': '0.001%，最低¥0.01',
+        '印花税': '0.1%，最低¥1 (仅卖出)'
       }
     }
   };
@@ -138,8 +153,20 @@ function calculateBuyFees(brokerChannel, market, price, shares) {
 }
 
 function calculateSellFees(brokerChannel, market, price, shares) {
-  const amount = price * shares;
+  const pr = Number(price);
+  const sh = Number(shares);
+  if (!Number.isFinite(pr) || !Number.isFinite(sh) || pr < 0 || sh <= 0) {
+    return {};
+  }
+  const amount = pr * sh;
   let fees = {};
+
+  if (market === "CN") {
+    fees.commission = Math.max(amount * 0.0003, 5);
+    fees.transferFee = Math.max(amount * 0.00001, 0.01);
+    fees.stampDuty = Math.max(amount * 0.001, 1);
+    return fees;
+  }
   
   if (brokerChannel === 'futu') {
     if (market === 'HK') {

@@ -2097,6 +2097,40 @@ function AnalysisApp() {
     if (apiUsage.apis.length === 0 && !apiUsage.loading) fetchApiUsage();
   };
 
+  /** 加入监控列表 */
+  const handleAddToWatchlistFromPred = function (row) {
+    if (!row || !row.symbol) {
+      alert('股票代码无效');
+      return;
+    }
+    // 根据代码判断市场
+    var market = 'US';
+    var symbol = String(row.symbol || '').trim().toUpperCase();
+    if (/^\d{5}$/.test(symbol)) {
+      market = 'HK';
+    } else if (/^\d{6}$/.test(symbol)) {
+      market = 'CN';
+    }
+    var stockData = {
+      symbol: symbol,
+      market: market,
+      name: row.name || symbol,
+      currentPrice: row.price != null ? Number(row.price) : 0,
+      change: row.change_ratio != null ? Number(row.change_ratio) : 0,
+      changePercent: row.change_ratio != null ? Number(row.change_ratio) : 0
+    };
+    if (window.addToWatchlist) {
+      var result = window.addToWatchlist(stockData);
+      if (result.success) {
+        alert('已添加到监控列表');
+      } else {
+        alert(result.message || '该股票已在监控列表中');
+      }
+    } else {
+      alert('监控功能不可用，请确保已正确加载');
+    }
+  };
+
   /** 从报告区回到上方：分析表单 / 历史 / 预测 */
   const scrollToAnalysisWorkbench = React.useCallback(function () {
     var el = document.getElementById("analysis-workbench");
@@ -2605,6 +2639,7 @@ function AnalysisApp() {
                     <th className="p-1.5 font-medium">涨跌%</th>
                     <th className="p-1.5 font-medium">概率</th>
                     <th className="p-1.5 font-medium">profit</th>
+                    <th className="p-1.5 font-medium">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2632,6 +2667,16 @@ function AnalysisApp() {
                       </td>
                       <td className="p-1.5">
                         {row.profit != null ? row.profit : "—"}
+                      </td>
+                      <td className="p-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleAddToWatchlistFromPred(row)}
+                          className="btn btn-xs bg-cyan-500 text-white hover:bg-cyan-600 border-0 shrink-0"
+                          title="加入监控列表"
+                        >
+                          +监控
+                        </button>
                       </td>
                     </tr>
                   ))}

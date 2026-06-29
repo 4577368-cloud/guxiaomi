@@ -123,7 +123,12 @@ function StockBasicInfo({ stock, brokerChannel, onBrokerChannelChange, onPriceUp
             )}
           </span>
         )}
-        {stock.marketData?.isMock && <span className="text-xs bg-yellow-100 text-yellow-800 px-1 rounded">模拟</span>}
+        {stock.marketData?.isMock && (
+          <span className="inline-flex items-center gap-0.5 text-xs font-semibold bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded-md border border-amber-400/40" title="当前数据为模拟数据，非真实市场价格">
+            <div className="icon-alert-circle text-xs"></div>
+            模拟数据
+          </span>
+        )}
       </div>
     </div>
   );

@@ -46,32 +46,51 @@
     msgEl.textContent = message;
 
     var btnWrap = document.createElement('div');
-    btnWrap.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;';
+    btnWrap.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;margin-top:20px;';
 
     function closeModal() {
       if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
     }
 
+    function goToReport() {
+      closeModal();
+      var isAnalysisPage = window.location.pathname.indexOf('analysis.html') >= 0;
+      if (isAnalysisPage) {
+        var el = document.getElementById('report-reading-panel');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      } else {
+        var base = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+        if (!base) base = '.';
+        window.location.href = base + '/analysis.html' + window.location.search;
+      }
+    }
+
     var btnClose = document.createElement('button');
     btnClose.textContent = '确定';
-    btnClose.style.cssText = 'px-4 py-2 rounded-lg font-medium bg-blue-600 text-white border:none;cursor:pointer;padding:8px 16px;font-size:14px;';
+    btnClose.style.cssText = 'padding:8px 16px;font-size:14px;border-radius:8px;font-weight:500;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;cursor:pointer;transition:all 0.2s;';
+    btnClose.onmouseover = function() { btnClose.style.backgroundColor = '#e2e8f0'; };
+    btnClose.onmouseout = function() { btnClose.style.backgroundColor = '#f1f5f9'; };
     btnClose.onclick = closeModal;
 
     var btnGo = document.createElement('button');
-    btnGo.textContent = '前往查看';
-    btnGo.style.cssText = 'padding:8px 16px;font-size:14px;border-radius:8px;font-weight:500;background:#059669;color:#fff;border:none;cursor:pointer;';
-    btnGo.onclick = function () {
-      closeModal();
-      var base = window.location.pathname.replace(/\/[^/]*$/, '') || '';
-      window.location.href = (base ? base + '/' : '') + 'analysis.html' + window.location.search;
-    };
+    btnGo.textContent = '查看结果';
+    btnGo.style.cssText = 'padding:8px 16px;font-size:14px;border-radius:8px;font-weight:500;background:#059669;color:#fff;border:none;cursor:pointer;transition:all 0.2s;';
+    btnGo.onmouseover = function() { btnGo.style.backgroundColor = '#047857'; };
+    btnGo.onmouseout = function() { btnGo.style.backgroundColor = '#059669'; };
+    btnGo.onclick = goToReport;
 
     overlay.onclick = function (e) {
       if (e.target === overlay) closeModal();
     };
 
-    btnWrap.appendChild(btnClose);
-    if (isSuccess) btnWrap.appendChild(btnGo);
+    if (isSuccess) {
+      btnWrap.appendChild(btnGo);
+      btnWrap.appendChild(btnClose);
+    } else {
+      btnWrap.appendChild(btnClose);
+    }
     box.appendChild(titleEl);
     box.appendChild(msgEl);
     box.appendChild(btnWrap);
@@ -132,7 +151,7 @@
             stopAll();
             try { localStorage.removeItem(JOB_STORAGE_KEY); } catch (_) {}
             try { localStorage.removeItem(JOB_STORAGE_VERSION_KEY); } catch (_) {}
-            showNotifyModal('分析已完成', '报告已生成并保存，可点击「前往查看」打开分析页查看。', true);
+            showNotifyModal('分析已完成', '报告已生成并保存，点击「查看结果」查看详细分析。', true);
           } else if (data.status === 'failed') {
             stopAll();
             try { localStorage.removeItem(JOB_STORAGE_KEY); } catch (_) {}

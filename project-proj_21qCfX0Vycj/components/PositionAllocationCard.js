@@ -1,16 +1,16 @@
-/** 仓位分配：紧凑环形图 + 图例（Chart.js doughnut） */
+/** 仓位分配：现代环形图 + 图例（Chart.js doughnut） */
 /** 高饱和、与深色底区分明显（避免灰块糊成一片） */
 var ALLOCATION_CHART_COLORS = [
-  "#22d3ee",
-  "#34d399",
-  "#fbbf24",
+  "#06b6d4",
+  "#10b981",
+  "#f59e0b",
   "#84cc16",
-  "#bef264",
-  "#2dd4bf",
+  "#22d3ee",
   "#f97316",
-  "#60a5fa",
-  "#f472b6",
-  "#4ade80",
+  "#6366f1",
+  "#a855f7",
+  "#ec4899",
+  "#0ea5e9",
 ];
 
 function PositionAllocationCard({ portfolio, capitalPool }) {
@@ -71,7 +71,7 @@ function PositionAllocationCard({ portfolio, capitalPool }) {
         if (remainingCapital > 0.01 && remainingPercent > 0.05) {
           labels.push("剩余资金");
           data.push(Math.round(remainingPercent * 10) / 10);
-          colors.push("rgba(56, 189, 248, 0.55)");
+          colors.push("rgba(14, 165, 233, 0.4)");
         }
 
         return {
@@ -106,39 +106,54 @@ function PositionAllocationCard({ portfolio, capitalPool }) {
             datasets: [
               {
                 data: cp.data,
-                backgroundColor: cp.colors,
-                borderWidth: 0,
-                spacing: 3,
-                borderRadius: 6,
-                hoverBorderWidth: 2,
-                hoverBorderColor: "rgba(255,255,255,0.85)",
-                hoverOffset: 4,
+                backgroundColor: cp.colors.map(function(c) {
+                  if (c.includes('rgba')) return c;
+                  return c + '40';
+                }),
+                borderColor: cp.colors,
+                borderWidth: 3,
+                spacing: 4,
+                borderRadius: 8,
+                hoverBorderWidth: 4,
+                hoverBorderColor: "#ffffff",
+                hoverOffset: 6,
+                hoverBackgroundColor: cp.colors,
               },
             ],
           },
           options: {
             responsive: true,
             maintainAspectRatio: false,
-            animation: { duration: 400 },
+            animation: {
+              animateRotate: true,
+              animateScale: true,
+              duration: 800,
+              easing: 'easeOutQuart'
+            },
             plugins: {
               legend: { display: false },
               datalabels: { display: false },
               tooltip: {
-                backgroundColor: "rgba(15, 23, 42, 0.95)",
+                backgroundColor: "rgba(15, 23, 42, 0.98)",
                 titleColor: "#f8fafc",
                 bodyColor: "#e2e8f0",
-                borderColor: "rgba(255,255,255,0.25)",
+                borderColor: "rgba(255,255,255,0.3)",
                 borderWidth: 1,
-                padding: 10,
+                padding: 12,
+                cornerRadius: 12,
+                boxPadding: 6,
                 callbacks: {
+                  title: function(ctx) {
+                    return ctx[0].label;
+                  },
                   label: function (ctx) {
                     var v = ctx.raw;
-                    return " " + (typeof v === "number" ? v.toFixed(1) : v) + "%";
+                    return "仓位: " + (typeof v === "number" ? v.toFixed(1) : v) + "%";
                   },
                 },
               },
             },
-            cutout: "62%",
+            cutout: "68%",
           },
         });
 
@@ -163,75 +178,89 @@ function PositionAllocationCard({ portfolio, capitalPool }) {
 
     return (
       <div
-        className="card gx-allocation-card mb-3 overflow-hidden p-3 md:mb-4 md:p-4"
+        className="card gx-allocation-card mb-4 overflow-hidden p-4"
         data-name="position-allocation-card"
         data-file="components/PositionAllocationCard.js"
       >
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-white/15 pb-2">
-          <h2 className="font-display flex items-center gap-2 text-sm font-bold text-slate-100 md:text-base">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="font-display flex items-center gap-2 text-base font-bold text-slate-100 md:text-lg">
             <div className="icon-pie-chart text-cyan-400"></div>
             仓位分配
           </h2>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs md:text-sm">
-            <span className="text-slate-400">
-              持仓{" "}
-              <strong className="gx-num tabular-nums text-cyan-300">
-                HK${formatPrice(totalPositionValue, 2)}
-              </strong>
-              <span className="text-slate-500"> ({posPct}%)</span>
-            </span>
-            <span className="hidden text-slate-600 sm:inline">·</span>
-            <span className="text-slate-400">
-              现金{" "}
-              <strong className="gx-num tabular-nums text-emerald-300">
-                HK${formatPrice(remainingCapital, 2)}
-              </strong>
-              <span className="text-slate-500"> ({remainingPercent.toFixed(1)}%)</span>
-            </span>
+          <div className="flex items-center gap-4 text-sm">
+            <div className="flex items-center gap-1.5">
+              <div className="h-2 w-2 rounded-full bg-cyan-400"></div>
+              <span className="text-slate-400">持仓</span>
+              <span className="gx-num tabular-nums font-semibold text-cyan-300">
+                {posPct}%
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="h-2 w-2 rounded-full bg-sky-400"></div>
+              <span className="text-slate-400">现金</span>
+              <span className="gx-num tabular-nums font-semibold text-sky-300">
+                {remainingPercent.toFixed(1)}%
+              </span>
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-12 md:gap-4">
-          <div className="mx-auto flex h-[140px] w-full max-w-[200px] items-center justify-center min-[480px]:col-span-5 min-[480px]:mx-0 md:h-[160px] md:max-w-none lg:col-span-4">
-            <canvas ref={canvasRef} className="max-h-full max-w-full" />
+        <div className="grid grid-cols-1 gap-4 min-[480px]:grid-cols-12">
+          <div className="mx-auto flex h-[160px] w-full max-w-[220px] items-center justify-center min-[480px]:col-span-5 min-[480px]:mx-0 md:h-[180px] lg:col-span-4">
+            <div className="relative">
+              <canvas ref={canvasRef} className="max-h-full max-w-full" />
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-2xl font-bold text-slate-100 md:text-3xl">
+                  {formatPrice(totalCapitalHKD, 0)}
+                </span>
+                <span className="text-xs text-slate-400">HK$ 总资产</span>
+              </div>
+            </div>
           </div>
           <div className="min-w-0 min-[480px]:col-span-7 lg:col-span-8">
-            <ul className="max-h-[200px] space-y-1.5 overflow-y-auto pr-1 text-sm md:max-h-[180px]">
-              {positions.map(function (pos, index) {
+            <ul className="space-y-2">
+              {positions.slice(0, 6).map(function (pos, index) {
                 var hue = ALLOCATION_CHART_COLORS[index % ALLOCATION_CHART_COLORS.length];
                 return (
                   <li
                     key={pos.symbol + "-" + index}
-                    className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5"
+                    className="group flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 hover:border-white/20 hover:bg-white/10 transition-all"
                   >
                     <span
-                      className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-white/30"
+                      className="h-3 w-3 shrink-0 rounded-full ring-2 ring-white/20"
                       style={{ backgroundColor: hue }}
                       aria-hidden
                     />
-                    <span className="min-w-0 flex-1 truncate font-semibold text-slate-100">{pos.symbol}</span>
-                    <span className="shrink-0 rounded bg-slate-800/80 px-1.5 py-0.5 text-[10px] font-medium text-slate-300">
+                    <span className="min-w-0 flex-1 font-semibold text-slate-100 truncate">{pos.symbol}</span>
+                    <span className="shrink-0 rounded-full bg-slate-800/80 px-2 py-0.5 text-[10px] font-medium text-slate-300">
                       {pos.market === "US" ? "美" : pos.market === "HK" ? "港" : "A"}
                     </span>
-                    <span className="gx-num tabular-nums shrink-0 font-bold text-slate-100">
-                      {pos.allocation.toFixed(1)}%
-                    </span>
-                    <span
-                      className={
-                        "gx-num shrink-0 tabular-nums text-xs font-semibold " +
-                        (pos.profit >= 0 ? "text-emerald-400" : "text-lime-400")
-                      }
-                    >
-                      {pos.profitPercent >= 0 ? "+" : ""}
-                      {pos.profitPercent.toFixed(1)}%
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="gx-num tabular-nums font-bold text-slate-100 text-sm">
+                        {pos.allocation.toFixed(1)}%
+                      </span>
+                      <span
+                        className={
+                          "gx-num tabular-nums text-xs font-semibold px-2 py-0.5 rounded-full " +
+                          (pos.profit >= 0 ? "bg-emerald-500/20 text-emerald-400" : "bg-lime-500/20 text-lime-400")
+                        }
+                      >
+                        {pos.profitPercent >= 0 ? "+" : ""}
+                        {pos.profitPercent.toFixed(1)}%
+                      </span>
+                    </div>
                   </li>
                 );
               })}
+              {positions.length > 6 && (
+                <li className="text-center text-xs text-slate-500 py-2">
+                  还有 {positions.length - 6} 只股票...
+                </li>
+              )}
               {remainingCapital > 0.01 && remainingPercent > 0.05 && (
-                <li className="flex items-center gap-2 rounded-lg border border-sky-400/30 bg-sky-950/35 px-2 py-1.5">
+                <li className="flex items-center gap-2 rounded-xl border border-sky-400/30 bg-sky-950/30 px-3 py-2">
                   <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full bg-sky-400 ring-1 ring-white/40"
+                    className="h-3 w-3 shrink-0 rounded-full bg-sky-400 ring-2 ring-white/30"
                     aria-hidden
                   />
                   <span className="flex-1 font-medium text-slate-300">剩余资金</span>

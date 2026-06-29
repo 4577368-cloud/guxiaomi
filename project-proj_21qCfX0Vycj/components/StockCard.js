@@ -12,6 +12,43 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
     const [editingPosition, setEditingPosition] = React.useState(null);
     const [showBuyFeesDetail, setShowBuyFeesDetail] = React.useState(null);
     const [newKeyword, setNewKeyword] = React.useState('');
+    const [swipeX, setSwipeX] = React.useState(0);
+    const [swipeStartX, setSwipeStartX] = React.useState(0);
+    const [isSwiping, setIsSwiping] = React.useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
+
+    // 滑动删除手势处理
+    const handleTouchStart = (e) => {
+      const touch = e.touches[0];
+      setSwipeStartX(touch.clientX);
+      setIsSwiping(true);
+    };
+
+    const handleTouchMove = (e) => {
+      if (!isSwiping) return;
+      const touch = e.touches[0];
+      const diff = touch.clientX - swipeStartX;
+      // 只允许左滑（负值）
+      if (diff < 0) {
+        setSwipeX(Math.max(diff, -100));
+      }
+    };
+
+    const handleTouchEnd = () => {
+      setIsSwiping(false);
+      if (swipeX < -60) {
+        // 显示删除确认
+        setShowDeleteConfirm(true);
+        setSwipeX(-100);
+      } else {
+        setSwipeX(0);
+      }
+    };
+
+    const resetSwipe = () => {
+      setSwipeX(0);
+      setShowDeleteConfirm(false);
+    };
 
 
     const handleAddPosition = (position) => {
@@ -258,19 +295,6 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
 
         onUpdate(updatedStockWithHistory);
 
-        // 再次保存组合到 localStorage（确保生成的30日历史持久化）
-        try {
-          if (typeof savePortfolio === 'function') {
-            const storedPortfolio = loadPortfolio();
-            const mergedPortfolio = (Array.isArray(storedPortfolio) ? storedPortfolio : []).map(item =>
-              item.id === updatedStockWithHistory.id ? updatedStockWithHistory : item
-            );
-            savePortfolio(mergedPortfolio);
-          }
-        } catch (err) {
-          console.warn('savePortfolio 不可用或保存失败:', err);
-        }
-
         const shouldDownloadMd = false; // 改为 false 则只展示图表，不自动下载文件
         if (shouldDownloadMd) {
           const mdRows = ['# 历史收盘价（30天）', `- 股票: ${stock.symbol}`, `- 市场: ${stock.market}`, '', '| 日期 | 收盘价 | 日盈亏 |', '| --- | --- |'];
@@ -335,17 +359,6 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
             }
 
             onUpdate(updatedStock);
-
-            // 组合存储补强，避免某些场景 onUpdate 不持久化
-            if (typeof loadPortfolio === 'function' && typeof savePortfolio === 'function') {
-              try {
-                const stored = loadPortfolio() || [];
-                const merged = stored.map(item => item.id === updatedStock.id ? updatedStock : item);
-                savePortfolio(merged);
-              } catch (persistErr) {
-                console.warn('刷新后持久化组合失败:', persistErr);
-              }
-            }
 
             console.log(`${stock.symbol}: 价格和技术指标刷新成功`);
           } catch (updateErr) {
@@ -437,7 +450,28 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
     };
 
   return (
-    <div className="card" data-name="stock-card" data-file="components/StockCard.js">
+    <div className="relative overflow-hidden" data-name="stock-card" data-file="components/StockCard.js"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* 滑动删除背景 */}
+      <div className={`absolute inset-0 bg-gradient-to-l from-red-500 to-red-600 flex items-center justify-end pr-4 transition-opacity ${swipeX < -20 ? 'opacity-100' : 'opacity-0'}`}>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(true); }}
+          className="p-3 rounded-full bg-white/20 text-white touch-manipulation"
+          aria-label="删除"
+        >
+          <div className="icon-trash-2 text-xl"></div>
+        </button>
+      </div>
+
+      {/* 主卡片内容 */}
+      <div
+        className="card transition-transform duration-200 ease-out"
+        style={{ transform: `translateX(${swipeX}px)` }}
+      >
         {/* Stock Header */}
         <div className="mb-3">
           <div className="flex items-center justify-between mb-2">
@@ -447,18 +481,19 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
             <div className="flex items-center gap-1 flex-wrap">
               <a href={`analysis.html?code=${encodeURIComponent(stock.symbol)}&market=${marketStr}${stock.name ? '&name=' + encodeURIComponent(stock.name) : ''}`} className="btn btn-primary btn-sm">分析</a>
               <a href={newsUrl} className="btn btn-sm" style={{ backgroundColor: '#d02f5e', color: 'white' }}>新闻</a>
-              <button type="button" onClick={() => { try { handleRefreshPrice(); } catch (e) { console.error(e); setIsRefreshingPrice(false); } }} disabled={isRefreshingPrice} className="btn btn-success btn-sm disabled:opacity-50">{isRefreshingPrice ? '刷新中' : '刷新'}</button>
-              <button type="button" onClick={() => { try { handleFetchHistory30(); } catch (e) { console.error(e); setIsFetchingHistory(false); } }} disabled={isFetchingHistory} className="btn btn-primary btn-sm disabled:opacity-50" title="拉取最近30个交易日收盘价">{isFetchingHistory ? '…' : '30日收盘'}</button>
-              <button type="button" onClick={onDelete} className="btn btn-danger btn-sm">删除</button>
-              <button type="button" onClick={onToggleCollapse} className="btn btn-secondary btn-sm p-1.5" title={isCollapsed ? '展开' : '折叠'} aria-label={isCollapsed ? '展开' : '折叠'}>
+              <button type="button" onClick={() => { try { handleRefreshPrice(); } catch (e) { console.error(e); setIsRefreshingPrice(false); } }} disabled={isRefreshingPrice} className="btn btn-success btn-sm disabled:opacity-50 touch-manipulation">{isRefreshingPrice ? '刷新中' : '刷新'}</button>
+              <button type="button" onClick={() => { try { handleFetchHistory30(); } catch (e) { console.error(e); setIsFetchingHistory(false); } }} disabled={isFetchingHistory} className="btn btn-primary btn-sm disabled:opacity-50 touch-manipulation" title="拉取最近30个交易日收盘价">{isFetchingHistory ? '…' : '30日'}</button>
+              <button type="button" onClick={() => { try { setShowDeleteConfirm(true); } catch (e) { console.error(e); } }} className="btn btn-danger btn-sm touch-manipulation md:hidden">删除</button>
+              <button type="button" onClick={onDelete} className="btn btn-danger btn-sm touch-manipulation hidden md:inline-block">删除</button>
+              <button type="button" onClick={onToggleCollapse} className="btn btn-secondary btn-sm p-1.5 touch-manipulation" title={isCollapsed ? '展开' : '折叠'} aria-label={isCollapsed ? '展开' : '折叠'}>
                 <div className={`icon-chevron-${isCollapsed ? 'down' : 'up'} text-sm`}></div>
               </button>
             </div>
           </div>
-          
-          <StockBasicInfo 
-            stock={stock} 
-            brokerChannel={brokerChannel} 
+
+          <StockBasicInfo
+            stock={stock}
+            brokerChannel={brokerChannel}
             onBrokerChannelChange={handleBrokerChannelChange}
             onPriceUpdate={handleManualPriceUpdate}
             onRefreshAllPrices={onRefreshAllPrices}
@@ -552,8 +587,40 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
             />
           </>
         )}
+        {/* 删除确认弹窗 */}
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+            onClick={resetSwipe}
+          >
+            <div className="w-full max-w-sm rounded-2xl bg-slate-800 p-6 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h4 className="mb-2 text-lg font-semibold text-white">确认删除</h4>
+              <p className="mb-4 text-slate-300">
+                确定要删除 <span className="font-semibold text-white">{stock.symbol}</span> 吗？此操作无法撤销。
+              </p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={resetSwipe}
+                  className="btn btn-secondary flex-1 touch-manipulation"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { resetSwipe(); onDelete(); }}
+                  className="btn flex-1 touch-manipulation bg-red-500 hover:bg-red-600 text-white border-red-500"
+                >
+                  删除
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-    );
+    </div>
+  );
   } catch (error) {
     console.error('StockCard component error:', error);
     var sym = (stockProp && stockProp.symbol) || '—';

@@ -2,16 +2,21 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+    <meta name="theme-color" content="#0b1120">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="股小蜜">
+    <link rel="manifest" href="manifest.json">
 
     <title>股小蜜～懂理财，更懂你！</title>
-    <meta name="description" content="支持美股港股的投资组合管理工具，实时跟踪持仓盈亏，模拟补仓操作">
-    <meta name="keywords" content="股票投资,投资组合,补仓模拟,美股,港股,持仓管理">
+    <meta name="description" content="支持美股港股A股的投资组合管理工具，实时跟踪持仓盈亏，模拟补仓操作">
+    <meta name="keywords" content="股票投资,投资组合,补仓模拟,美股,港股,A股,持仓管理">
 
     <meta property="og:title" content="股小蜜～懂理财，更懂你！">
-    <meta property="og:description" content="支持美股港股的投资组合管理工具，实时跟踪持仓盈亏，模拟补仓操作">
+    <meta property="og:description" content="支持美股港股A股的投资组合管理工具，实时跟踪持仓盈亏，模拟补仓操作">
     <meta name="twitter:title" content="股小蜜～懂理财，更懂你！">
-    <meta name="twitter:description" content="支持美股港股的投资组合管理工具，实时跟踪持仓盈亏，模拟补仓操作">
+    <meta name="twitter:description" content="支持美股港股A股的投资组合管理工具，实时跟踪持仓盈亏，模拟补仓操作">
 
     <script src="https://resource.trickle.so/vendor_lib/unpkg/react@18/umd/react.production.min.js"></script>
     <script src="https://resource.trickle.so/vendor_lib/unpkg/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -68,6 +73,8 @@
     @layer base {
         html {
             scroll-padding-top: 9rem;
+            -webkit-text-size-adjust: 100%;
+            text-size-adjust: 100%;
         }
         @media (min-width: 768px) {
             html {
@@ -81,12 +88,22 @@
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
             min-height: 100vh;
+            min-height: 100dvh;
             background-color: var(--page-bg-top);
             background-image:
                 radial-gradient(900px 480px at 15% -10%, rgba(59, 130, 246, 0.15), transparent 55%),
                 radial-gradient(700px 400px at 90% 10%, rgba(14, 165, 233, 0.12), transparent 50%),
                 linear-gradient(165deg, var(--page-bg-top) 0%, var(--page-bg-bottom) 45%, #1e293b 100%);
             background-attachment: fixed;
+            overscroll-behavior-y: contain;
+        }
+
+        /* 移动端安全区域适配 */
+        body {
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            padding-left: env(safe-area-inset-left);
+            padding-right: env(safe-area-inset-right);
         }
 
         .font-display {
@@ -95,6 +112,33 @@
 
         .tabular-nums {
             font-variant-numeric: tabular-nums;
+        }
+
+        /* 移动端触摸优化 */
+        button, a, input, select, textarea {
+            touch-action: manipulation;
+        }
+
+        /* 移动端按钮点击反馈 */
+        button:active:not(:disabled),
+        .btn:active:not(:disabled) {
+            transform: scale(0.97);
+            opacity: 0.9;
+        }
+
+        /* 禁用双击缩放 */
+        * {
+            touch-action: manipulation;
+        }
+
+        /* 输入框聚焦样式 */
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+        }
+
+        /* 移动端滚动优化 */
+        .overflow-y-auto {
+            -webkit-overflow-scrolling: touch;
         }
 
     }
@@ -515,9 +559,11 @@
     <script type="text/babel" src="components/PositionForm.js"></script>
     <script type="text/babel" src="components/BuyFeesDetail.js"></script>
     <script type="text/babel" src="components/StockCard.js"></script>
+    <script type="text/babel" src="components/WatchlistSection.js"></script>
     <script type="text/babel" src="components/PortfolioSummary.js"></script>
     <script type="text/babel" src="components/HoldingsSummaryTable.js"></script>
     <script type="text/babel" src="components/StockNavigation.js"></script>
+    <script type="text/babel" src="utils/stockSearch.js"></script>
     <script type="text/babel" src="components/AddStockModal.js"></script>
     <script type="text/babel" src="utils/technicalIndicators.js"></script>
     <script type="text/babel" src="utils/stockAPI.js"></script>
@@ -525,10 +571,57 @@
     <script type="text/babel" src="utils/feeCalculations.js"></script>
     <script type="text/babel" src="utils/calculations.js"></script>
     <script type="text/babel" src="utils/databaseSync.js"></script>
+    <script type="text/babel" src="utils/priceAlerts.js"></script>
     <script type="text/babel" src="app.js"></script>
     <script src="analysis-notify.js"></script>
 
+    <!-- PWA Service Worker 注册 -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('sw.js')
+            .then(function(registration) {
+              console.log('SW注册成功:', registration.scope);
+            })
+            .catch(function(error) {
+              console.log('SW注册失败:', error);
+            });
 
+          // 检查更新
+          navigator.serviceWorker.addEventListener('controllerchange', function() {
+            window.location.reload();
+          });
+        });
+
+        // 离线状态提示
+        window.addEventListener('online', function() {
+          document.body.classList.remove('offline-mode');
+          console.log('网络已连接');
+        });
+        window.addEventListener('offline', function() {
+          document.body.classList.add('offline-mode');
+          console.log('网络已断开 - 离线模式');
+        });
+      }
+    </script>
+
+    <!-- 离线模式提示样式 -->
+    <style>
+      .offline-mode::before {
+        content: '📴 离线模式';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 9999;
+        background: linear-gradient(90deg, #f59e0b, #d97706);
+        color: #1e293b;
+        text-align: center;
+        padding: 0.5rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+      }
+    </style>
 
 </body>
 

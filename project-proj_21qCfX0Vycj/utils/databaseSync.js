@@ -5,15 +5,22 @@ async function savePortfolioDB(portfolio) {
   try {
     console.log('保存投资组合到云端数据库...');
     
-    // Delete all existing portfolio stocks
     const existingStocks = await trickleListObjects('portfolio_stock', 100, true);
-    for (const stock of existingStocks.items) {
-      await trickleDeleteObject('portfolio_stock', stock.objectId);
+    const existingMap = new Map();
+    for (const item of existingStocks.items) {
+      const data = item.objectData;
+      const key = `${data.market}_${data.symbol}`;
+      existingMap.set(key, item.objectId);
     }
     
-    // Save new portfolio data
+    const updatedCount = { created: 0, updated: 0, deleted: 0 };
+    
+    const stockKeys = new Set();
     for (const stock of portfolio) {
-      await trickleCreateObject('portfolio_stock', {
+      const key = `${stock.market}_${stock.symbol}`;
+      stockKeys.add(key);
+      
+      const data = {
         symbol: stock.symbol,
         market: stock.market,
         brokerChannel: stock.brokerChannel,
@@ -21,10 +28,25 @@ async function savePortfolioDB(portfolio) {
         marketData: JSON.stringify(stock.marketData || {}),
         technicalIndicators: JSON.stringify(stock.technicalIndicators || {}),
         positions: JSON.stringify(stock.positions || [])
-      });
+      };
+      
+      if (existingMap.has(key)) {
+        await trickleUpdateObject('portfolio_stock', existingMap.get(key), data);
+        updatedCount.updated++;
+      } else {
+        await trickleCreateObject('portfolio_stock', data);
+        updatedCount.created++;
+      }
     }
     
-    console.log('投资组合已保存到云端');
+    for (const [key, objectId] of existingMap) {
+      if (!stockKeys.has(key)) {
+        await trickleDeleteObject('portfolio_stock', objectId);
+        updatedCount.deleted++;
+      }
+    }
+    
+    console.log(`投资组合已保存到云端: 创建${updatedCount.created}条，更新${updatedCount.updated}条，删除${updatedCount.deleted}条`);
     return true;
   } catch (error) {
     console.warn('保存投资组合到云端失败，数据已保存到本地:', error.message);
