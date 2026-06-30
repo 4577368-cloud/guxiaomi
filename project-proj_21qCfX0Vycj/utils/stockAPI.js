@@ -1,8 +1,8 @@
 // Stock API utility functions for US, HK and CN markets
 const API_CONFIG = {
-  ALPHA_VANTAGE_KEY: window.API_CONFIG?.ALPHA_VANTAGE_KEY || 'YOUR_ALPHA_VANTAGE_KEY',
-  BIYING_SECRET_KEY: window.API_CONFIG?.BIYING_SECRET_KEY || 'YOUR_BIYING_SECRET_KEY',
-  CN_STOCK_API_KEY: window.API_CONFIG?.CN_STOCK_API_KEY || 'YOUR_CN_STOCK_API_KEY',
+  ALPHA_VANTAGE_KEY: (window.API_CONFIG?.ALPHA_VANTAGE_KEY || '').trim(),
+  BIYING_SECRET_KEY: (window.API_CONFIG?.BIYING_SECRET_KEY || '').trim(),
+  CN_STOCK_API_KEY: (window.API_CONFIG?.CN_STOCK_API_KEY || '').trim(),
   PROXY_BASE: window.API_CONFIG?.PROXY_BASE || '',
   HK_EXCHANGE_RATE: 7.78, // USD to HKD
   CN_EXCHANGE_RATE: 1, // CNY to CNY
@@ -12,10 +12,10 @@ const API_CONFIG = {
 // 检查是否配置了API密钥
 function checkApiConfig() {
   const missing = [];
-  if (!window.API_CONFIG?.ALPHA_VANTAGE_KEY || window.API_CONFIG.ALPHA_VANTAGE_KEY === 'YOUR_ALPHA_VANTAGE_KEY') {
+  if (!window.API_CONFIG?.ALPHA_VANTAGE_KEY) {
     missing.push('Alpha Vantage (美股)');
   }
-  if (!window.API_CONFIG?.CN_STOCK_API_KEY || window.API_CONFIG.CN_STOCK_API_KEY === 'YOUR_CN_STOCK_API_KEY') {
+  if (!window.API_CONFIG?.CN_STOCK_API_KEY) {
     missing.push('A股 API');
   }
   if (missing.length > 0) {
@@ -304,6 +304,10 @@ function formatHKStockSymbol(symbol) {
 }
 
 async function getUSStockPrice(symbol) {
+  if (!API_CONFIG.ALPHA_VANTAGE_KEY) {
+    throw new Error('Alpha Vantage API Key 未配置');
+  }
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.REQUEST_TIMEOUT);
   

@@ -37,9 +37,58 @@ function calculateRSI(prices, period = 14) {
   return Math.round(rsi * 100) / 100;
 }
 
-// Get historical data for HK/CN stocks and calculate indicators
-async function getUSHistoricalData(symbol) {
-  const key = (window.API_CONFIG && window.API_CONFIG.ALPHA_VANTAGE_KEY) || '9555C3GN360DR3OW';
+// Get historical data for US stocks. Yahoo is keyless and works well for the trend chart;
+// Alpha Vantage remains as a configured backup.
+async function getUSYahooHistoricalData(symbol) {
+  const ticker = String(symbol || '').trim().toUpperCase().replace(/[^A-Z0-9.\-]/g, '');
+  if (!ticker) return [];
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  try {
+    console.log(`获取美股 ${ticker} 历史数据(Yahoo Finance)`);
+    const params = new URLSearchParams({ range: '3mo', interval: '1d' });
+    const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?${params.toString()}`, {
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (!response.ok) throw new Error(`Yahoo Finance HTTP ${response.status}`);
+    const data = await response.json();
+    const result = data?.chart?.result?.[0];
+    const timestamps = result?.timestamp || [];
+    const quote = result?.indicators?.quote?.[0] || {};
+    const opens = quote.open || [];
+    const highs = quote.high || [];
+    const lows = quote.low || [];
+    const closes = quote.close || [];
+    const volumes = quote.volume || [];
+    const history = timestamps.map((ts, idx) => {
+      const close = Number(closes[idx]);
+      if (!Number.isFinite(close) || close <= 0) return null;
+      return {
+        date: new Date(Number(ts) * 1000).toISOString().slice(0, 10),
+        open: Number(opens[idx]) || null,
+        high: Number(highs[idx]) || null,
+        low: Number(lows[idx]) || null,
+        close,
+        volume: Number(volumes[idx]) || 0,
+        source: 'Yahoo Finance'
+      };
+    }).filter(Boolean);
+    console.log(`Yahoo Finance 美股历史记录条数: ${history.length}`);
+    return history;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    console.warn('Yahoo Finance 美股历史数据获取失败', err);
+    return [];
+  }
+}
+
+async function getUSAlphaVantageHistoricalData(symbol) {
+  const key = ((window.API_CONFIG && window.API_CONFIG.ALPHA_VANTAGE_KEY) || '').trim();
+  if (!key) {
+    console.warn('Alpha Vantage API Key 未配置，跳过美股历史技术指标');
+    return [];
+  }
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000);
 
@@ -78,6 +127,12 @@ async function getUSHistoricalData(symbol) {
     console.error('美股历史数据获取失败', err);
     return [];
   }
+}
+
+async function getUSHistoricalData(symbol) {
+  const yahoo = await getUSYahooHistoricalData(symbol);
+  if (yahoo && yahoo.length) return yahoo;
+  return getUSAlphaVantageHistoricalData(symbol);
 }
 
 async function getHistoricalDataAndIndicators(symbol, market) {
@@ -253,8 +308,92 @@ async function getHistoricalCloseFromSohu(symbol, market) {
   }
 }
 
+function getHistoryApiBase() {
+  if (window.ANALYSIS_API_BASE) return String(window.ANALYSIS_API_BASE).replace(/\/+$/, '');
+  const h = typeof location !== 'undefined' ? location.hostname : '';
+  if (h === 'localhost' || h === '127.0.0.1') return 'http://localhost:8123';
+  return typeof location !== 'undefined' && location.origin ? location.origin : '';
+}
+
+function getHistoryApiCandidates() {
+  const list = [];
+  const add = (url) => {
+    const s = String(url || '').trim().replace(/\/+$/, '');
+    if (s && !list.includes(s)) list.push(s);
+  };
+  add(window.ANALYSIS_API_BASE);
+  const h = typeof location !== 'undefined' ? location.hostname : '';
+  if (h === 'localhost' || h === '127.0.0.1') {
+    add('http://localhost:8123');
+    add('http://localhost:8124');
+    add('http://localhost:8125');
+  }
+  if (typeof location !== 'undefined' && location.origin) add(location.origin);
+  return list;
+}
+
+async function getHistoricalCloseFromBackend(symbol, market, days = 30) {
+  const candidates = getHistoryApiCandidates();
+  if (!candidates.length) return null;
+  const params = new URLSearchParams({
+    symbol: String(symbol || '').trim(),
+    market: String(market || '').trim(),
+    days: String(days || 30)
+  });
+  const errors = [];
+  for (const apiBase of candidates) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await fetch(`${apiBase}/api/stock/history?${params.toString()}`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        errors.push(`${apiBase}: HTTP ${response.status}`);
+        continue;
+      }
+      const data = await response.json();
+      window.LAST_HISTORY_FETCH_META = { ...(data || {}), api_base: apiBase };
+      if (!data || !Array.isArray(data.history) || data.history.length === 0) return data || null;
+      return data;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      errors.push(`${apiBase}: ${error && error.message ? error.message : error}`);
+    }
+  }
+  window.LAST_HISTORY_FETCH_META = {
+    ok: false,
+    history: [],
+    errors,
+    detail: '后端历史行情接口不可用或不是最新版本'
+  };
+  console.warn('后端历史行情接口不可用:', errors);
+  return null;
+}
+
 async function getHistoricalClose30Days(symbol, market, totalShares = 0) {
   try {
+    window.LAST_HISTORY_FETCH_META = null;
+    const backend = await getHistoricalCloseFromBackend(symbol, market, 30);
+    if (backend && Array.isArray(backend.history) && backend.history.length > 0) {
+      const shares = Number.isFinite(totalShares) && totalShares > 0 ? totalShares : 0;
+      return backend.history.map((item, idx, arr) => ({
+        date: item.date,
+        price: Number(item.price || item.close),
+        close: Number(item.close || item.price),
+        open: item.open,
+        high: item.high,
+        low: item.low,
+        volume: item.volume,
+        source: backend.source || 'backend',
+        shares: shares,
+        dailyProfit: shares > 0 && idx > 0
+          ? Math.round((Number(item.close || item.price) - Number(arr[idx - 1].close || arr[idx - 1].price)) * shares * 100) / 100
+          : 0
+      }));
+    }
+
     const result = await getHistoricalDataAndIndicators(symbol, market);
     if (!result || !Array.isArray(result.history) || result.history.length === 0) {
       throw new Error('历史收盘数据为空');

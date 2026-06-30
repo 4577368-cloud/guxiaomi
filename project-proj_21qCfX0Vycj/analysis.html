@@ -9,76 +9,102 @@
     <script src="https://resource.trickle.so/vendor_lib/unpkg/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://resource.trickle.so/vendor_lib/unpkg/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
     <link href="https://resource.trickle.so/vendor_lib/unpkg/lucide-static@0.516.0/font/lucide.css" rel="stylesheet">
     <style type="text/tailwindcss">
-        @layer theme {
-            :root {
-                --primary-color: #1e40af;
-                --secondary-color: #f3f4f6;
-                --success-color: #059669;
-                --danger-color: #dc2626;
-                --warning-color: #d97706;
-                --text-primary: #111827;
-                --text-secondary: #6b7280;
-                --border-color: #e5e7eb;
-            }
+        :root {
+            --primary-color: #60a5fa;
+            --primary-hover: #93c5fd;
+            --success-color: #4ade80;
+            --danger-color: #a3e635;
+            --text-primary: #f8fafc;
+            --text-secondary: #cbd5e1;
+            --text-muted: #94a3b8;
+            --border-color: rgba(255, 255, 255, 0.28);
+            --accent-news: #f472b6;
+            --accent-analysis: #5eead4;
+            --page-bg-top: #0b1120;
+            --page-bg-bottom: #1e293b;
         }
         @layer base {
             body {
-              font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-              background-color: #f6f8ff;
+              font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+              color: var(--text-primary);
+              min-height: 100vh;
+              -webkit-font-smoothing: antialiased;
+              -moz-osx-font-smoothing: grayscale;
+              background-color: var(--page-bg-top);
               background-image:
-                radial-gradient(1200px circle at 15% -10%, rgba(34, 211, 238, 0.14) 0%, rgba(34, 211, 238, 0.0) 45%),
-                radial-gradient(900px circle at 85% 10%, rgba(14, 165, 233, 0.14) 0%, rgba(14, 165, 233, 0.0) 40%),
-                radial-gradient(700px circle at 60% 100%, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.0) 45%);
+                radial-gradient(900px 480px at 15% -10%, rgba(59, 130, 246, 0.15), transparent 55%),
+                radial-gradient(700px 400px at 90% 10%, rgba(14, 165, 233, 0.12), transparent 50%),
+                linear-gradient(165deg, var(--page-bg-top) 0%, var(--page-bg-bottom) 45%, #1e293b 100%);
+              background-attachment: fixed;
             }
         }
         @layer components {
-            .btn { @apply px-3 py-2 md:px-4 md:py-2.5 rounded-lg font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 text-sm md:text-base min-h-[2.75rem] items-center justify-center inline-flex; }
+            .font-display { font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif; }
+            .gx-num { font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+            .btn { @apply inline-flex items-center justify-center rounded-xl px-3 py-1.5 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 md:px-4 md:py-2 md:text-base; --tw-ring-offset-color: #1e293b; }
+            .btn-sm { @apply rounded-lg px-2 py-1 text-xs md:text-sm; }
+            .btn-xs { @apply rounded-md px-2 py-1 text-xs; }
             .btn-primary {
-              @apply text-white rounded-lg min-h-[2.75rem] px-5;
-              background-image: linear-gradient(90deg, rgba(34,211,238,0.95) 0%, rgba(14,165,233,0.95) 45%, rgba(37,99,235,0.95) 100%);
-              box-shadow:
-                0 0 0 1px rgba(56,189,248,0.20),
-                0 12px 40px rgba(59,130,246,0.20);
+              @apply text-white shadow-md shadow-blue-600/25 hover:bg-[var(--primary-hover)] focus-visible:ring-blue-500;
+              background: var(--primary-color);
             }
-            .btn-primary:hover { filter: brightness(1.03); }
-            .btn-primary:focus { outline: none; box-shadow: 0 0 0 2px rgba(56,189,248,0.35), 0 12px 40px rgba(59,130,246,0.22); }
             /* 分析进行中：避免长文案 + 大阴影占满一行 */
             .btn-primary.btn-analyze-busy {
-              @apply !min-h-9 !py-2 !px-3.5 text-sm md:text-sm;
+              @apply !py-2 !px-3.5 text-sm md:text-sm;
               box-shadow: 0 2px 10px rgba(59, 130, 246, 0.14);
             }
-            .btn-xs { @apply min-h-8 px-2 py-1 text-xs rounded-md; }
-            .btn-secondary { @apply bg-gray-200 text-gray-800 hover:bg-gray-300 focus:ring-gray-500; }
-            .btn-success { @apply bg-[var(--success-color)] text-white hover:bg-green-700 focus:ring-green-500; }
-            .card { @apply bg-white rounded-lg md:rounded-xl shadow-md border border-gray-300 p-3 md:p-6; }
+            .btn-secondary {
+              @apply border border-white/25 text-slate-100 shadow-sm hover:bg-white/20 focus-visible:ring-amber-400/60;
+              background: linear-gradient(165deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.06) 100%);
+            }
+            .btn-success { @apply bg-[var(--success-color)] text-slate-950 shadow-md shadow-emerald-600/20 hover:brightness-110 focus-visible:ring-emerald-500; }
+            .btn-accent-news { @apply text-white shadow-md shadow-pink-600/25 focus-visible:ring-pink-500; background-color: var(--accent-news); }
+            .btn-accent-analysis { @apply text-slate-950 shadow-md shadow-teal-600/25 focus-visible:ring-teal-500; background-color: var(--accent-analysis); }
+            .btn-accent-paipan { @apply text-white shadow-md shadow-violet-600/25 hover:brightness-110 focus-visible:ring-violet-500; background-color: #a78bfa; }
+            .card {
+              @apply rounded-2xl border border-white/30 p-3 shadow-xl md:p-6;
+              background: linear-gradient(168deg, rgba(255, 255, 255, 0.17) 0%, rgba(255, 255, 255, 0.08) 48%, rgba(15, 23, 42, 0.34) 100%);
+              color: var(--text-primary);
+              backdrop-filter: blur(18px) saturate(165%);
+            }
             .glass-card {
               @apply rounded-xl md:rounded-2xl backdrop-blur-xl;
-              background: rgba(255, 255, 255, 0.68);
-              border: 1px solid rgba(255, 255, 255, 0.65);
+              background: linear-gradient(168deg, rgba(255, 255, 255, 0.17) 0%, rgba(255, 255, 255, 0.08) 48%, rgba(15, 23, 42, 0.34) 100%);
+              border: 1px solid rgba(255, 255, 255, 0.30);
+              color: var(--text-primary);
               box-shadow:
-                0 0 0 0.5px rgba(255,255,255,0.45),
-                0 22px 70px rgba(2, 6, 23, 0.10);
+                0 22px 44px -14px rgba(0, 0, 0, 0.46),
+                inset 0 1px 0 rgba(255, 255, 255, 0.16);
             }
             .segmented-shell {
               @apply inline-flex rounded-xl p-1 border backdrop-blur-md;
-              background: rgba(255,255,255,0.45);
-              border-color: rgba(255,255,255,0.60);
+              background: rgba(255,255,255,0.10);
+              border-color: rgba(255,255,255,0.24);
             }
             .seg-btn {
               @apply px-3 py-2 text-sm md:text-base rounded-lg transition-all duration-200;
               background: transparent;
               border: 1px solid transparent;
-              color: rgba(15, 23, 42, 0.85);
+              color: rgba(226, 232, 240, 0.88);
             }
             .seg-btn.on {
-              background: linear-gradient(90deg, rgba(34, 211, 238, 0.95), rgba(59, 130, 246, 0.92));
+              background: linear-gradient(90deg, rgba(34, 211, 238, 0.80), rgba(59, 130, 246, 0.82));
               color: #ffffff;
               border-color: rgba(34, 211, 238, 0.35);
               box-shadow: 0 0 24px rgba(34, 211, 238, 0.20);
             }
-            .input-field { @apply w-full min-h-[2.75rem] px-3.5 py-2 text-base border border-slate-200/90 rounded-lg bg-white/80 focus:ring-2 focus:ring-[var(--primary-color)] focus:border-blue-400/60; }
+            .input-field {
+              @apply w-full rounded-xl px-3 py-2 text-base backdrop-blur-md transition-all duration-200;
+              background: rgba(15, 23, 42, 0.45);
+              border: 1px solid rgba(255, 255, 255, 0.26);
+              color: var(--text-primary);
+            }
+            .input-field:focus { border-color: rgba(147, 197, 253, 0.85); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.45); }
             /* 备注框：正文与其它输入同为 text-base，占位符略小更协调 */
             .input-field-notes::placeholder {
               font-size: 0.75rem;
@@ -86,12 +112,134 @@
               color: rgb(148 163 184);
             }
             .input-field-compact { @apply min-h-9 py-1.5 text-sm; }
-            .report-markdown blockquote { @apply border-l-4 border-blue-300 pl-3 my-2 text-gray-600; }
-            .report-markdown-block .report-markdown { @apply text-[15px] leading-relaxed; }
-            .report-markdown-block .report-markdown h2 { @apply text-xl font-bold text-gray-900 mt-4 mb-2; }
-            .report-markdown-block .report-markdown h3 { @apply text-lg font-semibold text-gray-800 mt-3 mb-1; }
-            .report-markdown-block .report-markdown p { @apply my-1.5; }
-            .report-markdown-block .report-markdown ul { @apply my-2 pl-6 space-y-0.5; }
+            .report-card {
+              position: relative;
+              overflow: hidden;
+              background:
+                radial-gradient(760px 280px at 12% 0%, rgba(34, 211, 238, 0.13), transparent 62%),
+                radial-gradient(720px 320px at 88% 4%, rgba(167, 139, 250, 0.12), transparent 58%),
+                linear-gradient(168deg, rgba(15, 23, 42, 0.90) 0%, rgba(15, 23, 42, 0.72) 52%, rgba(2, 6, 23, 0.90) 100%);
+              border: 1px solid rgba(148, 163, 184, 0.24);
+              box-shadow:
+                0 28px 70px -28px rgba(0, 0, 0, 0.78),
+                inset 0 1px 0 rgba(255, 255, 255, 0.10);
+              color: rgb(226 232 240);
+            }
+            .report-card::before {
+              content: "";
+              position: absolute;
+              inset: 0;
+              pointer-events: none;
+              background: linear-gradient(90deg, rgba(34, 211, 238, 0.22), rgba(167, 139, 250, 0.20), rgba(20, 184, 166, 0.16));
+              height: 1px;
+            }
+            .report-section {
+              @apply rounded-2xl border p-4 md:p-5;
+              background: linear-gradient(168deg, rgba(255, 255, 255, 0.075), rgba(15, 23, 42, 0.34));
+              border-color: rgba(148, 163, 184, 0.18);
+              scroll-margin-top: 7.5rem;
+            }
+            .report-section-label {
+              @apply mb-2 text-[11px] font-bold uppercase tracking-[0.20em];
+              color: rgb(125 211 252);
+            }
+            .report-callout {
+              @apply rounded-2xl border p-4;
+              background: linear-gradient(160deg, rgba(16, 185, 129, 0.14), rgba(15, 23, 42, 0.40));
+              border-color: rgba(52, 211, 153, 0.24);
+            }
+            .report-warning {
+              @apply rounded-2xl border p-4;
+              background: linear-gradient(160deg, rgba(245, 158, 11, 0.14), rgba(15, 23, 42, 0.40));
+              border-color: rgba(251, 191, 36, 0.24);
+            }
+            .report-markdown-block,
+            .report-markdown-block .report-markdown {
+              color: rgb(203 213 225);
+              font-size: 15.5px;
+              line-height: 1.82;
+            }
+            .report-markdown-block .report-markdown h2 {
+              @apply mt-7 mb-3 border-b pb-2 text-xl font-black;
+              color: rgb(248 250 252);
+              border-color: rgba(148, 163, 184, 0.18);
+            }
+            .report-markdown-block .report-markdown h3 {
+              @apply mt-5 mb-2 text-lg font-bold;
+              color: rgb(224 242 254);
+            }
+            .report-markdown-block .report-markdown p { @apply my-2.5; }
+            .report-markdown-block .report-markdown ul {
+              @apply my-3 space-y-1.5 pl-5;
+              color: rgb(203 213 225);
+            }
+            .report-markdown-block .report-markdown li::marker { color: rgb(34 211 238); }
+            .report-markdown-block strong,
+            .report-markdown-block .font-semibold {
+              color: rgb(248 250 252) !important;
+              font-weight: 700;
+            }
+            .report-markdown-block em { color: rgb(186 230 253) !important; }
+            .report-markdown-block a {
+              color: rgb(103 232 249) !important;
+              text-decoration-color: rgba(103, 232, 249, 0.48);
+            }
+            .report-markdown-block blockquote,
+            .report-markdown blockquote {
+              @apply my-4 rounded-r-xl border-l-4 py-3 pl-4 pr-3;
+              background: rgba(14, 165, 233, 0.10);
+              border-color: rgb(34 211 238);
+              color: rgb(226 232 240);
+            }
+            .report-markdown-block hr { border-color: rgba(148, 163, 184, 0.20) !important; }
+            .report-markdown-block table {
+              border-color: rgba(148, 163, 184, 0.22) !important;
+              background: rgba(15, 23, 42, 0.46);
+              color: rgb(226 232 240);
+            }
+            .report-markdown-block thead { background: rgba(30, 41, 59, 0.86) !important; }
+            .report-markdown-block th {
+              color: rgb(224 242 254) !important;
+              border-color: rgba(148, 163, 184, 0.22) !important;
+            }
+            .report-markdown-block td {
+              color: rgb(203 213 225) !important;
+              border-color: rgba(148, 163, 184, 0.14) !important;
+            }
+            .report-card pre {
+              background: rgba(2, 6, 23, 0.42) !important;
+              border-color: rgba(148, 163, 184, 0.18) !important;
+              color: rgb(226 232 240) !important;
+              line-height: 1.72;
+            }
+            .report-card .text-gray-900,
+            .report-card .text-gray-800,
+            .report-card .text-gray-700,
+            .report-card .text-gray-600 {
+              color: rgb(226 232 240) !important;
+            }
+            .report-card .text-gray-500 { color: rgb(148 163 184) !important; }
+            .report-card .text-blue-600 { color: rgb(103 232 249) !important; }
+            .report-card .text-green-700,
+            .report-card .text-green-800 { color: rgb(110 231 183) !important; }
+            .report-card .text-red-700 { color: rgb(253 164 175) !important; }
+            .report-card .bg-gray-50,
+            .report-card .bg-blue-50,
+            .report-card .bg-amber-50,
+            .report-card .bg-green-50,
+            .report-card .bg-green-50\/80,
+            .report-card .bg-red-50\/80,
+            .report-card .bg-blue-50\/80 {
+              background: rgba(15, 23, 42, 0.42) !important;
+            }
+            .report-card .border-gray-200,
+            .report-card .border-blue-100,
+            .report-card .border-amber-100,
+            .report-card .border-green-100,
+            .report-card .border-green-200,
+            .report-card .border-red-100 {
+              border-color: rgba(148, 163, 184, 0.18) !important;
+            }
             /* 报告内遗留 <details>：隐藏默认三角，与自定义 summary 样式一致 */
             .report-markdown details summary { list-style: none; }
             .report-markdown details summary::-webkit-details-marker { display: none; }
@@ -102,12 +250,13 @@
 <body>
     <div id="root"></div>
     <script src="env.js"></script>
+    <script src="env.local.js?v=20260630-model-slots"></script>
     <!-- 与持仓页同源：浏览器拉腾讯行情；生成报告时随请求带给后端，缓解 Vercel 服务端连不通 gtimg -->
     <script src="utils/stockAPI.js"></script>
     <!-- 监控列表存储功能 -->
     <script type="text/babel" src="utils/storage.js"></script>
     <!-- 须在 analysis-app 之前加载，才能收到 stock-analysis-complete（同步直出时无 job 轮询） -->
     <script src="analysis-notify.js"></script>
-    <script type="text/babel" src="analysis-app.js"></script>
+    <script type="text/babel" src="analysis-app.js?v=20260630-sticky-report-tabs"></script>
 </body>
 </html>

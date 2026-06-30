@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>股票详情 - 股小蜜</title>
+    <meta name="description" content="股小蜜股票详情页，集中展示持仓、关注表现、行情快照和分析入口">
+    <script src="https://resource.trickle.so/vendor_lib/unpkg/react@18/umd/react.production.min.js"></script>
+    <script src="https://resource.trickle.so/vendor_lib/unpkg/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://resource.trickle.so/vendor_lib/unpkg/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+    <link href="https://resource.trickle.so/vendor_lib/unpkg/lucide-static@0.516.0/font/lucide.css" rel="stylesheet">
+    <style type="text/tailwindcss">
+        :root {
+            --primary-color: #60a5fa;
+            --primary-hover: #93c5fd;
+            --success-color: #4ade80;
+            --danger-color: #a3e635;
+            --text-primary: #f8fafc;
+            --text-secondary: #cbd5e1;
+            --text-muted: #94a3b8;
+            --border-color: rgba(255, 255, 255, 0.28);
+            --accent-news: #f472b6;
+            --accent-analysis: #5eead4;
+            --accent-paipan: #a78bfa;
+            --page-bg-top: #0b1120;
+            --page-bg-bottom: #1e293b;
+        }
+        @layer base {
+            body {
+              font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+              color: var(--text-primary);
+              min-height: 100vh;
+              -webkit-font-smoothing: antialiased;
+              -moz-osx-font-smoothing: grayscale;
+              background-color: var(--page-bg-top);
+              background-image:
+                radial-gradient(900px 480px at 15% -10%, rgba(59, 130, 246, 0.15), transparent 55%),
+                radial-gradient(700px 400px at 90% 10%, rgba(14, 165, 233, 0.12), transparent 50%),
+                linear-gradient(165deg, var(--page-bg-top) 0%, var(--page-bg-bottom) 45%, #1e293b 100%);
+              background-attachment: fixed;
+            }
+        }
+        @layer components {
+            .font-display { font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif; }
+            .gx-num { font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+            .btn {
+              @apply inline-flex items-center justify-center rounded-xl px-3 py-1.5 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 md:px-4 md:py-2 md:text-base;
+              --tw-ring-offset-color: #1e293b;
+            }
+            .btn-sm { @apply rounded-lg px-2 py-1 text-xs md:text-sm; }
+            .btn-primary { @apply text-white shadow-md shadow-blue-600/25 hover:bg-[var(--primary-hover)] focus-visible:ring-blue-500; background: var(--primary-color); }
+            .btn-secondary {
+              @apply border border-white/25 text-slate-100 shadow-sm hover:bg-white/20 focus-visible:ring-amber-400/60;
+              background: linear-gradient(165deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.06) 100%);
+            }
+            .btn-accent-news { @apply text-white shadow-md shadow-pink-600/25 hover:brightness-110 focus-visible:ring-pink-500; background-color: var(--accent-news); }
+            .btn-accent-analysis { @apply text-slate-950 shadow-md shadow-teal-600/25 hover:brightness-110 focus-visible:ring-teal-500; background-color: var(--accent-analysis); }
+            .btn-accent-paipan { @apply text-white shadow-md shadow-violet-600/25 hover:brightness-110 focus-visible:ring-violet-500; background-color: var(--accent-paipan); }
+            .card {
+              @apply rounded-2xl border border-white/30 shadow-xl;
+              background: linear-gradient(168deg, rgba(255, 255, 255, 0.17) 0%, rgba(255, 255, 255, 0.08) 48%, rgba(15, 23, 42, 0.34) 100%);
+              color: var(--text-primary);
+              backdrop-filter: blur(18px) saturate(165%);
+              box-shadow:
+                0 22px 44px -14px rgba(0, 0, 0, 0.46),
+                inset 0 1px 0 rgba(255, 255, 255, 0.16);
+            }
+            .glass-quick-nav {
+              @apply mt-1.5 border-t pt-1.5;
+              border-color: rgba(255, 255, 255, 0.08);
+            }
+            .glass-quick-nav-inner {
+              @apply flex flex-wrap items-center gap-1.5 rounded-2xl px-2 py-1 md:gap-2 md:px-3 md:py-1.5;
+              -webkit-backdrop-filter: blur(22px) saturate(180%);
+              backdrop-filter: blur(22px) saturate(180%);
+              background: linear-gradient(155deg, rgba(255, 255, 255, 0.08), rgba(30, 41, 59, 0.24));
+              border: 1px solid rgba(255, 255, 255, 0.08);
+              box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 26px -24px rgba(15, 23, 42, 0.82);
+            }
+        }
+    </style>
+    <link rel="icon" href="https://app.trickle.so/storage/app/46bdde6b-ce0a-436d-9861-f705820c2391.png">
+</head>
+<body>
+    <div id="root"></div>
+    <script src="env.js"></script>
+    <script src="env.local.js?v=20260630-front-history"></script>
+    <script type="text/babel" src="utils/stockKeywords.js?v=20260630-keyword-presets"></script>
+    <script type="text/babel" src="utils/storage.js?v=20260630-keyword-presets"></script>
+    <script type="text/babel" src="utils/rssParser.js"></script>
+    <script type="text/babel" src="utils/feeCalculations.js"></script>
+    <script type="text/babel" src="utils/calculations.js?v=20260630-ui-fix"></script>
+    <script type="text/babel" src="utils/technicalIndicators.js?v=20260630-front-history"></script>
+    <script type="text/babel" src="components/StockNavigation.js?v=20260630-rose-loss"></script>
+    <script type="text/babel" src="stock-detail-app.js?v=20260630-front-history"></script>
+</body>
+</html>

@@ -221,7 +221,7 @@ function StockCharts({ stock }) {
         return Number(item.dailyProfit) || 0;
       });
       var colors = profits.map(function (p) {
-        return p >= 0 ? 'rgba(5, 150, 105, 0.8)' : 'rgba(163, 230, 53, 0.88)';
+        return p >= 0 ? 'rgba(5, 150, 105, 0.8)' : 'rgba(252, 165, 165, 0.78)';
       });
 
       var maxAbsIdx = 0;
@@ -564,8 +564,8 @@ function StockCharts({ stock }) {
             <span
               className={
                 profitSummary.profit >= 0
-                  ? 'font-semibold text-lime-400'
-                  : 'font-semibold text-emerald-400'
+                  ? 'font-semibold text-emerald-400'
+                  : 'font-semibold text-rose-300'
               }
             >
               {profitSummary.profit >= 0 ? '+' : ''}
@@ -606,8 +606,8 @@ function StockCharts({ stock }) {
                     className={
                       'gx-num ml-2 text-sm font-medium tabular-nums ' +
                       (priceSummary.dayChg >= 0
-                        ? 'text-lime-400'
-                        : 'text-emerald-400')
+                        ? 'text-emerald-400'
+                        : 'text-rose-300')
                     }
                   >
                     较前一交易日{' '}

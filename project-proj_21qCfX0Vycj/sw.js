@@ -1,5 +1,5 @@
 // 股小蜜 Service Worker
-const CACHE_NAME = 'guxiaomi-v1.1';
+const CACHE_NAME = 'guxiaomi-v5.0-front-history';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -7,6 +7,7 @@ const STATIC_ASSETS = [
   '/paipan.html',
   '/news.html',
   '/analysis.html',
+  '/stock-detail.html',
   '/manifest.json'
 ];
 
@@ -20,7 +21,7 @@ const CDN_URLS = [
   'https://resource.trickle.so/vendor_lib/unpkg/react-dom@18/umd/react-dom.production.min.js',
   'https://resource.trickle.so/vendor_lib/unpkg/@babel/standalone/babel.min.js',
   'https://resource.trickle.so/vendor_lib/unpkg/lucide-static@0.516.0/font/lucide.css',
-  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap'
+  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap'
 ];
 
 // 安装事件 - 缓存静态资源

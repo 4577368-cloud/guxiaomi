@@ -32,6 +32,44 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+function getCurrentReturnPath() {
+  if (typeof window === 'undefined') return 'index.html';
+  return `${window.location.pathname.split('/').pop() || 'index.html'}${window.location.search || ''}${window.location.hash || ''}`;
+}
+
+function withCurrentSource(path) {
+  const separator = path.indexOf('?') >= 0 ? '&' : '?';
+  return `${path}${separator}from=${encodeURIComponent(getCurrentReturnPath())}`;
+}
+
+function getSourceReturnTarget(fallback) {
+  const params = new URLSearchParams(window.location.search);
+  const from = params.get('from') || '';
+  if (from) {
+    try {
+      const target = new URL(from, window.location.href);
+      if (target.origin === window.location.origin) {
+        return `${target.pathname.split('/').pop() || fallback}${target.search || ''}${target.hash || ''}`;
+      }
+    } catch (_) {}
+  }
+  return fallback;
+}
+
+function goBackToSource() {
+  const hasExplicitSource = new URLSearchParams(window.location.search).has('from');
+  const target = getSourceReturnTarget('index.html');
+  if (hasExplicitSource && target) {
+    window.location.href = target;
+    return;
+  }
+  if (window.history && window.history.length > 1) {
+    window.history.back();
+    return;
+  }
+  window.location.href = 'index.html';
+}
+
 /** 与股票分析页同源：Vercel 同域 或 env.js 的 ANALYSIS_API_BASE；本地默认 8123 */
 function getZiweiApiBase() {
   try {
@@ -61,6 +99,19 @@ function getZiweiApiBase() {
     return location.origin;
   }
   return '';
+}
+
+const ZIWEI_MODEL_STORAGE_KEY = 'ziwei_selected_model_key';
+const ZIWEI_DEFAULT_MODEL_KEY = 'model2';
+const ZIWEI_FALLBACK_MODEL_OPTIONS = [
+  { key: 'model1', label: 'MiniMax', configured: false, default: false },
+  { key: 'model2', label: 'Gemma', configured: false, default: true },
+  { key: 'model3', label: 'Deepseek', configured: false, default: false },
+];
+
+function normalizeZiweiModelKey(key) {
+  var k = String(key || '').trim().toLowerCase();
+  return ['model1', 'model2', 'model3'].includes(k) ? k : ZIWEI_DEFAULT_MODEL_KEY;
 }
 
 function ZiweiApp() {
@@ -98,7 +149,22 @@ function ZiweiApp() {
   const chatSectionRef = React.useRef(null);
   const chatContainerRef = React.useRef(null);
   const MAX_HISTORY = 10;
-  const [llmModelLabel, setLlmModelLabel] = React.useState('');
+  const [modelOptions, setModelOptions] = React.useState(ZIWEI_FALLBACK_MODEL_OPTIONS);
+  const [selectedModelKey, setSelectedModelKey] = React.useState(() => {
+    try {
+      return normalizeZiweiModelKey(localStorage.getItem(ZIWEI_MODEL_STORAGE_KEY) || ZIWEI_DEFAULT_MODEL_KEY);
+    } catch (_) {
+      return ZIWEI_DEFAULT_MODEL_KEY;
+    }
+  });
+  const selectedModelOption = modelOptions.find((m) => m.key === selectedModelKey) || ZIWEI_FALLBACK_MODEL_OPTIONS[1];
+  const llmModelLabel = selectedModelOption.label || 'Gemma';
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(ZIWEI_MODEL_STORAGE_KEY, selectedModelKey);
+    } catch (_) {}
+  }, [selectedModelKey]);
 
   React.useEffect(() => {
     const base = getZiweiApiBase();
@@ -106,7 +172,10 @@ function ZiweiApp() {
     fetch(base + '/api/llm/meta')
       .then((r) => r.json())
       .then((d) => {
-        if (d && d.model_id) setLlmModelLabel(String(d.model_id));
+        if (d && Array.isArray(d.models) && d.models.length) setModelOptions(d.models);
+        if (!localStorage.getItem(ZIWEI_MODEL_STORAGE_KEY) && d && d.default_model_key) {
+          setSelectedModelKey(normalizeZiweiModelKey(d.default_model_key));
+        }
       })
       .catch(() => {});
   }, []);
@@ -218,6 +287,7 @@ function ZiweiApp() {
               user: userPrompt,
               stream: true,
               max_tokens: 8192,
+              model_key: selectedModelKey,
             }),
             signal: controller.signal,
           });
@@ -275,6 +345,7 @@ function ZiweiApp() {
             user: userPrompt,
             stream: false,
             max_tokens: 8192,
+            model_key: selectedModelKey,
           }),
           signal: controller.signal,
         });
@@ -1744,83 +1815,69 @@ ${allStocksData}
 
     return (
       <>
-        <div className="relative z-10 min-h-screen py-3 md:py-8 px-2 md:px-4" data-name="ziwei-app" data-file="ziwei-app.js">
-          <div className="max-w-6xl mx-auto">
-          <div className="zi-card p-3 md:p-6 mb-4 md:mb-6">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 md:gap-4 min-w-0">
+        <div className="relative z-10 min-h-screen" data-name="ziwei-app" data-file="ziwei-app.js">
+          <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/72 backdrop-blur-xl shadow-lg shadow-slate-950/25">
+            <div className="mx-auto flex max-w-6xl items-center gap-2 px-3 py-2 md:px-4">
+              <div className="flex min-w-0 items-center gap-2">
                 <img 
                   src="https://imgus.tangbuy.com/static/images/2025-09-26/e9e9e871b0b2477697e4b59f6da02ab5-17588742994027430860421454933872.png"
                   alt="股小蜜 Logo"
-                  className="w-8 h-8 md:w-12 md:h-12 rounded-xl shadow-lg shadow-cyan-500/10 ring-1 ring-white/10 shrink-0"
+                  className="h-8 w-8 shrink-0 rounded-xl shadow-lg shadow-slate-900/20 ring-2 ring-white/40 md:h-9 md:w-9"
                 />
                 <div className="min-w-0">
-                  <p className="zi-mono-label text-[10px] md:text-xs text-cyan-400/90 uppercase mb-0.5">AI · 命盘解析引擎</p>
-                  <h1 className="text-lg md:text-2xl font-bold text-slate-50 tracking-tight truncate">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">股小蜜</p>
+                  <h1 className="truncate font-display text-base font-bold text-slate-50 md:text-lg">
                     紫微斗数金融排盘
                   </h1>
                 </div>
               </div>
-              <button
-                onClick={() => {
-                  // Save current state before leaving
-                  if (isGenerating || isAnalyzingStock || isGeneratingBasic || isGeneratingWealth || isGeneratingPortfolio) {
-                    if (!window.confirm('AI报告正在生成中，确定要返回吗？返回后生成将会中断。')) {
-                      return;
-                    }
-                  }
-                  window.location.href = 'index.html';
-                }}
-                className="btn btn-secondary btn-sm flex items-center gap-1"
-              >
-                <div className="icon-arrow-left text-sm"></div>
-                <span className="text-xs md:text-sm">返回</span>
-              </button>
-            </div>
-          </div>
-
-          {portfolioStocks.length > 0 && (
-            <div className="zi-card p-3 md:p-4 mb-4 md:mb-6">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <div className="icon-briefcase text-base text-emerald-300 bg-emerald-500/15 p-1.5 rounded-lg ring-1 ring-emerald-400/25"></div>
-                  <h2 className="text-sm md:text-base font-semibold text-slate-100">
-                    持仓股票分析 ({portfolioStocks.length}只)
-                  </h2>
-                </div>
+              <div className="ml-auto flex items-center justify-end gap-1.5 overflow-x-auto">
+                <label className="flex shrink-0 items-center gap-1.5 text-xs text-slate-300">
+                  <span className="hidden sm:inline">模型</span>
+                  <select
+                    value={selectedModelKey}
+                    onChange={(e) => setSelectedModelKey(normalizeZiweiModelKey(e.target.value))}
+                    disabled={isGenerating || isAnalyzingStock || isGeneratingBasic || isGeneratingWealth || isGeneratingPortfolio}
+                    className="input-field !w-auto !rounded-lg !px-2 !py-1 !text-xs"
+                  >
+                    {modelOptions.map((m) => (
+                      <option key={m.key} value={m.key}>
+                        {m.label}{m.default ? '（默认）' : ''}{m.configured === false ? '（未配置）' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <a href={withCurrentSource('analysis.html')} className="btn btn-secondary btn-sm shrink-0">分析</a>
                 <button
-                  onClick={handleAnalyzeAllStocks}
-                  disabled={isAnalyzingStock}
-                  className="btn btn-primary btn-sm disabled:opacity-50 flex items-center gap-1"
-                  style={{backgroundColor: '#059669'}}
+                  onClick={() => {
+                    // Save current state before leaving
+                    if (isGenerating || isAnalyzingStock || isGeneratingBasic || isGeneratingWealth || isGeneratingPortfolio) {
+                      if (!window.confirm('AI报告正在生成中，确定要返回吗？返回后生成将会中断。')) {
+                        return;
+                      }
+                    }
+                    goBackToSource();
+                  }}
+                  className="btn btn-secondary btn-sm shrink-0"
                 >
-                  {isAnalyzingStock ? (
-                    <>
-                      <div className="icon-loader text-sm animate-spin"></div>
-                      <span className="text-xs md:text-sm">分析中...</span>
-                    </>
-                  ) : (
-                    <>
-                      <div className="icon-bar-chart text-sm"></div>
-                      <span className="text-xs md:text-sm">生成分析</span>
-                    </>
-                  )}
+                  返回
                 </button>
               </div>
             </div>
-          )}
-
-          <div className="zi-card p-3 md:p-6 mb-4 md:mb-6">
+          </header>
+          <main className="px-2 py-4 md:px-4 md:py-5">
+          <div className="max-w-6xl mx-auto">
+          <div className="zi-card p-4 md:p-5 mb-4 md:mb-6">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 md:gap-4 mb-3 md:mb-4">
               <div className="flex items-center gap-2">
                 <h2 className="text-base md:text-xl font-bold text-slate-100 flex items-center gap-2">
-                  <div className="icon-edit-3 text-base md:text-xl text-slate-950 bg-gradient-to-br from-cyan-400 to-teal-500 p-1.5 md:p-2 rounded-lg shadow-lg shadow-cyan-500/25"></div>
+                  <div className="icon-edit-3 text-base md:text-xl text-slate-950 bg-gradient-to-br from-blue-300 to-cyan-300 p-1.5 md:p-2 rounded-lg shadow-lg shadow-blue-500/25"></div>
                   输入命盘信息
                 </h2>
                 {(basicReport || wealthReport) && (
                   <button
                     onClick={() => setShowInputText(!showInputText)}
-                    className="text-cyan-400 hover:text-cyan-300 p-1"
+                    className="text-blue-200 hover:text-blue-100 p-1"
                     title={showInputText ? "折叠" : "展开"}
                   >
                     <div className={`icon-chevron-${showInputText ? 'up' : 'down'} text-lg`}></div>
@@ -1960,12 +2017,20 @@ ${allStocksData}
             
             {showInputText && (
               <>
-                <textarea
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  placeholder="请输入您的紫微斗数命盘信息..."
-                  className="w-full h-32 md:h-40 p-3 md:p-4 rounded-xl border border-white/10 bg-slate-950/80 text-slate-100 placeholder:text-slate-500 focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500/30 resize-y text-sm md:text-base shadow-inner"
-                />
+                <div className="rounded-2xl border border-white/12 bg-slate-950/18 p-3">
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-300">
+                    命盘资料
+                  </label>
+                  <textarea
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    placeholder="请输入您的紫微斗数命盘信息..."
+                    className="input-field h-32 resize-y text-sm shadow-inner md:h-40 md:text-base"
+                  />
+                  <p className="mt-2 text-xs text-slate-400">
+                    支持粘贴出生信息、命盘文本和补充说明，生成逻辑保持不变。
+                  </p>
+                </div>
                 
                 <div className="flex gap-3 mt-4 justify-center">
                   <button
@@ -1990,42 +2055,10 @@ ${allStocksData}
             )}
           </div>
 
-          {/* Flow Report Generation Button */}
-          {(wealthReport || stockAnalysisReport) && inputText.trim() && (
-            <div className="rounded-2xl border border-amber-400/25 bg-gradient-to-br from-slate-900/90 via-slate-900/70 to-slate-950/90 p-3 md:p-4 mb-4 md:mb-6 shadow-xl shadow-amber-500/5">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="icon-calendar text-2xl text-amber-300 bg-amber-500/10 p-2 rounded-xl ring-1 ring-amber-400/30"></div>
-                  <div>
-                    <h3 className="text-base md:text-lg font-bold text-slate-100">流月流日精准分析</h3>
-                    <p className="text-xs md:text-sm text-slate-400 mt-1">基于命盘信息的流月流日运势分析，结合财富密码和持仓技术分析</p>
-                  </div>
-                </div>
-                <button
-                  onClick={handleGenerateFlow}
-                  disabled={isGeneratingFlow}
-                  className="btn disabled:opacity-50 flex items-center gap-2 w-full sm:w-auto justify-center rounded-xl font-semibold text-white bg-gradient-to-r from-amber-600 to-orange-600 shadow-lg shadow-amber-500/15 hover:brightness-110 border-0"
-                >
-                  {isGeneratingFlow ? (
-                    <>
-                      <div className="icon-loader text-base animate-spin"></div>
-                      <span className="text-sm">生成中...</span>
-                    </>
-                  ) : (
-                    <>
-                      <div className="icon-zap text-base"></div>
-                      <span className="text-sm">生成分析</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
-
             <div className="space-y-4 md:space-y-6">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="zi-mono-label text-[10px] md:text-xs text-cyan-500/90 uppercase mb-1">智能报告 · 流式输出</p>
+                <p className="text-[10px] md:text-xs text-slate-400 uppercase tracking-[0.18em] mb-1">智能报告 · 流式输出</p>
                 <h2 className="text-lg md:text-2xl font-bold text-slate-50 flex items-center gap-2">
                   <div className="icon-file-text text-lg md:text-2xl text-cyan-400"></div>
                   分析报告
@@ -2295,6 +2328,15 @@ ${allStocksData}
                             </span>
                             <div className="flex items-center gap-1">
                               <button
+                                onClick={handleAnalyzeAllStocks}
+                                disabled={isAnalyzingStock || portfolioStocks.length === 0}
+                                className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.08] px-2 py-1 text-xs font-semibold text-emerald-100 transition-colors hover:bg-white/[0.14] disabled:opacity-50"
+                                title="重新生成技术分析"
+                              >
+                                <div className="icon-bar-chart text-sm"></div>
+                                <span>重新分析</span>
+                              </button>
+                              <button
                                 onClick={() => copyReport(`【持仓组合技术分析与评估】\n生成时间: ${stockAnalysisReport.timestamp}\n\n${stockAnalysisReport.content}`)}
                                 className="text-cyan-400 hover:text-cyan-300 p-1.5 md:p-2"
                                 title="复制当前报告"
@@ -2319,10 +2361,21 @@ ${allStocksData}
                         )}
                         </>
                       ) : (
-                        <div className="text-center py-12">
+                        <div className="flex flex-col items-center justify-center py-14 text-center">
                           <div className="icon-bar-chart text-6xl text-slate-600 mb-4 flex justify-center"></div>
-                          <h3 className="text-xl font-semibold text-slate-400 mb-2">还没有生成股票分析报告</h3>
-                          <p className="text-slate-500">请先输入命盘信息，然后点击持仓股票进行分析</p>
+                          <h3 className="text-xl font-semibold text-slate-300 mb-2">还没有生成技术分析</h3>
+                          <p className="mb-5 max-w-md text-sm text-slate-500">
+                            将基于当前持仓股票、行情、技术指标和持仓成本生成组合技术分析。
+                          </p>
+                          <button
+                            type="button"
+                            onClick={handleAnalyzeAllStocks}
+                            disabled={isAnalyzingStock || portfolioStocks.length === 0}
+                            className="btn btn-success gap-2 disabled:opacity-50"
+                          >
+                            <div className="icon-bar-chart text-base"></div>
+                            <span>{portfolioStocks.length === 0 ? '暂无持仓' : '分析'}</span>
+                          </button>
                         </div>
                       )}
                     </>
@@ -2351,6 +2404,15 @@ ${allStocksData}
                             </span>
                             <div className="flex items-center gap-1">
                               <button
+                                onClick={handleGenerateFlow}
+                                disabled={isGeneratingFlow || !inputText.trim() || (!wealthReport && !stockAnalysisReport && !portfolioAnalysisReport)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.08] px-2 py-1 text-xs font-semibold text-amber-100 transition-colors hover:bg-white/[0.14] disabled:opacity-50"
+                                title="重新生成流月流日分析"
+                              >
+                                <div className="icon-zap text-sm"></div>
+                                <span>重新分析</span>
+                              </button>
+                              <button
                                 onClick={() => copyReport(`【紫微斗数流月流日分析】\n生成时间: ${flowReport.timestamp}\n\n${flowReport.content}`)}
                                 className="text-cyan-400 hover:text-cyan-300 p-1.5 md:p-2"
                                 title="复制当前报告"
@@ -2375,10 +2437,21 @@ ${allStocksData}
                         )}
                         </>
                       ) : (
-                        <div className="text-center py-12">
+                        <div className="flex flex-col items-center justify-center py-14 text-center">
                           <div className="icon-calendar text-6xl text-slate-600 mb-4 flex justify-center"></div>
-                          <h3 className="text-xl font-semibold text-slate-400 mb-2">还没有生成流月流日分析</h3>
-                          <p className="text-slate-500">请先生成命盘全析和财富密码，然后点击「生成分析」按钮</p>
+                          <h3 className="text-xl font-semibold text-slate-300 mb-2">还没有生成流月流日分析</h3>
+                          <p className="mb-5 max-w-md text-sm text-slate-500">
+                            基于命盘信息、财富密码和持仓技术分析，生成流月流日运势与操作建议。
+                          </p>
+                          <button
+                            type="button"
+                            onClick={handleGenerateFlow}
+                            disabled={isGeneratingFlow || !inputText.trim() || (!wealthReport && !stockAnalysisReport && !portfolioAnalysisReport)}
+                            className="btn btn-secondary gap-2 disabled:opacity-50"
+                          >
+                            <div className="icon-zap text-base"></div>
+                            <span>分析</span>
+                          </button>
                         </div>
                       )}
                     </>
@@ -2389,7 +2462,6 @@ ${allStocksData}
             
 
           </div>
-        </div>
 
         {/* Fixed Bottom Chat Bar - Only show when reports exist */}
         {(basicReport || wealthReport || portfolioAnalysisReport || stockAnalysisReport || flowReport) && (
@@ -2577,6 +2649,8 @@ ${allStocksData}
           </div>
         )}
 
+          </main>
+        </div>
 
         </>
       );

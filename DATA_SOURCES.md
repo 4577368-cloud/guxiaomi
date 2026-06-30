@@ -60,7 +60,10 @@
 |------|------|
 | `ALPHA_VANTAGE_API_KEY` 或 `ALPHAVANTAGE_API_KEY` | 启用 Alpha Vantage 行情与 OVERVIEW（公司简介等）。 |
 | `GTIMG_HTTP_PROXY_TEMPLATE` | 可选。形如 `https://your-proxy/?url={url}`，服务端请求腾讯接口时走代理（海外机房常用）。 |
-| `VLLM_BASE_URL` / `VLLM_API_KEY` / `VLLM_MODEL_ID` | 分析报告所用 LLM，与行情无关。 |
+| `LLM_DEFAULT_MODEL_KEY` | 默认模型槽位，取值 `model1` / `model2` / `model3`，默认建议为 `model2`。 |
+| `LLM_MODEL1_BASE_URL` / `LLM_MODEL1_API_KEY` / `LLM_MODEL1_MODEL_ID` | 模型1（前端展示为 MiniMax）的 OpenAI 兼容服务配置。 |
+| `LLM_MODEL2_BASE_URL` / `LLM_MODEL2_API_KEY` / `LLM_MODEL2_MODEL_ID` | 模型2（前端展示为 Gemma，默认使用）的 OpenAI 兼容服务配置。 |
+| `LLM_MODEL3_BASE_URL` / `LLM_MODEL3_API_KEY` / `LLM_MODEL3_MODEL_ID` | 模型3（前端展示为 Deepseek）的 OpenAI 兼容服务配置。 |
 
 ## 部署注意（Vercel）
 

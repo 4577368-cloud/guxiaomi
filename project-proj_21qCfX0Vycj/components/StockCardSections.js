@@ -155,9 +155,9 @@ function MarketDataSection({ stock }) {
   const chN = Number.isFinite(ch) ? ch : 0;
   const chPct = Number(stock.marketData.changePercent);
   const chPctN = Number.isFinite(chPct) ? chPct : 0;
-  const changeCls = chN >= 0 ? 'text-emerald-400' : 'text-lime-400';
+  const changeCls = chN >= 0 ? 'text-emerald-400' : 'text-rose-300';
   const changeSign = chN >= 0 ? '+' : '';
-  const chPctCls = chPctN >= 0 ? 'text-emerald-400' : 'text-lime-400';
+  const chPctCls = chPctN >= 0 ? 'text-emerald-400' : 'text-rose-300';
   const chPctStr = (chPctN >= 0 ? '+' : '') + chPctN.toFixed(2) + '%';
   const rsiCls =
     Number.isFinite(rsin) && rsin > 70
@@ -172,7 +172,7 @@ function MarketDataSection({ stock }) {
         <div className="flex flex-wrap gap-x-4 gap-y-1">
           <span>开盘 <strong>{openStr}</strong>{stock.marketData.isManual && <span className="text-xs rounded border border-amber-400/50 bg-amber-500/20 px-1 text-amber-200 ml-0.5">手动</span>}</span>
           <span>最高 <strong className="text-green-600">{highStr}</strong></span>
-          <span>最低 <strong className="text-lime-400">{lowStr}</strong></span>
+          <span>最低 <strong className="text-rose-300">{lowStr}</strong></span>
           <span>成交量 <strong>{formatVolume(stock.marketData.volume || 0)}</strong></span>
           {hasExtendedData && (
             <>
@@ -222,7 +222,8 @@ function PositionsSection({
   setEditingPosition, 
   showBuyFeesDetail, 
   setShowBuyFeesDetail, 
-  onAddPosition 
+  onAddPosition,
+  onBrokerChannelChange
 }) {
   if (!stock || !stock.id) {
     return (
@@ -393,6 +394,8 @@ function PositionsSection({
         <PositionForm
           stock={stock}
           position={editingPosition}
+          brokerChannel={brokerChannel}
+          onBrokerChannelChange={onBrokerChannelChange}
           onAdd={(position) => {
             if (editingPosition) {
               onUpdatePosition(editingPosition.id, { ...editingPosition, ...position });
@@ -547,7 +550,7 @@ function SellSimulationSection({
                 </div>
                 <div>
                   <span className="mb-1 block text-slate-400">该笔净盈利</span>
-                  <span className={`gx-num text-sm font-bold tabular-nums ${profitSimResult.netProfit >= 0 ? 'text-emerald-400' : 'text-lime-400'}`} dangerouslySetInnerHTML={{ __html: `${profitSimResult.netProfit >= 0 ? '+' : ''}${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(profitSimResult.netProfit, 2)}` }} />
+                  <span className={`gx-num text-sm font-bold tabular-nums ${profitSimResult.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-300'}`} dangerouslySetInnerHTML={{ __html: `${profitSimResult.netProfit >= 0 ? '+' : ''}${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(profitSimResult.netProfit, 2)}` }} />
                 </div>
                 <div>
                   <span className="mb-1 block text-slate-400">参考卖出单价</span>
@@ -563,7 +566,7 @@ function SellSimulationSection({
                 </div>
                 <div>
                   <span className="mb-1 block text-slate-400">该笔收益率</span>
-                  <span className={`gx-num text-sm font-bold tabular-nums ${profitSimResult.profitPercent >= 0 ? 'text-emerald-400' : 'text-lime-400'}`}>
+                  <span className={`gx-num text-sm font-bold tabular-nums ${profitSimResult.profitPercent >= 0 ? 'text-emerald-400' : 'text-rose-300'}`}>
                     {(profitSimResult.profitPercent >= 0 ? '+' : '') +
                       (Number.isFinite(Number(profitSimResult.profitPercent))
                         ? Number(profitSimResult.profitPercent)
@@ -670,13 +673,13 @@ function SellSimulationSection({
                       </div>
                       <div className="text-center">
                         <span className="text-gray-600 block">净盈亏</span>
-                        <span className={`font-bold ${simulation.netProfit >= 0 ? 'text-emerald-400' : 'text-lime-400'}`}>
+                        <span className={`font-bold ${simulation.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-300'}`}>
                           <span dangerouslySetInnerHTML={{ __html: `${simulation.netProfit >= 0 ? '+' : ''}${stock.market === 'US' ? '$' : stock.market === 'CN' ? '¥' : ''}${formatPrice(simulation.netProfit, 2)}` }} />
                         </span>
                       </div>
                       <div className="text-center">
                         <span className="text-gray-600 block">收益率</span>
-                        <span className={`font-bold ${simulation.profitPercent >= 0 ? 'text-emerald-400' : 'text-lime-400'}`}>
+                        <span className={`font-bold ${simulation.profitPercent >= 0 ? 'text-emerald-400' : 'text-rose-300'}`}>
                           {simProfitPct >= 0 ? '+' : ''}{simProfitPct.toFixed(2)}%
                         </span>
                       </div>

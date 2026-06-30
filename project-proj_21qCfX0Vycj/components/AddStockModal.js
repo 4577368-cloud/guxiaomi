@@ -2,11 +2,15 @@ function AddStockModal({ onAdd, onClose, onAddToWatchlist }) {
     const [symbol, setSymbol] = React.useState('');
     const [market, setMarket] = React.useState('US');
     const [brokerChannel, setBrokerChannel] = React.useState('futu');
+    const [buyPrice, setBuyPrice] = React.useState('');
+    const [buyShares, setBuyShares] = React.useState('');
+    const [buyDate, setBuyDate] = React.useState(new Date().toISOString().split('T')[0]);
     const [addType, setAddType] = React.useState('position'); // 'position' | 'watch'
     const [isLoading, setIsLoading] = React.useState(false);
     const [searchQuery, setSearchQuery] = React.useState('');
     const [searchResults, setSearchResults] = React.useState([]);
     const [showSearch, setShowSearch] = React.useState(false);
+    const [hotStockOffset, setHotStockOffset] = React.useState(0);
     const searchInputRef = React.useRef(null);
 
     // 搜索股票
@@ -33,14 +37,26 @@ function AddStockModal({ onAdd, onClose, onAddToWatchlist }) {
     // 获取热门股票
     const hotStocks = React.useMemo(() => {
       if (window.getHotStocks) {
-        return window.getHotStocks(market === 'ALL' ? 'ALL' : market, 6);
+        return window.getHotStocks(market === 'ALL' ? 'ALL' : market, 6, hotStockOffset);
       }
       return [];
+    }, [market, hotStockOffset]);
+
+    React.useEffect(() => {
+      setHotStockOffset(0);
     }, [market]);
 
     const handleSubmit = async (e) => {
       e.preventDefault();
       if (!symbol.trim()) return;
+      if (addType === 'position') {
+        const pr = parseFloat(buyPrice);
+        const sh = parseInt(buyShares, 10);
+        if (!Number.isFinite(pr) || pr <= 0 || !Number.isFinite(sh) || sh <= 0) {
+          console.warn('添加持仓必须填写有效买入价和股数');
+          return;
+        }
+      }
 
       setIsLoading(true);
       try {
@@ -71,13 +87,28 @@ function AddStockModal({ onAdd, onClose, onAddToWatchlist }) {
           currentPrice = marketData.price;
         }
 
+        const selectedStockMeta = searchResults.find(s => s.symbol === symbol.toUpperCase() && s.market === market)
+          || hotStocks.find(s => s.symbol === symbol.toUpperCase() && s.market === market)
+          || null;
+        const displayName = selectedStockMeta?.nameCn || selectedStockMeta?.name || symbol.toUpperCase();
+        const defaultKeywords = window.generateDefaultStockKeywords
+          ? window.generateDefaultStockKeywords({
+              symbol: symbol.toUpperCase(),
+              market,
+              name: displayName,
+              nameCn: selectedStockMeta?.nameCn,
+            })
+          : [];
+
         if (addType === 'watch') {
           // 添加到监控列表
           if (onAddToWatchlist) {
             onAddToWatchlist({
               symbol: symbol.toUpperCase(),
               market: market,
-              name: searchResults.find(s => s.symbol === symbol.toUpperCase())?.nameCn || symbol.toUpperCase(),
+              name: displayName,
+              nameCn: selectedStockMeta?.nameCn,
+              keywords: defaultKeywords,
               currentPrice: currentPrice,
               marketData: marketData,
               change: marketData.change || 0,
@@ -102,11 +133,30 @@ function AddStockModal({ onAdd, onClose, onAddToWatchlist }) {
           onAdd({
             symbol: symbol.toUpperCase(),
             market: market,
+            name: displayName,
+            nameCn: selectedStockMeta?.nameCn,
+            keywords: defaultKeywords,
             brokerChannel: brokerChannel,
             currentPrice: currentPrice,
             marketData: marketData,
             technicalIndicators: technicalIndicators,
-            positions: []
+            positions: [{
+              id: Date.now().toString(),
+              price: parseFloat(buyPrice),
+              shares: parseInt(buyShares, 10),
+              date: buyDate,
+              brokerChannel: brokerChannel,
+              enabled: true
+            }],
+            positionEventHistory: [{
+              id: `evt_${Date.now()}`,
+              date: buyDate,
+              type: 'open',
+              shares: parseInt(buyShares, 10),
+              price: parseFloat(buyPrice),
+              amount: parseInt(buyShares, 10) * parseFloat(buyPrice),
+              note: '开仓'
+            }]
           });
         }
       } catch (error) {
@@ -130,11 +180,15 @@ function AddStockModal({ onAdd, onClose, onAddToWatchlist }) {
       }
     };
 
+    const handleRefreshHotStocks = () => {
+      setHotStockOffset((prev) => prev + 6);
+    };
+
     return (
       <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal-panel mx-auto max-h-[90vh] overflow-y-auto touch-auto">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-display text-lg font-semibold text-slate-900">添加新股票</h3>
+      <div className="modal-panel mx-auto max-h-[calc(100dvh-2rem)] overflow-y-auto touch-auto p-4 md:p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-display text-lg font-semibold text-slate-50">添加新股票</h3>
           <button
             type="button"
             onClick={onClose}
@@ -144,12 +198,12 @@ function AddStockModal({ onAdd, onClose, onAddToWatchlist }) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
+            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
               交易市场
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-1.5">
               <button
                 type="button"
                 onClick={() => setMarket('US')}
@@ -187,7 +241,7 @@ function AddStockModal({ onAdd, onClose, onAddToWatchlist }) {
           </div>
 
           <div className="relative">
-            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
+            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
               股票代码
             </label>
             <div className="relative">
@@ -254,36 +308,54 @@ function AddStockModal({ onAdd, onClose, onAddToWatchlist }) {
           {/* 热门推荐 */}
           {!showSearch && hotStocks.length > 0 && (
             <div>
-              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
-                热门推荐
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {hotStocks.slice(0, 6).map((stock, idx) => (
-                  <button
-                    key={`hot-${stock.market}-${stock.symbol}-${idx}`}
-                    type="button"
-                    onClick={() => handleSelectStock(stock)}
-                    className="px-3 py-2 rounded-lg text-left bg-white/5 hover:bg-white/10 active:bg-white/20 transition-colors touch-manipulation border border-white/10"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-medium text-slate-100 text-xs">{stock.symbol}</span>
-                      <span className={`text-[10px] px-1 rounded ${
-                        stock.market === 'US' ? 'bg-blue-500/20 text-blue-300' :
-                        stock.market === 'HK' ? 'bg-orange-500/20 text-orange-300' :
-                        'bg-red-500/20 text-red-300'
-                      }`}>
-                        {stock.market === 'US' ? '美' : stock.market === 'HK' ? '港' : 'A股'}
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-400 truncate mt-0.5">{stock.nameCn}</div>
-                  </button>
-                ))}
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="block text-sm font-medium text-[var(--text-secondary)]">
+                  热门推荐
+                </label>
+                <button
+                  type="button"
+                  onClick={handleRefreshHotStocks}
+                  className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/[0.06] px-2 py-1 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10 active:bg-white/20"
+                  title="换一批热门股票"
+                >
+                  <div className="icon-refresh-cw text-xs"></div>
+                  换一批
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {hotStocks.slice(0, 6).map((stock, idx) => {
+                  const isSelected = symbol === stock.symbol && market === stock.market;
+                  return (
+                    <button
+                      key={`hot-${stock.market}-${stock.symbol}-${idx}`}
+                      type="button"
+                      onClick={() => handleSelectStock(stock)}
+                      className={`px-3 py-2 rounded-lg text-left transition-all touch-manipulation border ${
+                        isSelected
+                          ? 'border-sky-300 bg-sky-500/25 shadow-[0_0_0_1px_rgba(125,211,252,0.55),0_0_18px_rgba(56,189,248,0.18)]'
+                          : 'border-white/10 bg-white/5 hover:border-white/25 hover:bg-white/10 active:bg-white/20'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-slate-100 text-xs">{stock.symbol}</span>
+                        <span className={`text-[10px] px-1 rounded ${
+                          stock.market === 'US' ? 'bg-blue-500/20 text-blue-300' :
+                          stock.market === 'HK' ? 'bg-orange-500/20 text-orange-300' :
+                          'bg-red-500/20 text-red-300'
+                        }`}>
+                          {stock.market === 'US' ? '美' : stock.market === 'HK' ? '港' : 'A股'}
+                        </span>
+                      </div>
+                      <div className={`text-xs truncate mt-0.5 ${isSelected ? 'text-sky-100' : 'text-slate-400'}`}>{stock.nameCn}</div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
+            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
               添加到
             </label>
             <div className="grid grid-cols-2 gap-2">
@@ -316,32 +388,79 @@ function AddStockModal({ onAdd, onClose, onAddToWatchlist }) {
                 </div>
               </button>
             </div>
-            <p className="text-xs text-slate-400 mt-2 text-center">
+            <p className="text-xs text-slate-400 mt-1.5 text-center">
               {addType === 'position' ? '添加到持仓组合，跟踪盈亏' : '添加到关注列表，实时监控价格'}
             </p>
           </div>
 
           {addType === 'position' && (
-            <div>
-              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
-                购入渠道
-              </label>
-              <select
-                value={brokerChannel}
-                onChange={(e) => setBrokerChannel(e.target.value)}
-                className="input-field"
-              >
-                <option value="futu">富途</option>
-                <option value="longbridge">长桥</option>
-                <option value="boc">中银</option>
-              </select>
+            <div className="grid gap-3">
+              <div>
+                <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+                  购入渠道
+                </label>
+                <select
+                  value={brokerChannel}
+                  onChange={(e) => setBrokerChannel(e.target.value)}
+                  className="input-field"
+                >
+                  <option value="futu">富途</option>
+                  <option value="longbridge">长桥</option>
+                  <option value="boc">中银</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+                    买入价
+                  </label>
+                  <input
+                    type="number"
+                    step="0.001"
+                    value={buyPrice}
+                    onChange={(e) => setBuyPrice(e.target.value)}
+                    className="input-field"
+                    placeholder="如 150.50"
+                    required={addType === 'position'}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+                    股数
+                  </label>
+                  <input
+                    type="number"
+                    value={buyShares}
+                    onChange={(e) => setBuyShares(e.target.value)}
+                    className="input-field"
+                    placeholder="如 100"
+                    required={addType === 'position'}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+                  买入日期
+                </label>
+                <input
+                  type="date"
+                  value={buyDate}
+                  onChange={(e) => setBuyDate(e.target.value)}
+                  className="input-field"
+                  required={addType === 'position'}
+                />
+              </div>
             </div>
           )}
 
-          <div className="flex gap-3 pt-4">
+          <div className="flex gap-3 pt-2">
             <button
               type="submit"
-              disabled={isLoading || !symbol.trim()}
+              disabled={
+                isLoading ||
+                !symbol.trim() ||
+                (addType === 'position' && (!buyPrice || !buyShares || !buyDate))
+              }
               className={`btn flex-1 disabled:opacity-50 touch-manipulation ${
                 addType === 'watch' ? 'bg-cyan-500 hover:bg-cyan-600 text-white border-cyan-500' : 'btn-primary'
               }`}

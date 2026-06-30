@@ -78,8 +78,37 @@ function parseNewsUrlParams() {
     code: q.get('code') || '',
     market: q.get('market') || 'A 股',
     name: q.get('name') || '',
-    keywords: (q.get('keywords') || '').split(',').map(k => k.trim()).filter(Boolean)
+    keywords: (q.get('keywords') || '').split(',').map(k => k.trim()).filter(Boolean),
+    from: q.get('from') || ''
   };
+}
+
+function getReturnTarget(fallback) {
+  const q = new URLSearchParams(window.location.search);
+  const from = q.get('from') || '';
+  if (from) {
+    try {
+      const target = new URL(from, window.location.href);
+      if (target.origin === window.location.origin) {
+        return `${target.pathname.split('/').pop() || fallback}${target.search || ''}${target.hash || ''}`;
+      }
+    } catch (_) {}
+  }
+  return fallback;
+}
+
+function goBackToSource() {
+  const hasExplicitSource = new URLSearchParams(window.location.search).has('from');
+  const target = getReturnTarget('index.html');
+  if (hasExplicitSource && target) {
+    window.location.href = target;
+    return;
+  }
+  if (window.history && window.history.length > 1) {
+    window.history.back();
+    return;
+  }
+  window.location.href = 'index.html';
 }
 
 function NewsApp() {
@@ -238,7 +267,7 @@ function NewsPreview({ newsList, isLoading, isCopying, urlParams, keywordInput, 
             <button onClick={onCopyNews} disabled={newsList.length === 0 || isCopying} className="btn btn-secondary btn-sm disabled:opacity-50">
               {isCopying ? '复制中' : '复制'}
             </button>
-            <button type="button" onClick={() => { window.location.href = 'index.html'; }} className="btn btn-secondary btn-sm">
+            <button type="button" onClick={goBackToSource} className="btn btn-secondary btn-sm">
               返回
             </button>
           </div>

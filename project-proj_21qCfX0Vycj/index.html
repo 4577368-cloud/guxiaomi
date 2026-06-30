@@ -36,7 +36,7 @@
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
     <link href="https://resource.trickle.so/vendor_lib/unpkg/lucide-static@0.516.0/font/lucide.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
@@ -66,6 +66,8 @@
             --accent-news-hover: #ec4899;
             --accent-analysis: #5eead4;
             --accent-analysis-hover: #2dd4bf;
+            --accent-paipan: #a78bfa;
+            --accent-paipan-hover: #8b5cf6;
             --page-bg-top: #0b1120;
             --page-bg-bottom: #1e293b;
         }
@@ -141,6 +143,29 @@
             -webkit-overflow-scrolling: touch;
         }
 
+        .gx-soft-scrollbar {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(148, 163, 184, 0.26) transparent;
+        }
+
+        .gx-soft-scrollbar::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+
+        .gx-soft-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .gx-soft-scrollbar::-webkit-scrollbar-thumb {
+            border-radius: 999px;
+            background: rgba(148, 163, 184, 0.22);
+        }
+
+        .gx-soft-scrollbar:hover::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.38);
+        }
+
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -203,25 +228,23 @@
         }
 
         .glass-quick-nav {
-            @apply mt-2 border-t pt-2;
-            border-color: rgba(255, 255, 255, 0.14);
+            @apply mt-1.5 border-t pt-1.5;
+            border-color: rgba(255, 255, 255, 0.08);
         }
         .glass-quick-nav-inner {
-            @apply flex flex-wrap items-center gap-1.5 rounded-2xl px-2 py-1.5 md:gap-2 md:px-3.5 md:py-2.5;
+            @apply flex flex-wrap items-center gap-1.5 rounded-2xl px-2 py-1 md:gap-2 md:px-3 md:py-1.5;
             -webkit-backdrop-filter: blur(22px) saturate(180%);
             backdrop-filter: blur(22px) saturate(180%);
             background: linear-gradient(
                 155deg,
-                rgba(255, 255, 255, 0.22) 0%,
-                rgba(255, 255, 255, 0.09) 38%,
-                rgba(15, 23, 42, 0.4) 100%
+                rgba(255, 255, 255, 0.08) 0%,
+                rgba(255, 255, 255, 0.04) 38%,
+                rgba(15, 23, 42, 0.22) 100%
             );
-            border: 1px solid rgba(255, 255, 255, 0.34);
+            border: 1px solid rgba(255, 255, 255, 0.08);
             box-shadow:
-                inset 0 1px 0 rgba(255, 255, 255, 0.28),
-                0 6px 32px rgba(0, 0, 0, 0.35),
-                0 0 0 1px rgba(0, 0, 0, 0.15) inset,
-                0 0 56px -16px rgba(251, 191, 36, 0.08);
+                inset 0 1px 0 rgba(255, 255, 255, 0.08),
+                0 10px 26px -24px rgba(15, 23, 42, 0.82);
         }
 
         .modal-overlay {
@@ -242,6 +265,46 @@
                 0 25px 50px -12px rgba(0, 0, 0, 0.58),
                 inset 0 1px 0 rgba(255, 255, 255, 0.1);
             color: var(--text-primary);
+        }
+
+        .top-action-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.375rem;
+            overflow: visible;
+        }
+        .top-action {
+            width: 5.25rem;
+            height: 2.25rem;
+            flex: 0 0 auto;
+            padding-left: 0;
+            padding-right: 0;
+            border-radius: 0.875rem;
+            font-size: 0.875rem;
+            line-height: 1;
+            white-space: nowrap;
+        }
+        .top-action .icon-plus,
+        .top-action .icon-bar-chart-2,
+        .top-action .icon-sparkles,
+        .top-action .icon-newspaper,
+        .top-action .icon-refresh-cw {
+            font-size: 1rem;
+        }
+        @media (max-width: 640px) {
+            .top-action-bar {
+                gap: 0.25rem;
+            }
+            .top-action {
+                width: 2.35rem;
+                height: 2.15rem;
+                border-radius: 0.75rem;
+            }
+            .top-action span {
+                display: none;
+            }
         }
 
         .btn {
@@ -318,6 +381,14 @@
             background-color: var(--accent-analysis-hover);
         }
 
+        .btn-accent-paipan {
+            @apply text-white shadow-md shadow-violet-600/25 focus-visible:ring-violet-500;
+            background-color: var(--accent-paipan);
+        }
+        .btn-accent-paipan:hover {
+            background-color: var(--accent-paipan-hover);
+        }
+
         .card {
             @apply rounded-2xl p-3 shadow-xl transition-all duration-300 md:p-6;
             -webkit-backdrop-filter: blur(18px) saturate(165%);
@@ -328,27 +399,26 @@
                 rgba(255, 255, 255, 0.08) 48%,
                 rgba(15, 23, 42, 0.34) 100%
             );
-            border: 1px solid rgba(255, 255, 255, 0.32);
+            border: 1px solid rgba(255, 255, 255, 0.14);
             box-shadow:
                 0 22px 44px -14px rgba(0, 0, 0, 0.46),
-                inset 0 1px 0 rgba(255, 255, 255, 0.16);
+                inset 0 1px 0 rgba(255, 255, 255, 0.08);
             color: var(--text-primary);
         }
         .card:hover {
-            border-color: rgba(251, 191, 36, 0.38);
+            border-color: rgba(255, 255, 255, 0.18);
             -webkit-backdrop-filter: blur(20px) saturate(185%);
             backdrop-filter: blur(20px) saturate(185%);
             background: linear-gradient(
                 168deg,
-                rgba(255, 255, 255, 0.22) 0%,
-                rgba(255, 255, 255, 0.1) 48%,
+                rgba(255, 255, 255, 0.18) 0%,
+                rgba(255, 255, 255, 0.09) 48%,
                 rgba(15, 23, 42, 0.38) 100%
             );
             transform: translateY(-2px);
             box-shadow:
                 0 28px 56px -14px rgba(0, 0, 0, 0.52),
-                0 0 40px -10px rgba(251, 191, 36, 0.14),
-                inset 0 1px 0 rgba(255, 255, 255, 0.24);
+                inset 0 1px 0 rgba(255, 255, 255, 0.10);
         }
 
         .input-field {
@@ -388,7 +458,7 @@
             color: #e2e8f0;
         }
 
-        /* 主内容：Flex + Grid 混合（断点 640 / 768 / 1024 / 1280） */
+        /* 主内容：列表式详情。股票卡片保持单列，配合持仓明细点击展开。 */
         .app-shell {
             display: flex;
             flex-direction: column;
@@ -404,17 +474,9 @@
             flex-direction: column;
             gap: 1.5rem;
         }
-        @media (min-width: 1024px) {
-            .app-stock-grid {
-                display: grid;
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-                gap: 1.25rem;
-                align-items: start;
-            }
-        }
         @media (min-width: 1280px) {
             .app-stock-grid {
-                gap: 1.5rem;
+                width: 100%;
             }
         }
     }
@@ -545,6 +607,7 @@
 
     <link rel="icon" href="https://app.trickle.so/storage/app/46bdde6b-ce0a-436d-9861-f705820c2391.png">
     <script src="env.js"></script>
+    <script src="env.local.js?v=20260630-front-history"></script>
     <meta property="og:image" content="https://app.trickle.so/storage/app/46bdde6b-ce0a-436d-9861-f705820c2391.png">
     <meta name="twitter:image" content="https://app.trickle.so/storage/app/46bdde6b-ce0a-436d-9861-f705820c2391.png">
 </head>
@@ -553,26 +616,28 @@
     <div id="root"></div>
 
     <script type="text/babel" src="components/CapitalPoolCard.js"></script>
-    <script type="text/babel" src="components/PositionAllocationCard.js"></script>
-    <script type="text/babel" src="components/StockCharts.js"></script>
-    <script type="text/babel" src="components/StockCardSections.js"></script>
-    <script type="text/babel" src="components/PositionForm.js"></script>
+    <script type="text/babel" src="components/StockCharts.js?v=20260630-rose-loss"></script>
+    <script type="text/babel" src="components/StockCardSections.js?v=20260630-rose-loss"></script>
+    <script type="text/babel" src="components/PositionForm.js?v=20260630-position-flow"></script>
     <script type="text/babel" src="components/BuyFeesDetail.js"></script>
-    <script type="text/babel" src="components/StockCard.js"></script>
-    <script type="text/babel" src="components/WatchlistSection.js"></script>
-    <script type="text/babel" src="components/PortfolioSummary.js"></script>
-    <script type="text/babel" src="components/HoldingsSummaryTable.js"></script>
-    <script type="text/babel" src="components/StockNavigation.js"></script>
-    <script type="text/babel" src="utils/stockSearch.js"></script>
-    <script type="text/babel" src="components/AddStockModal.js"></script>
-    <script type="text/babel" src="utils/technicalIndicators.js"></script>
-    <script type="text/babel" src="utils/stockAPI.js"></script>
-    <script type="text/babel" src="utils/storage.js"></script>
+    <script type="text/babel" src="components/StockCard.js?v=20260630-return-source"></script>
+    <script type="text/babel" src="components/WatchlistSection.js?v=20260630-return-source"></script>
+    <script type="text/babel" src="components/PortfolioSummary.js?v=20260630-rose-loss"></script>
+    <script type="text/babel" src="components/HomeDashboard.js?v=20260630-rose-loss"></script>
+    <script type="text/babel" src="components/PortfolioQueue.js?v=20260630-queue-spacing"></script>
+    <script type="text/babel" src="components/HoldingsSummaryTable.js?v=20260630-rose-loss"></script>
+    <script type="text/babel" src="components/StockNavigation.js?v=20260630-rose-loss"></script>
+    <script type="text/babel" src="utils/stockSearch.js?v=20260630-ui-fix"></script>
+    <script type="text/babel" src="utils/stockKeywords.js?v=20260630-keyword-presets"></script>
+    <script type="text/babel" src="components/AddStockModal.js?v=20260630-keyword-presets"></script>
+    <script type="text/babel" src="utils/technicalIndicators.js?v=20260630-front-history"></script>
+    <script type="text/babel" src="utils/stockAPI.js?v=20260630-ui-fix"></script>
+    <script type="text/babel" src="utils/storage.js?v=20260630-keyword-presets"></script>
     <script type="text/babel" src="utils/feeCalculations.js"></script>
-    <script type="text/babel" src="utils/calculations.js"></script>
+    <script type="text/babel" src="utils/calculations.js?v=20260630-ui-fix"></script>
     <script type="text/babel" src="utils/databaseSync.js"></script>
     <script type="text/babel" src="utils/priceAlerts.js"></script>
-    <script type="text/babel" src="app.js"></script>
+    <script type="text/babel" src="app.js?v=20260630-return-source"></script>
     <script src="analysis-notify.js"></script>
 
     <!-- PWA Service Worker 注册 -->

@@ -1,4 +1,4 @@
-function HoldingsSummaryTable({ portfolio }) {
+function HoldingsSummaryTable({ portfolio, onSelectStock, onQuickAddStock }) {
   try {
     const allPositions = [];
     
@@ -35,7 +35,9 @@ function HoldingsSummaryTable({ portfolio }) {
               : `p-${batchIdx}-${String(position.date)}-${position.price}`;
           allPositions.push({
             rowKey: `${stock.id || stock.symbol}-${posId}`,
+            stockId: stock.id,
             symbol: stock.symbol,
+            name: stock.name,
             market: stock.market,
             batchNote:
               batchTotal > 1 ? `第${batchIdx + 1}/${batchTotal}笔` : '',
@@ -54,9 +56,39 @@ function HoldingsSummaryTable({ portfolio }) {
       }
     });
 
-    if (allPositions.length === 0) return null;
-
     const isProfit = (val) => val >= 0;
+    const detailUrlFor = (pos) =>
+      `stock-detail.html?code=${encodeURIComponent(pos.symbol)}&market=${encodeURIComponent(pos.market)}${pos.name ? '&name=' + encodeURIComponent(pos.name) : ''}`;
+
+    if (allPositions.length === 0) {
+      if (!portfolio || portfolio.length === 0) return null;
+      return (
+        <div className="card mb-4 p-4" data-name="holdings-summary-table" data-file="components/HoldingsSummaryTable.js">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-display flex items-center gap-2 text-base font-bold text-slate-100 md:text-lg">
+              <div className="icon-list text-cyan-400"></div>
+              持仓明细汇总
+            </h2>
+          </div>
+          <div className="rounded-xl border border-amber-300/25 bg-amber-500/10 p-3 text-sm text-amber-100">
+            当前股票还没有具体买入记录。请选择股票补充买入价、股数、购入渠道后，才会参与真实持仓盈亏计算。
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {portfolio.map((stock) => (
+              <button
+                key={stock.id || `${stock.market}_${stock.symbol}`}
+                type="button"
+                onClick={() => onQuickAddStock && onQuickAddStock(stock.id)}
+                className="btn btn-primary btn-sm gap-1.5"
+              >
+                <div className="icon-plus text-sm"></div>
+                <span>为 {stock.symbol} 添加持仓</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="card mb-4 p-4" data-name="holdings-summary-table" data-file="components/HoldingsSummaryTable.js">
@@ -70,7 +102,20 @@ function HoldingsSummaryTable({ portfolio }) {
 
         <div className="block md:hidden space-y-3">
           {allPositions.map((pos) => (
-            <div key={pos.rowKey} className="rounded-xl border border-white/15 bg-gradient-to-br from-white/5 to-transparent p-3 backdrop-blur-sm">
+            <div
+              key={pos.rowKey}
+              role="button"
+              tabIndex={0}
+              onClick={() => onSelectStock && onSelectStock(pos.stockId)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onSelectStock && onSelectStock(pos.stockId);
+                }
+              }}
+              className="block w-full rounded-xl border border-white/15 bg-gradient-to-br from-white/5 to-transparent p-3 text-left backdrop-blur-sm transition-colors hover:border-cyan-300/35 hover:bg-white/10"
+              title="点击展开并定位到该股票详情"
+            >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-bold text-slate-100">{pos.symbol}</span>
@@ -87,7 +132,7 @@ function HoldingsSummaryTable({ portfolio }) {
                     </span>
                   )}
                 </div>
-                <div className={`px-2 py-1 rounded-lg text-xs font-bold ${isProfit(pos.profitLoss) ? 'bg-emerald-500/20 text-emerald-400' : 'bg-lime-500/20 text-lime-400'}`}>
+                <div className={`px-2 py-1 rounded-lg text-xs font-bold ${isProfit(pos.profitLoss) ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/15 text-rose-300'}`}>
                   {isProfit(pos.profitLoss) ? '+' : ''}{pos.profitLossPercent.toFixed(1)}%
                 </div>
               </div>
@@ -107,10 +152,37 @@ function HoldingsSummaryTable({ portfolio }) {
                 </div>
               </div>
 
-              <div className="mt-2 pt-2 border-t border-white/10 flex items-center justify-between">
+              <div className="mt-2 pt-2 border-t border-white/10 flex items-center justify-between gap-2">
                 <span className="text-xs text-slate-500">{new Date(pos.date).toLocaleDateString('zh-CN')} · {pos.holdingDays}天</span>
-                <span className={`text-xs font-semibold ${isProfit(pos.dailyProfitLoss) ? 'text-emerald-400' : 'text-lime-400'}`}>
-                  今日 {isProfit(pos.dailyProfitLoss) ? '+' : ''}{pos.currencySymbol}{formatPrice(Math.abs(pos.dailyProfitLoss), 2)}
+                <span className="flex items-center gap-2">
+                  <span className={`text-xs font-semibold ${isProfit(pos.dailyProfitLoss) ? 'text-emerald-400' : 'text-rose-300'}`}>
+                    今日 {isProfit(pos.dailyProfitLoss) ? '+' : ''}{pos.currencySymbol}{formatPrice(Math.abs(pos.dailyProfitLoss), 2)}
+                  </span>
+                  <a
+                    href={detailUrlFor(pos)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="btn btn-secondary btn-xs"
+                  >
+                    详情
+                  </a>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onQuickAddStock && onQuickAddStock(pos.stockId);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onQuickAddStock && onQuickAddStock(pos.stockId);
+                      }
+                    }}
+                    className="btn btn-primary btn-xs"
+                  >
+                    加仓
+                  </span>
                 </span>
               </div>
             </div>
@@ -128,14 +200,17 @@ function HoldingsSummaryTable({ portfolio }) {
                 <th className="px-4 py-3 text-center font-semibold text-slate-300">天数</th>
                 <th className="px-4 py-3 text-left font-semibold text-slate-300">当前价</th>
                 <th className="px-4 py-3 text-right font-semibold text-slate-300">当日盈亏</th>
-                <th className="px-4 py-3 text-right font-semibold text-slate-300 rounded-tr-xl">浮动盈亏</th>
+                <th className="px-4 py-3 text-right font-semibold text-slate-300">浮动盈亏</th>
+                <th className="px-4 py-3 text-right font-semibold text-slate-300 rounded-tr-xl">操作</th>
               </tr>
             </thead>
             <tbody>
               {allPositions.map((pos, idx) => (
                 <tr
                   key={pos.rowKey}
-                  className={`border-b border-white/5 transition-colors hover:bg-white/5 ${idx % 2 === 0 ? '' : 'bg-white/[0.02]'}`}
+                  onClick={() => onSelectStock && onSelectStock(pos.stockId)}
+                  className={`cursor-pointer border-b border-white/5 transition-colors hover:bg-white/10 ${idx % 2 === 0 ? '' : 'bg-white/[0.02]'}`}
+                  title="点击展开并定位到该股票详情"
                 >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
@@ -160,19 +235,40 @@ function HoldingsSummaryTable({ portfolio }) {
                   <td className="px-4 py-3 text-center text-slate-400">{pos.holdingDays}天</td>
                   <td className="gx-num px-4 py-3 font-medium text-slate-200 tabular-nums">{pos.currencySymbol}{formatPrice(pos.currentPrice, 3)}</td>
                   <td className="px-4 py-3 text-right">
-                    <div className={`gx-num font-bold tabular-nums ${isProfit(pos.dailyProfitLoss) ? 'text-emerald-400' : 'text-lime-400'}`}>
+                    <div className={`gx-num font-bold tabular-nums ${isProfit(pos.dailyProfitLoss) ? 'text-emerald-400' : 'text-rose-300'}`}>
                       {isProfit(pos.dailyProfitLoss) ? '+' : ''}{pos.currencySymbol}{formatPrice(Math.abs(pos.dailyProfitLoss), 2)}
                     </div>
-                    <div className={`gx-num text-xs font-semibold tabular-nums ${isProfit(pos.dailyChange) ? 'text-emerald-400/70' : 'text-lime-400/70'}`}>
+                    <div className={`gx-num text-xs font-semibold tabular-nums ${isProfit(pos.dailyChange) ? 'text-emerald-400/70' : 'text-rose-300/75'}`}>
                       ({isProfit(pos.dailyChange) ? '+' : ''}{Number(pos.dailyChange).toFixed(2)}%)
                     </div>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <div className={`gx-num font-bold tabular-nums ${isProfit(pos.profitLoss) ? 'text-emerald-400' : 'text-lime-400'}`}>
+                    <div className={`gx-num font-bold tabular-nums ${isProfit(pos.profitLoss) ? 'text-emerald-400' : 'text-rose-300'}`}>
                       {isProfit(pos.profitLoss) ? '+' : ''}{pos.currencySymbol}{formatPrice(pos.profitLoss, 2)}
                     </div>
-                    <div className={`gx-num text-xs font-semibold tabular-nums ${isProfit(pos.profitLossPercent) ? 'text-emerald-400/70' : 'text-lime-400/70'}`}>
+                    <div className={`gx-num text-xs font-semibold tabular-nums ${isProfit(pos.profitLossPercent) ? 'text-emerald-400/70' : 'text-rose-300/75'}`}>
                       ({isProfit(pos.profitLossPercent) ? '+' : ''}{Number(pos.profitLossPercent).toFixed(2)}%)
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex justify-end gap-1.5">
+                      <a
+                        href={detailUrlFor(pos)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="btn btn-secondary btn-sm"
+                      >
+                        详情
+                      </a>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onQuickAddStock && onQuickAddStock(pos.stockId);
+                        }}
+                        className="btn btn-primary btn-sm"
+                      >
+                        加仓
+                      </button>
                     </div>
                   </td>
                 </tr>

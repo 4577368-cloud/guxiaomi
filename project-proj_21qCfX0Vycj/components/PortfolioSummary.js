@@ -62,7 +62,7 @@ function PortfolioSummary({ summary, capitalPool, onUpdateCapitalPool }) {
             <span>共 {safeSummary.stockCount || 0} 只股票</span>
             <span className="flex items-center gap-1">
               <span className="text-emerald-400">🟢 {safeSummary.profitableStocks || 0}</span>
-              <span className="text-lime-400">🔴 {safeSummary.losingStocks || 0}</span>
+              <span className="text-rose-300">🔴 {safeSummary.losingStocks || 0}</span>
             </span>
           </div>
         </div>
@@ -118,13 +118,13 @@ function PortfolioSummary({ summary, capitalPool, onUpdateCapitalPool }) {
 
           <div className={`rounded-xl border ${profitStatus ? 'border-emerald-400/30' : 'border-lime-400/30'} bg-gradient-to-br ${profitStatus ? 'from-emerald-500/15 to-emerald-500/5' : 'from-lime-500/15 to-lime-500/5'} p-3 backdrop-blur-sm`}>
             <div className="flex items-center gap-2 mb-1">
-              <div className={profitStatus ? 'icon-trending-up text-emerald-400' : 'icon-trending-down text-lime-400'}></div>
+              <div className={profitStatus ? 'icon-trending-up text-emerald-400' : 'icon-trending-down text-rose-300'}></div>
               <span className="text-xs font-medium text-slate-400">总盈亏</span>
             </div>
-            <p className={`gx-num text-lg font-bold tabular-nums ${profitStatus ? 'text-emerald-300' : 'text-lime-300'}`}>
+            <p className={`gx-num text-lg font-bold tabular-nums ${profitStatus ? 'text-emerald-300' : 'text-rose-300'}`}>
               {(safeSummary.totalProfit || 0) >= 0 ? '+' : ''}{formatPrice(safeSummary.totalProfit, 0)}
             </p>
-            <p className={`gx-num text-xs font-semibold tabular-nums mt-0.5 ${profitStatus ? 'text-emerald-400/80' : 'text-lime-400/80'}`}>
+            <p className={`gx-num text-xs font-semibold tabular-nums mt-0.5 ${profitStatus ? 'text-emerald-400/80' : 'text-rose-300/80'}`}>
               {(safeSummary.totalProfitPercent || 0) >= 0 ? '+' : ''}{(Number(safeSummary.totalProfitPercent) || 0).toFixed(2)}%
             </p>
           </div>

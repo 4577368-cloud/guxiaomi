@@ -11,10 +11,6 @@ function formatPrice(value, decimals = 2) {
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals
     });
-    const parts = formatted.split('.');
-    if (parts[1]) {
-      return `${parts[0]}.<span style="font-size: 0.7em; vertical-align: baseline;">${parts[1]}</span>万`;
-    }
     return formatted + '万';
   }
   
@@ -22,12 +18,7 @@ function formatPrice(value, decimals = 2) {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals
   });
-  const parts = formatted.split('.');
-  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  if (parts[1]) {
-    return `${parts[0]}.<span style="font-size: 0.7em; vertical-align: baseline;">${parts[1]}</span>`;
-  }
-  return parts[0];
+  return formatted;
 }
 
 function calculateDailyProfitLoss(stock) {

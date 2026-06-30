@@ -13,6 +13,9 @@ function validateStockData(stock) {
 
 function sanitizeStockData(stock) {
   if (!stock || typeof stock !== 'object') return null;
+  const keywords = typeof window.ensureStockKeywords === 'function'
+    ? window.ensureStockKeywords(stock)
+    : (Array.isArray(stock.keywords) ? stock.keywords.filter(Boolean) : []);
   return {
     ...stock,
     currentPrice: stock.currentPrice !== undefined && Number.isFinite(stock.currentPrice) && stock.currentPrice >= 0
@@ -21,7 +24,8 @@ function sanitizeStockData(stock) {
     positions: Array.isArray(stock.positions) ? stock.positions : [],
     priceHistory: Array.isArray(stock.priceHistory) ? stock.priceHistory : [],
     technicalIndicators: stock.technicalIndicators || {},
-    marketData: stock.marketData || {}
+    marketData: stock.marketData || {},
+    keywords
   };
 }
 
@@ -233,18 +237,35 @@ function validateWatchlistItem(item) {
 
 function sanitizeWatchlistItem(item) {
   if (!item || typeof item !== 'object') return null;
+  const currentPrice = Number(item.currentPrice) || 0;
+  const history = Array.isArray(item.priceHistory) ? item.priceHistory : [];
+  const firstHistoryPrice =
+    history.length > 0 && Number.isFinite(Number(history[0].price))
+      ? Number(history[0].price)
+      : 0;
+  const watchStartPrice =
+    Number(item.watchStartPrice) ||
+    firstHistoryPrice ||
+    Number(item.previousClose) ||
+    currentPrice ||
+    0;
+  const keywords = typeof window.ensureStockKeywords === 'function'
+    ? window.ensureStockKeywords(item)
+    : (Array.isArray(item.keywords) ? item.keywords.filter(Boolean) : []);
   return {
     id: item.id || `${item.market}_${item.symbol}_${Date.now()}`,
     symbol: item.symbol.toUpperCase(),
     market: item.market.toUpperCase(),
     name: item.name || item.symbol,
-    currentPrice: item.currentPrice || 0,
+    currentPrice: currentPrice,
     previousClose: item.previousClose || null,
     change: item.change || 0,
     changePercent: item.changePercent || 0,
     marketData: item.marketData || {},
-    priceHistory: Array.isArray(item.priceHistory) ? item.priceHistory : [],
+    priceHistory: history,
+    keywords: keywords,
     addedAt: item.addedAt || new Date().toISOString(),
+    watchStartPrice: watchStartPrice,
     notes: item.notes || '',
     alertEnabled: item.alertEnabled || false,
     alertThreshold: item.alertThreshold || 5 // 涨跌幅超过5%提醒
@@ -296,7 +317,8 @@ function addToWatchlist(item) {
 
   watchlist.push(sanitizeWatchlistItem({
     ...item,
-    addedAt: new Date().toISOString()
+    addedAt: new Date().toISOString(),
+    watchStartPrice: Number(item.currentPrice) || Number(item.previousClose) || 0
   }));
   saveWatchlist(watchlist);
   return { success: true, watchlist };

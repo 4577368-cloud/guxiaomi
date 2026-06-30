@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.*.local
+project-proj_21qCfX0Vycj/env.local.js
 
 # Vercel：构建时复制到 web_public/（勿提交）；public/ 仅本地旧习惯
 web_public/
@@ -17,7 +18,8 @@ __pycache__/
 venv/
 .venv/
 
-# 可选：若不希望把生成报告进仓库
-# reports/*.json
-# reports/*.md
-# reports/*.html
+# 本地生成报告 / 预测快照（勿提交）
+reports/*.json
+reports/*.md
+reports/*.html
+predictions/*.json

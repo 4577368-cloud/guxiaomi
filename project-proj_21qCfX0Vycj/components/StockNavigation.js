@@ -4,54 +4,29 @@ function StockNavigation({ portfolio }) {
       return null;
     }
 
-    const scrollToStock = (stockId) => {
-      const stockElement = document.getElementById(`stock-${stockId}`);
-      if (stockElement) {
-        stockElement.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      }
-    };
-
     return (
       <div className="glass-quick-nav" data-name="stock-navigation" data-file="components/StockNavigation.js">
         <div className="glass-quick-nav-inner">
-          <div className="flex shrink-0 items-center gap-1.5">
-            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400/35 to-amber-600/15 shadow-[0_0_16px_-4px_rgba(251,191,36,0.55)] ring-1 ring-amber-300/40 md:h-7 md:w-7">
-              <div className="icon-navigation text-sm text-amber-50 drop-shadow-sm md:text-base"></div>
-            </div>
-            <span className="font-display text-[11px] font-bold uppercase tracking-[0.12em] text-white drop-shadow-sm md:text-xs">
-              快速导航
-            </span>
-          </div>
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 md:gap-2">
             {portfolio.map((stock) => {
               const analysis = calculateStockAnalysis(stock, stock.brokerChannel);
               const isProfit = analysis.profit >= 0;
+              const marketName = stock.market === "US" ? "美股" : stock.market === "HK" ? "港股" : "A股";
+              const detailUrl = `stock-detail.html?code=${encodeURIComponent(stock.symbol)}&market=${encodeURIComponent(marketName)}${stock.name ? "&name=" + encodeURIComponent(stock.name) : ""}`;
 
               return (
-                <button
+                <a
                   key={stock.id}
-                  type="button"
-                  onClick={() => scrollToStock(stock.id)}
-                  title={`跳转到 ${stock.symbol}`}
-                  className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-bold tabular-nums transition-all duration-200 hover:scale-[1.04] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:px-2.5 md:py-1 md:text-sm ${
+                  href={detailUrl}
+                  title={`查看 ${stock.symbol} 详情`}
+                  className={`inline-flex h-7 min-w-[3.65rem] items-center justify-center rounded-full px-2.5 text-xs font-black tabular-nums transition-all duration-200 hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:h-8 md:min-w-[4rem] md:px-3 md:text-sm ${
                     isProfit
-                      ? "border border-emerald-300/60 bg-gradient-to-br from-emerald-400/30 to-emerald-700/20 text-white shadow-[0_0_22px_-6px_rgba(52,211,153,0.55)] hover:border-emerald-200/70 hover:from-emerald-400/42 hover:to-emerald-700/28 hover:shadow-[0_0_28px_-4px_rgba(52,211,153,0.65)]"
-                      : "border border-lime-400/50 bg-gradient-to-br from-lime-400/35 to-lime-700/25 text-white shadow-[0_0_22px_-6px_rgba(163,230,53,0.45)] hover:border-lime-300/70 hover:from-lime-400/48 hover:to-lime-700/32 hover:shadow-[0_0_28px_-4px_rgba(190,242,100,0.5)]"
+                      ? "bg-emerald-400/[0.10] text-emerald-100 hover:text-white"
+                      : "bg-rose-400/[0.10] text-rose-100 hover:text-white"
                   }`}
                 >
                   <span className="drop-shadow-sm">{stock.symbol}</span>
-                  <span
-                    className={`text-sm font-extrabold leading-none md:text-base ${
-                      isProfit ? "text-emerald-100" : "text-lime-100"
-                    }`}
-                    aria-hidden
-                  >
-                    {isProfit ? "↗" : "↘"}
-                  </span>
-                </button>
+                </a>
               );
             })}
           </div>

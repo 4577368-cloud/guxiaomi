@@ -28,6 +28,57 @@ const JOB_STORAGE_VERSION_KEY =
 const POLL_INTERVAL_MS = 3000;
 /** 历史报告每页条数，与预测表「每页 10 条」一致；列表区最大高度对齐右侧表体 */
 const HISTORY_PAGE_SIZE = 10;
+const MODEL_STORAGE_KEY = "analysis_selected_model_key";
+const DEFAULT_MODEL_KEY = "model2";
+
+function getCurrentReturnPath() {
+  if (typeof window === "undefined") return "index.html";
+  return `${window.location.pathname.split("/").pop() || "index.html"}${window.location.search || ""}${window.location.hash || ""}`;
+}
+
+function withCurrentSource(path) {
+  const separator = path.indexOf("?") >= 0 ? "&" : "?";
+  return `${path}${separator}from=${encodeURIComponent(getCurrentReturnPath())}`;
+}
+
+function getSourceReturnTarget(fallback) {
+  const params = new URLSearchParams(window.location.search);
+  const from = params.get("from") || "";
+  if (from) {
+    try {
+      const target = new URL(from, window.location.href);
+      if (target.origin === window.location.origin) {
+        return `${target.pathname.split("/").pop() || fallback}${target.search || ""}${target.hash || ""}`;
+      }
+    } catch (_) {}
+  }
+  return fallback;
+}
+
+function goBackToSource() {
+  const hasExplicitSource = new URLSearchParams(window.location.search).has("from");
+  const target = getSourceReturnTarget("index.html");
+  if (hasExplicitSource && target) {
+    window.location.href = target;
+    return;
+  }
+  if (window.history && window.history.length > 1) {
+    window.history.back();
+    return;
+  }
+  window.location.href = "index.html";
+}
+
+const FALLBACK_MODEL_OPTIONS = [
+  { key: "model1", label: "MiniMax", configured: false, default: false },
+  { key: "model2", label: "Gemma", configured: false, default: true },
+  { key: "model3", label: "Deepseek", configured: false, default: false },
+];
+
+function normalizeModelKey(key) {
+  var k = String(key || "").trim().toLowerCase();
+  return ["model1", "model2", "model3"].includes(k) ? k : DEFAULT_MODEL_KEY;
+}
 
 /** 浏览器端历史列表缓存（Vercel 无持久盘时服务端列表常为空；且勿在 report 变化时整表重拉以免被空结果覆盖） */
 const HISTORY_LIST_CACHE_KEY = "analysis_reports_list_cache_v1";
@@ -641,19 +692,19 @@ function renderMarkdown(text) {
           {
             key: nextPartKey(),
             className:
-              "my-3 rounded-lg border border-slate-200 bg-white shadow-sm",
+              "my-4 overflow-hidden rounded-2xl border border-white/12 bg-slate-950/36 shadow-sm",
           },
           React.createElement(
             "summary",
             {
-              className:
-                "cursor-pointer select-none px-3 py-2 font-semibold text-gray-900 bg-slate-50 rounded-lg hover:bg-slate-100 list-none",
+            className:
+                "cursor-pointer select-none px-4 py-3 font-semibold text-slate-50 bg-white/[0.06] hover:bg-white/[0.10] list-none",
             },
             ch.sum,
           ),
           React.createElement(
             "div",
-            { className: "px-3 py-3 text-gray-700 border-t border-slate-100" },
+            { className: "border-t border-white/10 px-4 py-4 text-slate-300" },
             renderMarkdown(ch.body),
           ),
         ),
@@ -710,7 +761,7 @@ function renderMarkdownPlain(raw) {
                 key: nextKey(),
                 href: href,
                 className:
-                  "text-blue-600 hover:text-blue-800 underline underline-offset-2 cursor-pointer",
+                  "cursor-pointer text-cyan-300 underline underline-offset-2 hover:text-cyan-100",
                 onClick: function (e) {
                   e.preventDefault();
                   scrollToReportAnchor(id);
@@ -728,7 +779,7 @@ function renderMarkdownPlain(raw) {
                 href: href,
                 target: "_blank",
                 rel: "noopener noreferrer",
-                className: "text-blue-600 hover:underline",
+                className: "text-cyan-300 hover:text-cyan-100 hover:underline",
               },
               lab || href,
             ),
@@ -744,7 +795,7 @@ function renderMarkdownPlain(raw) {
         segs.push(
           React.createElement(
             "strong",
-            { key: nextKey(), className: "font-semibold text-gray-900" },
+            { key: nextKey(), className: "font-semibold text-slate-50" },
             bold[1],
           ),
         );
@@ -756,7 +807,7 @@ function renderMarkdownPlain(raw) {
         segs.push(
           React.createElement(
             "em",
-            { key: nextKey(), className: "text-gray-800" },
+            { key: nextKey(), className: "text-sky-100" },
             single[1],
           ),
         );
@@ -771,7 +822,7 @@ function renderMarkdownPlain(raw) {
         segs.push(
           React.createElement(
             "span",
-            { key: nextKey(), className: "text-blue-600 font-semibold" },
+            { key: nextKey(), className: "text-cyan-300 font-semibold" },
             num[1],
           ),
         );
@@ -810,7 +861,7 @@ function renderMarkdownPlain(raw) {
           "ul",
           {
             key: nextKey(),
-            className: "list-disc pl-6 my-2 space-y-1 text-gray-700",
+            className: "my-3 list-disc space-y-1.5 pl-6 text-slate-300",
           },
           copy.map(function (li) {
             return React.createElement(
@@ -838,7 +889,7 @@ function renderMarkdownPlain(raw) {
         React.createElement("span", {
           key: nextKey(),
           id: spanM[2],
-          className: "block h-0 scroll-mt-24",
+          className: "block h-0 scroll-mt-32",
           "aria-hidden": true,
         }),
       );
@@ -853,7 +904,7 @@ function renderMarkdownPlain(raw) {
           {
             key: nextKey(),
             className:
-              "text-xl font-bold text-gray-900 mt-4 mb-2 pb-1 border-b border-gray-200 scroll-mt-20",
+              "mt-7 mb-3 scroll-mt-20 border-b border-white/10 pb-2 text-xl font-black text-slate-50",
           },
           trimmed.replace(/^##\s+/, ""),
         ),
@@ -869,7 +920,7 @@ function renderMarkdownPlain(raw) {
           {
             key: nextKey(),
             className:
-              "text-lg font-semibold text-gray-800 mt-3 mb-1 scroll-mt-20",
+              "mt-5 mb-2 scroll-mt-20 text-lg font-bold text-sky-100",
           },
           trimmed.replace(/^###\s+/, ""),
         ),
@@ -882,7 +933,7 @@ function renderMarkdownPlain(raw) {
       out.push(
         React.createElement("hr", {
           key: nextKey(),
-          className: "my-4 border-slate-200",
+          className: "my-5 border-white/12",
         }),
       );
       i++;
@@ -896,7 +947,7 @@ function renderMarkdownPlain(raw) {
           {
             key: nextKey(),
             className:
-              "border-l-4 border-blue-300 pl-3 my-2 text-gray-700 bg-slate-50/90 py-2 pr-2 rounded-r",
+              "my-4 rounded-r-xl border-l-4 border-cyan-300 bg-cyan-400/10 py-3 pl-4 pr-3 text-slate-200",
           },
           parseInline(trimmed.replace(/^>\s?/, "")),
         ),
@@ -929,11 +980,11 @@ function renderMarkdownPlain(raw) {
               "table",
               {
                 className:
-                  "min-w-full text-sm border border-slate-200 rounded-lg overflow-hidden",
+                  "min-w-full overflow-hidden rounded-xl border border-white/12 text-sm",
               },
               React.createElement(
                 "thead",
-                { className: "bg-slate-100" },
+                { className: "bg-slate-800/80" },
                 React.createElement(
                   "tr",
                   null,
@@ -943,7 +994,7 @@ function renderMarkdownPlain(raw) {
                       {
                         key: nextKey(),
                         className:
-                          "text-left px-3 py-2 font-semibold text-gray-800 border-b border-slate-200",
+                          "border-b border-white/12 px-3 py-2 text-left font-semibold text-sky-100",
                       },
                       parseInline(h),
                     );
@@ -956,13 +1007,13 @@ function renderMarkdownPlain(raw) {
                 body.map(function (row) {
                   return React.createElement(
                     "tr",
-                    { key: nextKey(), className: "border-b border-slate-100" },
+                    { key: nextKey(), className: "border-b border-white/[0.08]" },
                     row.map(function (cell) {
                       return React.createElement(
                         "td",
                         {
                           key: nextKey(),
-                          className: "px-3 py-2 text-gray-700 align-top",
+                          className: "px-3 py-2 align-top text-slate-300",
                         },
                         parseInline(cell),
                       );
@@ -989,7 +1040,7 @@ function renderMarkdownPlain(raw) {
       out.push(
         React.createElement(
           "p",
-          { key: nextKey(), className: "my-1.5 text-gray-700 leading-relaxed" },
+          { key: nextKey(), className: "my-2.5 leading-relaxed text-slate-300" },
           parseInline(trimmed),
         ),
       );
@@ -1102,6 +1153,35 @@ function AnalysisApp() {
       use_mock: false,
     };
   });
+  const [modelOptions, setModelOptions] = React.useState(FALLBACK_MODEL_OPTIONS);
+  const [selectedModelKey, setSelectedModelKey] = React.useState(function () {
+    try {
+      return normalizeModelKey(localStorage.getItem(MODEL_STORAGE_KEY) || DEFAULT_MODEL_KEY);
+    } catch (_) {
+      return DEFAULT_MODEL_KEY;
+    }
+  });
+  React.useEffect(function () {
+    try {
+      localStorage.setItem(MODEL_STORAGE_KEY, selectedModelKey);
+    } catch (_) {}
+  }, [selectedModelKey]);
+  React.useEffect(function () {
+    if (!apiBase) return;
+    fetch(apiBase + "/api/llm/meta")
+      .then(function (r) {
+        return r.json();
+      })
+      .then(function (d) {
+        if (d && Array.isArray(d.models) && d.models.length) {
+          setModelOptions(d.models);
+        }
+        if (!localStorage.getItem(MODEL_STORAGE_KEY) && d && d.default_model_key) {
+          setSelectedModelKey(normalizeModelKey(d.default_model_key));
+        }
+      })
+      .catch(function () {});
+  }, [apiBase]);
   const [jobId, setJobId] = React.useState(() => {
     try {
       var stored = localStorage.getItem(JOB_STORAGE_KEY) || "";
@@ -1715,6 +1795,7 @@ function AnalysisApp() {
         days: form.days,
         use_mock: form.use_mock,
         client_quote: clientQuote,
+        model_key: selectedModelKey,
       });
       var analyzeFetchOpts = {
         method: "POST",
@@ -1977,6 +2058,7 @@ function AnalysisApp() {
             report.markdown || report.分析主题 || report.融合摘要 || "",
           message: question,
           use_mock: form.use_mock,
+          model_key: selectedModelKey,
           history: (chatMessages || []).map(function (m) {
             return { role: m.role, content: m.content || "" };
           }),
@@ -2029,49 +2111,49 @@ function AnalysisApp() {
     {
       id: "summary",
       label: "摘要",
-      off: "bg-white/35 text-slate-900 border-white/45 hover:bg-white/55",
-      on: "bg-white/60 text-slate-900 border-white/65 shadow-[inset_0_-2px_0_rgba(34,211,238,0.85),0_0_28px_rgba(34,211,238,0.22)] ring-2 ring-cyan-200/40 animate-pulse",
+      off: "bg-white/10 text-slate-200 border-white/20 hover:bg-white/16",
+      on: "bg-sky-400/18 text-slate-50 border-sky-300/45 shadow-[inset_0_-2px_0_rgba(34,211,238,0.85),0_0_28px_rgba(34,211,238,0.22)] ring-2 ring-cyan-300/25",
     },
     {
       id: "report",
       label: "完整报告",
-      off: "bg-white/35 text-slate-900 border-white/45 hover:bg-white/55",
-      on: "bg-white/60 text-slate-900 border-white/65 shadow-[inset_0_-2px_0_rgba(99,102,241,0.85),0_0_28px_rgba(99,102,241,0.22)] ring-2 ring-indigo-200/40 animate-pulse",
+      off: "bg-white/10 text-slate-200 border-white/20 hover:bg-white/16",
+      on: "bg-indigo-400/18 text-slate-50 border-indigo-300/45 shadow-[inset_0_-2px_0_rgba(99,102,241,0.85),0_0_28px_rgba(99,102,241,0.22)] ring-2 ring-indigo-300/25",
     },
     {
       id: "analysts",
       label: "分析师观点",
-      off: "bg-white/35 text-slate-900 border-white/45 hover:bg-white/55",
-      on: "bg-white/60 text-slate-900 border-white/65 shadow-[inset_0_-2px_0_rgba(245,158,11,0.90),0_0_28px_rgba(245,158,11,0.20)] ring-2 ring-amber-200/40 animate-pulse",
+      off: "bg-white/10 text-slate-200 border-white/20 hover:bg-white/16",
+      on: "bg-amber-400/18 text-slate-50 border-amber-300/45 shadow-[inset_0_-2px_0_rgba(245,158,11,0.90),0_0_28px_rgba(245,158,11,0.20)] ring-2 ring-amber-300/25",
     },
     {
       id: "debate",
       label: "多空辩论",
-      off: "bg-white/35 text-slate-900 border-white/45 hover:bg-white/55",
-      on: "bg-white/60 text-slate-900 border-white/65 shadow-[inset_0_-2px_0_rgba(244,63,94,0.85),0_0_28px_rgba(244,63,94,0.20)] ring-2 ring-rose-200/40 animate-pulse",
+      off: "bg-white/10 text-slate-200 border-white/20 hover:bg-white/16",
+      on: "bg-rose-400/18 text-slate-50 border-rose-300/45 shadow-[inset_0_-2px_0_rgba(244,63,94,0.85),0_0_28px_rgba(244,63,94,0.20)] ring-2 ring-rose-300/25",
     },
     {
       id: "data",
       label: "数据快照",
-      off: "bg-white/35 text-slate-900 border-white/45 hover:bg-white/55",
-      on: "bg-white/60 text-slate-900 border-white/65 shadow-[inset_0_-2px_0_rgba(45,212,191,0.85),0_0_28px_rgba(45,212,191,0.20)] ring-2 ring-teal-200/40 animate-pulse",
+      off: "bg-white/10 text-slate-200 border-white/20 hover:bg-white/16",
+      on: "bg-teal-400/18 text-slate-50 border-teal-300/45 shadow-[inset_0_-2px_0_rgba(45,212,191,0.85),0_0_28px_rgba(45,212,191,0.20)] ring-2 ring-teal-300/25",
     },
     {
       id: "diff",
       label: "对比与异动",
-      off: "bg-white/35 text-slate-900 border-white/45 hover:bg-white/55",
-      on: "bg-white/60 text-slate-900 border-white/65 shadow-[inset_0_-2px_0_rgba(16,185,129,0.85),0_0_28px_rgba(16,185,129,0.18)] ring-2 ring-emerald-200/40 animate-pulse",
+      off: "bg-white/10 text-slate-200 border-white/20 hover:bg-white/16",
+      on: "bg-emerald-400/18 text-slate-50 border-emerald-300/45 shadow-[inset_0_-2px_0_rgba(16,185,129,0.85),0_0_28px_rgba(16,185,129,0.18)] ring-2 ring-emerald-300/25",
     },
   ];
 
   const deepTabOff =
-    "bg-white/35 text-slate-900 border-white/45 hover:bg-white/55";
+    "bg-white/10 text-slate-200 border-white/20 hover:bg-white/16";
   const deepTabOn =
-    "bg-white/60 text-slate-900 border-white/65 shadow-[inset_0_-2px_0_rgba(14,165,233,0.9),0_0_28px_rgba(56,189,248,0.22)] ring-2 ring-sky-200/50 animate-pulse";
+    "bg-cyan-400/18 text-slate-50 border-cyan-300/45 shadow-[inset_0_-2px_0_rgba(34,211,238,0.85),0_0_28px_rgba(34,211,238,0.22)] ring-2 ring-cyan-300/25 animate-pulse";
   const exportTabMd =
-    "bg-white/35 text-slate-900 border-white/45 hover:bg-white/55";
+    "bg-white/10 text-slate-200 border-white/20 hover:bg-white/16";
   const exportTabHtml =
-    "bg-white/35 text-slate-900 border-white/45 hover:bg-white/55";
+    "bg-white/10 text-slate-200 border-white/20 hover:bg-white/16";
   const reportTabBase =
     "inline-flex items-center justify-center rounded-xl px-3.5 py-2 text-sm md:text-[15px] font-medium border transition-all backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-cyan-200/50";
 
@@ -2142,18 +2224,37 @@ function AnalysisApp() {
   }, []);
 
   return (
-    <div className="min-h-screen p-4 md:p-6 w-full max-w-none mx-auto">
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
-        <h1 className="text-xl md:text-2xl font-bold text-[var(--text-primary)]">
-          股票分析
-        </h1>
-        <a
-          href="index.html"
-          className="btn px-3 py-2 bg-slate-100 text-slate-900 rounded-lg shadow-sm border border-white/40 hover:bg-slate-200 ml-auto"
-        >
-          ← 返回
-        </a>
-      </div>
+    <div className="min-h-screen w-full max-w-none mx-auto">
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/72 backdrop-blur-xl shadow-lg shadow-slate-950/25">
+        <div className="mx-auto flex max-w-none items-center gap-2 px-3 py-2 md:px-6">
+          <a href="index.html" className="flex min-w-0 items-center gap-2">
+            <img
+              src="https://imgus.tangbuy.com/static/images/2025-09-26/e9e9e871b0b2477697e4b59f6da02ab5-17588742994027430860421454933872.png"
+              alt="股小蜜 Logo"
+              className="h-8 w-8 shrink-0 rounded-xl shadow-lg shadow-slate-900/20 ring-2 ring-white/40 md:h-9 md:w-9"
+            />
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                股小蜜
+              </p>
+              <h1 className="truncate font-display text-base font-bold text-slate-50 md:text-lg">
+                股票分析
+              </h1>
+            </div>
+          </a>
+          <div className="ml-auto flex items-center gap-1.5 overflow-x-auto">
+            <button type="button" onClick={goBackToSource} className="btn btn-secondary btn-sm shrink-0">
+              返回
+            </button>
+            <a href={withCurrentSource("ziwei.html")} className="btn btn-accent-paipan btn-sm shrink-0">
+              排盘
+            </a>
+            <a href={withCurrentSource("news.html")} className="btn btn-accent-news btn-sm shrink-0">
+              新闻
+            </a>
+          </div>
+        </div>
+      </header>
       {showUsageModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
@@ -2227,15 +2328,35 @@ function AnalysisApp() {
         </div>
       )}
 
+      <main className="px-3 py-4 md:px-6 md:py-5">
       <div
         id="analysis-workbench"
-        className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-5 xl:gap-6 items-stretch lg:min-h-[min(64vh,720px)] scroll-mt-4"
+        className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-5 xl:gap-6 items-stretch lg:min-h-[min(64vh,720px)] scroll-mt-20"
       >
-        <div className="order-1 flex flex-col gap-4 w-full lg:col-span-3 min-h-0 h-full lg:min-h-[min(64vh,720px)]">
-        <div className="glass-card w-full mb-0 p-5 md:p-6 shrink-0">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="order-1 flex flex-col gap-4 w-full lg:col-span-4 min-h-0 h-full lg:min-h-[min(64vh,720px)]">
+        <div className="glass-card w-full mb-0 p-4 md:p-5 shrink-0">
+        <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
+            <h2 className="text-base md:text-lg font-semibold text-slate-50 tracking-tight">
+              分析参数
+            </h2>
+            <p className="mt-1 text-xs text-slate-400">
+              填入标的、市场和模型后即可生成完整分析报告。
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary btn-xs shrink-0"
+            onClick={function () {
+              setShowUsageModal(true);
+            }}
+          >
+            API 用量
+          </button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-300 mb-1.5">
               股票代码 *
             </label>
             <input
@@ -2249,7 +2370,7 @@ function AnalysisApp() {
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-300 mb-1.5">
               市场
             </label>
             <select
@@ -2265,8 +2386,30 @@ function AnalysisApp() {
               <option value="美股">美股</option>
             </select>
           </div>
-          <div className="md:col-span-2">
-            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-300 mb-1.5">
+              模型
+            </label>
+            <select
+              className="input-field"
+              value={selectedModelKey}
+              onChange={(e) => setSelectedModelKey(normalizeModelKey(e.target.value))}
+              disabled={analyzing}
+            >
+              {modelOptions.map(function (m) {
+                return (
+                  <option key={m.key} value={m.key}>
+                    {m.label}{m.default ? "（默认）" : ""}{m.configured === false ? "（未配置）" : ""}
+                  </option>
+                );
+              })}
+            </select>
+            <p className="mt-1 text-[11px] text-slate-400">
+              默认使用模型2：Gemma；这里只切换模型槽位，密钥和真实模型 ID 只在后端环境变量中配置。
+            </p>
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-300 mb-1.5">
               备注（可选）
             </label>
             <textarea
@@ -2282,8 +2425,8 @@ function AnalysisApp() {
             />
           </div>
         </div>
-        {error && <p className="mt-2 text-red-600 text-sm">{error}</p>}
-        <div className="mt-5 flex flex-col gap-2 items-start">
+        {error && <p className="mt-2 text-lime-300 text-sm">{error}</p>}
+        <div className="mt-4 flex flex-col gap-2 items-start">
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -2322,29 +2465,29 @@ function AnalysisApp() {
             )}
           </div>
           {analyzing && (
-            <p className="text-[11px] md:text-xs text-slate-500 leading-snug max-w-md pl-0.5">
+            <p className="text-[11px] md:text-xs text-slate-400 leading-snug max-w-md pl-0.5">
               云端可能较慢；可先去其他页面，完成后在历史报告里查看。
             </p>
           )}
         </div>
         </div>
 
-        <div className="glass-card w-full mb-0 p-5 md:p-6 flex flex-col shrink-0">
-        <h2 className="text-base md:text-lg font-semibold text-slate-900 tracking-tight mb-3 shrink-0">
+        <div className="glass-card w-full mb-0 p-4 md:p-5 flex flex-col shrink-0">
+        <h2 className="text-base md:text-lg font-semibold text-slate-50 tracking-tight mb-3 shrink-0">
           历史报告
         </h2>
 
         {stockTags.length > 0 && (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-2 mb-4 shrink-0">
-            <span className="text-slate-800 text-sm font-semibold shrink-0">
+            <span className="text-slate-100 text-sm font-semibold shrink-0">
               历史报告筛选
             </span>
-            <span className="text-slate-600 text-xs leading-snug max-w-[min(100%,20rem)] shrink-0">
+            <span className="text-slate-400 text-xs leading-snug max-w-[min(100%,20rem)] shrink-0">
               点下方股票代码 → 只显示该标的；点「全部」→ 显示全部报告。
             </span>
             <button
               type="button"
-              className="btn btn-xs bg-stone-100 text-stone-700 hover:bg-stone-200"
+              className="btn btn-xs btn-secondary"
               onClick={() => setSelectedStockCode("")}
             >
               全部
@@ -2363,16 +2506,16 @@ function AnalysisApp() {
         )}
 
         <div
-          className="shrink-0 h-[min(48vh,480px)] rounded-xl border border-white/40 bg-white/20 overflow-hidden flex flex-col"
+          className="shrink-0 h-[min(48vh,480px)] rounded-xl border border-white/20 bg-slate-950/20 overflow-hidden flex flex-col"
           aria-label="历史报告列表区域"
         >
           {historyLoading && (
-            <div className="flex-1 min-h-[8rem] flex items-center justify-center text-gray-500 text-sm">
+            <div className="flex-1 min-h-[8rem] flex items-center justify-center text-slate-400 text-sm">
               加载中…
             </div>
           )}
           {!historyLoading && filteredHistoryList.length === 0 && (
-            <div className="flex-1 min-h-[8rem] flex items-center justify-center text-gray-500 text-sm px-3 text-center">
+            <div className="flex-1 min-h-[8rem] flex items-center justify-center text-slate-400 text-sm px-3 text-center">
               暂无历史报告
             </div>
           )}
@@ -2397,7 +2540,7 @@ function AnalysisApp() {
                 return (
                   <li
                     key={rowKey}
-                    className="flex items-stretch gap-2 rounded-xl border border-white/40 bg-white/25 hover:bg-white/45 transition-colors"
+                    className="flex items-stretch gap-2 rounded-xl border border-white/18 bg-white/10 hover:bg-white/16 transition-colors"
                   >
                     <button
                       type="button"
@@ -2405,17 +2548,17 @@ function AnalysisApp() {
                       title={titleLine}
                       onClick={() => loadHistoryReport(item.base_name)}
                     >
-                      <span className="font-semibold text-slate-900 text-sm leading-snug block truncate">
+                      <span className="font-semibold text-slate-50 text-sm leading-snug block truncate">
                         {codeLabel ? `${codeLabel} · ` : ""}
                         {item.base_name}
                       </span>
-                      <span className="text-slate-500 text-xs mt-0.5 block tabular-nums">
+                      <span className="text-slate-400 text-xs mt-0.5 block tabular-nums">
                         {item.generated_at}
                       </span>
                     </button>
                     <button
                       type="button"
-                      className="shrink-0 self-center mr-2 px-2 py-1 text-xs rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50/80 transition-colors"
+                      className="shrink-0 self-center mr-2 px-2 py-1 text-xs rounded-lg text-slate-400 hover:text-lime-200 hover:bg-lime-400/10 transition-colors"
                       title="删除此报告"
                       onClick={(e) => deleteHistoryReport(item.base_name, e)}
                     >
@@ -2430,15 +2573,15 @@ function AnalysisApp() {
         {!historyLoading && filteredHistoryList.length > 0 && (
           <>
             {historyTotalPages > 1 && (
-              <div className="mt-3 pt-3 border-t border-white/50 flex flex-wrap items-center justify-between gap-2 shrink-0">
-                <span className="text-xs text-slate-500 tabular-nums">
+              <div className="mt-3 pt-3 border-t border-white/15 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                <span className="text-xs text-slate-400 tabular-nums">
                   共 {filteredHistoryList.length} 条 · 每页 {HISTORY_PAGE_SIZE}{" "}
                   条
                 </span>
                 <div className="flex items-center gap-1.5 flex-wrap justify-end">
                   <button
                     type="button"
-                    className="btn btn-xs bg-white/80 border border-slate-200/90 text-slate-700 disabled:opacity-40"
+                    className="btn btn-xs btn-secondary disabled:opacity-40"
                     disabled={historyPageClamped <= 1}
                     onClick={() =>
                       setHistoryPage(function (p) {
@@ -2448,12 +2591,12 @@ function AnalysisApp() {
                   >
                     上一页
                   </button>
-                  <span className="text-xs text-slate-600 tabular-nums px-1">
+                  <span className="text-xs text-slate-300 tabular-nums px-1">
                     {historyPageClamped} / {historyTotalPages}
                   </span>
                   <button
                     type="button"
-                    className="btn btn-xs bg-white/80 border border-slate-200/90 text-slate-700 disabled:opacity-40"
+                    className="btn btn-xs btn-secondary disabled:opacity-40"
                     disabled={historyPageClamped >= historyTotalPages}
                     onClick={() =>
                       setHistoryPage(function (p) {
@@ -2477,20 +2620,20 @@ function AnalysisApp() {
         </div>
 
 
-        <div className="glass-card order-2 w-full lg:col-span-9 mb-0 p-4 md:p-5 border-0 bg-white/55 flex flex-col min-h-0 h-full">
+        <div className="glass-card order-2 w-full lg:col-span-8 mb-0 p-4 md:p-5 flex flex-col min-h-0 h-full">
         <div className="shrink-0">
         <div className="mb-1.5">
-          <h2 className="text-sm md:text-base font-semibold text-slate-900 tracking-tight">
+          <h2 className="text-sm md:text-base font-semibold text-slate-50 tracking-tight">
             股票预测
           </h2>
         </div>
-        <p className="text-[11px] text-slate-500 mb-2 leading-snug">
-          「获取」静默拉取<strong className="text-slate-600">日/周/月</strong>；按
-          <strong className="text-slate-600">日期</strong>换批次，再选日/周/月看表。
+        <p className="text-[11px] text-slate-400 mb-2 leading-snug">
+          「获取」静默拉取<strong className="text-slate-200">日/周/月</strong>；按
+          <strong className="text-slate-200">日期</strong>换批次，再选日/周/月看表。
         </p>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-2">
           <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-            <span className="text-[11px] font-semibold text-slate-500 shrink-0">
+            <span className="text-[11px] font-semibold text-slate-300 shrink-0">
               方向
             </span>
             <div className="segmented-shell p-0.5">
@@ -2520,7 +2663,7 @@ function AnalysisApp() {
           </div>
           </div>
           <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-            <span className="text-[11px] font-semibold text-slate-500 shrink-0">
+            <span className="text-[11px] font-semibold text-slate-300 shrink-0">
               资产
             </span>
             <div className="segmented-shell p-0.5">
@@ -2562,12 +2705,12 @@ function AnalysisApp() {
           </div>
         </div>
         {predError && (
-          <p className="text-xs text-red-600 mb-1.5">{predError}</p>
+          <p className="mb-1.5 rounded-lg border border-lime-300/25 bg-lime-400/10 px-2 py-1 text-xs text-lime-200">{predError}</p>
         )}
         </div>
 
-        <div className="mt-2 pt-2 border-t border-white/50 flex-1 min-h-0 flex flex-col">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1 shrink-0">
+        <div className="mt-2 flex min-h-0 flex-1 flex-col border-t border-white/15 pt-2">
+          <div className="mb-1 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
             按保存日期
           </div>
           <div className="flex flex-wrap gap-1.5 mb-2 shrink-0">
@@ -2580,8 +2723,8 @@ function AnalysisApp() {
                 type="button"
                 className={`btn btn-xs rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
                   selectedPredDateKey === dk
-                    ? "bg-blue-600 text-white border border-blue-500 shadow-sm"
-                    : "bg-white/55 text-slate-700 border border-white/60 hover:bg-white/80"
+                    ? "border border-cyan-300/45 bg-cyan-400/20 text-cyan-50 shadow-sm"
+                    : "border border-white/15 bg-white/[0.06] text-slate-300 hover:bg-white/[0.12] hover:text-slate-100"
                 }`}
                 onClick={() => setSelectedPredDateKey(dk)}
                 title={dk}
@@ -2590,7 +2733,7 @@ function AnalysisApp() {
               </button>
             ))}
           </div>
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1 shrink-0">
+          <div className="mb-1 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
             预测结果（日 / 周 / 月）
           </div>
           <div className="segmented-shell w-full flex flex-wrap p-0.5 mb-2 shrink-0">
@@ -2627,10 +2770,10 @@ function AnalysisApp() {
         {predDetail &&
           (predDetail.period_type == null ||
             Number(predDetail.period_type) === predPeriodTab) && (
-          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden shrink-0">
-            <div className="overflow-x-auto flex-1 min-h-[200px] max-h-[min(48vh,480px)] overflow-y-auto">
+          <div className="shrink-0 overflow-hidden rounded-xl border border-white/12 bg-slate-950/22">
+            <div className="max-h-[min(48vh,480px)] min-h-[200px] flex-1 overflow-y-auto overflow-x-auto">
               <table className="w-full text-xs md:text-sm">
-                <thead className="sticky top-0 bg-gray-100 text-left">
+                <thead className="sticky top-0 bg-slate-950/95 text-left text-slate-300 backdrop-blur-md">
                   <tr>
                     <th className="p-1.5 font-medium">代码</th>
                     <th className="p-1.5 font-medium">标的</th>
@@ -2649,23 +2792,23 @@ function AnalysisApp() {
                   ).map((row, ri) => (
                     <tr
                       key={ri}
-                      className="border-t border-gray-100 hover:bg-gray-50/80"
+                      className="border-t border-white/8 text-slate-200 hover:bg-white/[0.06]"
                     >
-                      <td className="p-1.5 font-mono text-[11px] md:text-xs">
+                      <td className="p-1.5 font-mono text-[11px] text-slate-300 md:text-xs">
                         {row.code || "—"}
                       </td>
-                      <td className="p-1.5 font-medium">{row.symbol || "—"}</td>
-                      <td className="p-1.5 text-gray-700 max-w-[200px] truncate" title={row.name}>
+                      <td className="p-1.5 font-semibold text-slate-50">{row.symbol || "—"}</td>
+                      <td className="max-w-[200px] truncate p-1.5 text-slate-300" title={row.name}>
                         {row.name || "—"}
                       </td>
-                      <td className="p-1.5">{row.price != null ? row.price : "—"}</td>
-                      <td className="p-1.5">
+                      <td className="gx-num p-1.5 tabular-nums text-amber-100">{row.price != null ? row.price : "—"}</td>
+                      <td className="gx-num p-1.5 tabular-nums text-slate-200">
                         {row.change_ratio != null ? row.change_ratio : "—"}
                       </td>
-                      <td className="p-1.5">
+                      <td className="gx-num p-1.5 tabular-nums text-cyan-200">
                         {row.probability != null ? row.probability : "—"}
                       </td>
-                      <td className="p-1.5">
+                      <td className="gx-num p-1.5 tabular-nums text-emerald-200">
                         {row.profit != null ? row.profit : "—"}
                       </td>
                       <td className="p-1.5">
@@ -2684,12 +2827,12 @@ function AnalysisApp() {
               </table>
               {(!(predDetail.data && predDetail.data.list) ||
                 predDetail.data.list.length === 0) && (
-                <p className="p-4 text-gray-500 text-sm">本快照无列表数据</p>
+                <p className="p-4 text-sm text-slate-400">本快照无列表数据</p>
               )}
             </div>
             {predDetail.intellectia_ret != null &&
               predDetail.intellectia_ret !== 0 && (
-                <p className="text-xs text-amber-700 px-3 py-2 bg-amber-50 border-t border-amber-100">
+                <p className="border-t border-amber-300/20 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">
                   API ret={String(predDetail.intellectia_ret)}{" "}
                   {predDetail.intellectia_msg
                     ? `· ${predDetail.intellectia_msg}`
@@ -2701,17 +2844,17 @@ function AnalysisApp() {
         {(!predDetail ||
           (predDetail.period_type != null &&
             Number(predDetail.period_type) !== predPeriodTab)) && (
-          <p className="text-xs text-slate-500 py-5 text-center rounded-lg border border-dashed border-slate-200/80 bg-white/30 shrink-0">
+          <p className="shrink-0 rounded-xl border border-dashed border-white/18 bg-white/[0.05] py-5 text-center text-xs text-slate-400">
             {currentPredSnapshotName
               ? "正在加载该周期…"
               : "该日期下暂无此周期快照，可切换日期或点击「获取」。"}
           </p>
         )}
-        <div className="mt-2 pt-2 border-t border-white/40 flex flex-wrap items-center gap-2 shrink-0">
-          <span className="text-[11px] text-slate-500 shrink-0">列表翻页</span>
+        <div className="mt-2 flex shrink-0 flex-wrap items-center gap-2 border-t border-white/15 pt-2">
+          <span className="shrink-0 text-[11px] text-slate-400">列表翻页</span>
           <button
             type="button"
-            className="btn btn-xs bg-white border border-gray-300 rounded-md disabled:opacity-40 !min-h-7 !py-0.5 text-xs"
+            className="btn btn-xs btn-secondary rounded-md disabled:opacity-40 !min-h-7 !py-0.5 text-xs"
             disabled={predParams.page <= 1}
             onClick={() =>
               setPredParams((p) => ({
@@ -2722,7 +2865,7 @@ function AnalysisApp() {
           >
             上一页
           </button>
-          <label className="text-[11px] text-slate-600 flex items-center gap-0.5">
+          <label className="flex items-center gap-0.5 text-[11px] text-slate-300">
             第
             <input
               type="number"
@@ -2746,7 +2889,7 @@ function AnalysisApp() {
           </label>
           <button
             type="button"
-            className="btn btn-xs bg-white border border-gray-300 rounded-md disabled:opacity-40 !min-h-7 !py-0.5 text-xs"
+            className="btn btn-xs btn-secondary rounded-md disabled:opacity-40 !min-h-7 !py-0.5 text-xs"
             disabled={
               predMaxPage != null && predParams.page >= predMaxPage
             }
@@ -2763,7 +2906,7 @@ function AnalysisApp() {
             下一页
           </button>
           {predRemoteTotal != null && predMaxPage != null ? (
-            <span className="text-[11px] text-slate-500 tabular-nums">
+            <span className="text-[11px] text-slate-300 tabular-nums">
               约 {predRemoteTotal} 条 · 共 {predMaxPage} 页
             </span>
           ) : (
@@ -2779,25 +2922,26 @@ function AnalysisApp() {
 
       <div
         id="report-reading-panel"
-        className="w-full mt-8 sm:mt-10 scroll-mt-4"
+        className="w-full mt-8 sm:mt-10 scroll-mt-24 md:scroll-mt-28"
       >
         {report && (
         <>
           <div className="flex flex-col w-full pt-1">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2 shrink-0">
-              <h2 className="text-base md:text-lg font-semibold text-slate-900 tracking-tight">
+              <h2 className="text-base md:text-lg font-semibold text-slate-50 tracking-tight">
                 当前报告
               </h2>
               <button
                 type="button"
-                className="btn btn-xs bg-white/80 text-slate-700 border border-slate-200/90 shadow-sm hover:bg-slate-50 shrink-0 self-start sm:self-auto"
+                aria-label="回到上方分析区"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/[0.08] text-base font-bold leading-none text-slate-200 shadow-sm transition-colors hover:bg-white/[0.14] sm:self-auto"
                 onClick={scrollToAnalysisWorkbench}
                 title="回到分析表单、历史报告与股票预测"
               >
-                ↑ 回到上方
+                ↑
               </button>
             </div>
-            <div className="flex flex-wrap gap-2 mb-3 items-center shrink-0">
+            <div className="sticky top-14 z-30 -mx-2 mb-3 flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-slate-950/82 px-2 py-2 shadow-lg shadow-slate-950/20 backdrop-blur-xl md:top-16">
               {reportTabs.map((t) => (
                 <button
                   key={t.id}
@@ -2837,69 +2981,69 @@ function AnalysisApp() {
             <div className="glass-card mb-0 report-card w-full p-4 md:p-6 lg:p-8">
               {activeTab === "summary" && (
                 <div className="space-y-4 report-summary">
-                  <div className="border-b border-white/50 pb-3">
-                    <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-0.5">
+                  <div className="border-b border-white/10 pb-4">
+                    <div className="report-section-label">
                       分析主题
                     </div>
-                    <div className="text-lg font-bold text-gray-900">
+                    <div className="text-xl font-black tracking-tight text-slate-50 md:text-2xl">
                       {stripMarkdown(formatReportValue(report.分析主题))}
                     </div>
                   </div>
-                  <div>
-                    <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                  <div className="report-section">
+                    <div className="report-section-label">
                       数据基准
                     </div>
-                    <pre className="whitespace-pre-wrap text-sm bg-blue-50 text-gray-800 p-3 rounded-lg border border-blue-100">
+                    <pre className="whitespace-pre-wrap rounded-xl border p-3 text-sm">
                       {formatReportValue(report.数据基准)}
                     </pre>
                   </div>
-                  <div>
-                    <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                  <div className="report-section">
+                    <div className="report-section-label">
                       融合摘要
                     </div>
                     <div className="report-markdown-block">
                       {renderMarkdown(formatReportValue(report.融合摘要))}
                     </div>
                   </div>
-                  <div className="p-3 rounded-lg bg-green-50 border border-green-200">
-                    <div className="text-xs font-medium text-green-800 uppercase tracking-wide mb-1">
+                  <div className="report-callout">
+                    <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.20em] text-emerald-200">
                       最终建议
                     </div>
-                    <div className="text-base font-semibold text-gray-900">
+                    <div className="report-markdown-block text-base font-semibold text-slate-50">
                       {renderMarkdown(formatReportValue(report.最终建议))}
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-4 text-sm">
-                    <span className="font-medium text-gray-600">
+                  <div className="flex flex-wrap gap-3 text-sm">
+                    <span className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 font-medium text-slate-300">
                       共识程度：
-                      <span className="text-blue-600 font-bold">
+                      <span className="gx-num text-cyan-300 font-bold">
                         {formatReportValue(report.共识程度)}
                       </span>
                     </span>
-                    <span className="font-medium text-gray-600">
+                    <span className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 font-medium text-slate-300">
                       加权得分：
-                      <span className="text-blue-600 font-bold">
+                      <span className="gx-num text-cyan-300 font-bold">
                         {formatReportValue(report.加权得分)}
                       </span>
                     </span>
                   </div>
-                  <div>
-                    <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                  <div className="report-section">
+                    <div className="report-section-label">
                       风险提示
                     </div>
                     <div className="report-markdown-block">
                       {renderMarkdown(formatReportValue(report.风险提示))}
                     </div>
                   </div>
-                  <div>
-                    <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                  <div className="report-warning">
+                    <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.20em] text-amber-200">
                       操作建议
                     </div>
-                    <pre className="whitespace-pre-wrap text-sm bg-amber-50 text-gray-800 p-3 rounded-lg border border-amber-100">
+                    <pre className="whitespace-pre-wrap rounded-xl border p-3 text-sm">
                       {formatReportValue(report.操作建议)}
                     </pre>
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-slate-500">
                     生成时间：{formatReportValue(report.生成时间)}
                   </div>
                 </div>
@@ -2914,23 +3058,23 @@ function AnalysisApp() {
                   {(report.分析师报告 || []).map((r, i) => (
                     <div
                       key={i}
-                      className="border border-gray-200 rounded-xl p-4 bg-gray-50/50"
+                      className="report-section"
                     >
-                      <div className="flex flex-wrap items-center gap-2 mb-2 pb-2 border-b border-gray-200">
-                        <span className="text-lg font-bold text-gray-900">
+                      <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-white/10 pb-3">
+                        <span className="text-lg font-bold text-slate-50">
                           {formatReportValue(r.分析师姓名)}
                         </span>
-                        <span className="text-sm text-gray-500">
+                        <span className="text-sm text-slate-400">
                           （{formatReportValue(r.角色定位)}）
                         </span>
-                        <span className="text-sm font-semibold text-green-700">
+                        <span className="rounded-full bg-emerald-400/12 px-2.5 py-1 text-xs font-semibold text-emerald-200">
                           投资建议：{formatReportValue(r.投资建议)}
                         </span>
-                        <span className="text-sm text-blue-600 font-medium">
+                        <span className="rounded-full bg-cyan-400/12 px-2.5 py-1 text-xs font-semibold text-cyan-200">
                           置信度：{formatReportValue(r.置信程度)}
                         </span>
                       </div>
-                      <div className="report-markdown-block text-gray-700">
+                      <div className="report-markdown-block">
                         {renderMarkdown(
                           stripCoreConclusionHeading(
                             formatReportValue(r.核心分析),
@@ -2938,7 +3082,7 @@ function AnalysisApp() {
                         )}
                       </div>
                       {r.核心要点 && r.核心要点.length > 0 && (
-                        <ul className="list-disc pl-6 mt-2 space-y-1 text-gray-700 font-medium">
+                        <ul className="mt-3 list-disc space-y-1.5 pl-6 font-medium text-slate-300">
                           {r.核心要点.map((x, j) => (
                             <li key={j}>
                               {renderMarkdown(formatReportValue(x))}
@@ -2955,32 +3099,32 @@ function AnalysisApp() {
                   {(report.辩论轮次 || []).map((d, i) => (
                     <div
                       key={i}
-                      className="border border-gray-200 rounded-xl p-4 space-y-4"
+                      className="report-section space-y-4"
                     >
-                      <h3 className="text-base font-bold text-gray-900 pb-2 border-b border-gray-200">
+                      <h3 className="border-b border-white/10 pb-2 text-base font-bold text-slate-50">
                         第 {formatReportValue(d.轮次编号)} 轮
                       </h3>
                       <div>
-                        <div className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-1">
+                        <div className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-emerald-200">
                           多头观点
                         </div>
-                        <div className="p-3 rounded-lg bg-green-50/80 border border-green-100 report-markdown-block text-gray-800">
+                        <div className="rounded-2xl border border-emerald-300/18 bg-emerald-400/10 p-4 report-markdown-block">
                           {renderMarkdown(formatReportValue(d.多头观点))}
                         </div>
                       </div>
                       <div>
-                        <div className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">
+                        <div className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-rose-200">
                           空头观点
                         </div>
-                        <div className="p-3 rounded-lg bg-red-50/80 border border-red-100 report-markdown-block text-gray-800">
+                        <div className="rounded-2xl border border-rose-300/18 bg-rose-400/10 p-4 report-markdown-block">
                           {renderMarkdown(formatReportValue(d.空头观点))}
                         </div>
                       </div>
                       <div>
-                        <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1">
+                        <div className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-200">
                           裁判结论
                         </div>
-                        <div className="p-3 rounded-lg bg-blue-50/80 border border-blue-100 report-markdown-block text-gray-800 font-medium">
+                        <div className="rounded-2xl border border-cyan-300/18 bg-cyan-400/10 p-4 report-markdown-block font-medium">
                           {renderMarkdown(formatReportValue(d.裁判结论))}
                         </div>
                       </div>
@@ -2989,7 +3133,7 @@ function AnalysisApp() {
                 </div>
               )}
               {activeTab === "data" && (
-                <pre className="whitespace-pre-wrap text-sm bg-gray-50 p-4 rounded-lg border border-gray-200">
+                <pre className="whitespace-pre-wrap rounded-2xl border p-4 text-sm">
                   {formatReportValue(report.数据基准)}
                 </pre>
               )}
@@ -3076,16 +3220,16 @@ function AnalysisApp() {
           <button
             type="button"
             aria-label="回到上方分析区"
-            className="fixed bottom-6 right-6 z-40 flex items-center gap-1.5 rounded-full border border-white/70 bg-white/90 px-4 py-2.5 text-sm font-medium text-slate-800 shadow-[0_8px_30px_rgba(15,23,42,0.12)] backdrop-blur-md hover:bg-white hover:shadow-lg transition-all md:bottom-8 md:right-8"
+            className="fixed bottom-6 right-6 z-40 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-white/[0.12] text-xl font-bold leading-none text-slate-100 shadow-lg shadow-slate-950/30 backdrop-blur-xl transition-colors hover:bg-white/[0.18] md:bottom-8 md:right-8"
             onClick={scrollToAnalysisWorkbench}
             title="回到分析表单、历史报告与股票预测"
           >
-            <span className="text-base leading-none">↑</span>
-            回到上方
+            ↑
           </button>
         </>
         )}
       </div>
+      </main>
 
     </div>
   );

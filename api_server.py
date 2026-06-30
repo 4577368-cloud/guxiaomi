@@ -11,7 +11,7 @@ import sys
 import threading
 import uuid
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 
 try:
     from zoneinfo import ZoneInfo
@@ -105,6 +105,11 @@ INTELLECTIA_REQUEST_HEADERS = {
     "Accept": "application/json",
 }
 
+HISTORY_REQUEST_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; GuxiaomiHistory/1.0)",
+    "Accept": "application/json,text/csv,text/plain,*/*",
+}
+
 
 def _infer_stock_from_base_name(base_name: str) -> tuple:
     """从报告文件名推断股票代码与市场（与 demo_ulti_analyst.report_base_name 格式一致）。"""
@@ -115,6 +120,192 @@ def _infer_stock_from_base_name(base_name: str) -> tuple:
         return "", ""
     market_map = {"A股": "A 股", "港股": "港股", "美股": "美股"}
     return (m.group(2).strip().upper(), market_map.get(m.group(1), ""))
+
+
+def _normalize_market_code(market: str) -> str:
+    m = (market or "").strip().upper()
+    if m in {"US", "美股", "USA", "U.S."}:
+        return "US"
+    if m in {"HK", "港股", "HKG"}:
+        return "HK"
+    if m in {"CN", "A股", "A 股", "沪深", "中国"}:
+        return "CN"
+    return m or "CN"
+
+
+def _parse_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    s = str(value).strip().replace(",", "").replace("%", "")
+    if not s or s in {"-", "--", "None", "nan"}:
+        return None
+    try:
+        return float(s)
+    except Exception:
+        return None
+
+
+def _history_row(date: str, close: Any, open_: Any = None, high: Any = None, low: Any = None, volume: Any = None) -> Optional[Dict[str, Any]]:
+    price = _parse_float(close)
+    if not date or price is None or price <= 0:
+        return None
+    return {
+        "date": str(date)[:10],
+        "open": _parse_float(open_),
+        "high": _parse_float(high),
+        "low": _parse_float(low),
+        "close": price,
+        "price": price,
+        "volume": int(_parse_float(volume) or 0),
+    }
+
+
+def _alpha_vantage_key() -> str:
+    return (
+        os.environ.get("ALPHA_VANTAGE_API_KEY")
+        or os.environ.get("ALPHAVANTAGE_API_KEY")
+        or ""
+    ).strip()
+
+
+def _fetch_us_history_alpha_vantage(symbol: str, days: int) -> List[Dict[str, Any]]:
+    key = _alpha_vantage_key()
+    if not key:
+        return []
+    url = "https://www.alphavantage.co/query"
+    params = {
+        "function": "TIME_SERIES_DAILY_ADJUSTED",
+        "symbol": symbol.strip().upper(),
+        "outputsize": "compact",
+        "apikey": key,
+    }
+    res = requests.get(url, params=params, headers=HISTORY_REQUEST_HEADERS, timeout=12)
+    res.raise_for_status()
+    data = res.json()
+    series = data.get("Time Series (Daily)")
+    if not isinstance(series, dict):
+        reason = data.get("Note") or data.get("Information") or data.get("Error Message") or data
+        raise RuntimeError(f"Alpha Vantage 未返回日线: {reason}")
+    rows: List[Dict[str, Any]] = []
+    for date in sorted(series.keys()):
+        point = series.get(date) or {}
+        row = _history_row(
+            date,
+            point.get("4. close"),
+            point.get("1. open"),
+            point.get("2. high"),
+            point.get("3. low"),
+            point.get("6. volume"),
+        )
+        if row:
+            rows.append(row)
+    return rows[-max(days, 1):]
+
+
+def _fetch_us_history_yahoo(symbol: str, days: int) -> List[Dict[str, Any]]:
+    ticker = re.sub(r"[^A-Za-z0-9.\-]", "", symbol or "").upper()
+    if not ticker:
+        return []
+    range_value = "1mo" if days <= 30 else "3mo" if days <= 90 else "6mo"
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+    params = {"range": range_value, "interval": "1d"}
+    res = requests.get(url, params=params, headers=HISTORY_REQUEST_HEADERS, timeout=12)
+    res.raise_for_status()
+    data = res.json()
+    result = (((data.get("chart") or {}).get("result") or []) or [None])[0]
+    if not result:
+        return []
+    timestamps = result.get("timestamp") or []
+    quote = ((((result.get("indicators") or {}).get("quote") or []) or [None])[0]) or {}
+    opens = quote.get("open") or []
+    highs = quote.get("high") or []
+    lows = quote.get("low") or []
+    closes = quote.get("close") or []
+    volumes = quote.get("volume") or []
+    rows: List[Dict[str, Any]] = []
+    for idx, ts in enumerate(timestamps):
+        close = closes[idx] if idx < len(closes) else None
+        if close is None:
+            continue
+        date = datetime.utcfromtimestamp(int(ts)).strftime("%Y-%m-%d")
+        row = _history_row(
+            date,
+            close,
+            opens[idx] if idx < len(opens) else None,
+            highs[idx] if idx < len(highs) else None,
+            lows[idx] if idx < len(lows) else None,
+            volumes[idx] if idx < len(volumes) else None,
+        )
+        if row:
+            rows.append(row)
+    return rows[-max(days, 1):]
+
+
+def _tencent_history_symbol(symbol: str, market: str) -> str:
+    code = re.sub(r"\D", "", symbol or "")
+    if market == "HK":
+        return f"hk{code.zfill(5)}"
+    if market == "CN":
+        c = code.zfill(6)
+        return ("sh" if c.startswith("6") else "sz") + c
+    return symbol.strip().lower()
+
+
+def _fetch_tencent_history(symbol: str, market: str, days: int) -> List[Dict[str, Any]]:
+    formatted = _tencent_history_symbol(symbol, market)
+    if not formatted:
+        return []
+    url = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+    params = {"param": f"{formatted},day,,,{max(days, 30)},qfq"}
+    res = requests.get(url, params=params, headers=HISTORY_REQUEST_HEADERS, timeout=12)
+    res.raise_for_status()
+    data = res.json()
+    block = ((data.get("data") or {}).get(formatted) or {})
+    day_data = block.get("qfqday") or block.get("day") or []
+    rows: List[Dict[str, Any]] = []
+    for item in day_data:
+        if not isinstance(item, list) or len(item) < 6:
+            continue
+        row = _history_row(item[0], item[2], item[1], item[3], item[4], item[5])
+        if row:
+            rows.append(row)
+    return rows[-max(days, 1):]
+
+
+def _fetch_sohu_history(symbol: str, market: str, days: int) -> List[Dict[str, Any]]:
+    code = re.sub(r"\D", "", symbol or "")
+    if market == "HK":
+        sohu_code = f"hk_{code.zfill(5)}"
+    elif market == "CN":
+        c = code.zfill(6)
+        sohu_code = f"cn_{'sh' if c.startswith('6') else 'sz'}{c}"
+    else:
+        return []
+    end = datetime.utcnow().date()
+    start = end - timedelta(days=max(days * 3, 45))
+    url = "https://q.stock.sohu.com/hisHq"
+    params = {
+        "code": sohu_code,
+        "start": start.strftime("%Y%m%d"),
+        "end": end.strftime("%Y%m%d"),
+        "stat": "1",
+        "order": "A",
+        "count": str(max(days, 30) * 2),
+    }
+    res = requests.get(url, params=params, headers=HISTORY_REQUEST_HEADERS, timeout=12)
+    res.raise_for_status()
+    data = res.json()
+    if not isinstance(data, list) or not data or not isinstance(data[0].get("hq"), list):
+        return []
+    rows: List[Dict[str, Any]] = []
+    for item in data[0]["hq"]:
+        if not isinstance(item, list) or len(item) < 6:
+            continue
+        row = _history_row(item[0], item[2], item[1], item[6] if len(item) > 6 else None, item[5] if len(item) > 5 else None, item[7] if len(item) > 7 else None)
+        if row:
+            rows.append(row)
+    rows.sort(key=lambda x: x["date"])
+    return rows[-max(days, 1):]
 
 # 异步任务状态：job_id -> { status: pending|running|done|failed, result?: dict, error?: str }
 _jobs: Dict[str, Dict[str, Any]] = {}
@@ -190,6 +381,7 @@ class AnalyzeRequest(BaseModel):
     days: int = 90
     use_mock: bool = False
     client_quote: Optional[ClientQuotePayload] = None
+    model_key: Optional[str] = "model2"
 
 
 class ChatTurn(BaseModel):
@@ -206,12 +398,13 @@ class ChatRequest(BaseModel):
     report_base_name: Optional[str] = None
     report_text: Optional[str] = None
     use_mock: bool = False
+    model_key: Optional[str] = "model2"
     # 当前问题之前的对话轮次（不含本条 message），用于多轮延展
     history: List[ChatTurn] = Field(default_factory=list)
 
 
 class LlmChatRequest(BaseModel):
-    """通用对话：与 /api/analyze/chat 同源 VLLM（环境变量 VLLM_*），供紫微排盘等页面使用。"""
+    """通用对话：与 /api/analyze/chat 共用三模型槽位（LLM_MODEL1/2/3_*）。"""
 
     system: str = ""
     user: str
@@ -220,6 +413,7 @@ class LlmChatRequest(BaseModel):
     use_mock: bool = False
     max_tokens: int = 8192
     temperature: float = 0.7
+    model_key: Optional[str] = "model2"
 
 
 class ScreenerFetchRequest(BaseModel):
@@ -239,6 +433,72 @@ class DeleteReportRequest(BaseModel):
 class DeleteScreenerRequest(BaseModel):
     """删除预测快照（POST 正文）。"""
     name: str
+
+
+_MODEL_KEYS = ("model1", "model2", "model3")
+_MODEL_LABEL_DEFAULTS = {
+    "model1": "MiniMax",
+    "model2": "Gemma",
+    "model3": "Deepseek",
+}
+
+
+def _default_model_key() -> str:
+    key = (os.environ.get("LLM_DEFAULT_MODEL_KEY") or "model2").strip().lower()
+    return key if key in _MODEL_KEYS else "model2"
+
+
+def _normalize_model_key(model_key: Optional[str]) -> str:
+    key = (model_key or _default_model_key()).strip().lower()
+    return key if key in _MODEL_KEYS else _default_model_key()
+
+
+def _model_env_prefix(model_key: str) -> str:
+    return f"LLM_{model_key.upper()}"
+
+
+def _llm_model_config(model_key: Optional[str] = None, *, require_config: bool = True) -> Dict[str, Any]:
+    key = _normalize_model_key(model_key)
+    prefix = _model_env_prefix(key)
+    label = (os.environ.get(f"{prefix}_LABEL") or _MODEL_LABEL_DEFAULTS[key]).strip()
+    cfg: Dict[str, Any] = {
+        "key": key,
+        "label": label,
+        "base_url": (os.environ.get(f"{prefix}_BASE_URL") or "").strip().rstrip("/"),
+        "api_key": (os.environ.get(f"{prefix}_API_KEY") or "").strip(),
+        "model": (os.environ.get(f"{prefix}_MODEL_ID") or "").strip(),
+    }
+    raw_max = (os.environ.get(f"{prefix}_MAX_TOKENS") or "").strip()
+    if raw_max:
+        try:
+            cfg["max_tokens"] = max(256, min(int(raw_max), 32768))
+        except ValueError:
+            pass
+    missing = [name for name in ("base_url", "api_key", "model") if not cfg.get(name)]
+    cfg["configured"] = not missing
+    if require_config and missing:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"{label} 模型配置不完整：请在 .env 中配置 "
+                f"{prefix}_BASE_URL / {prefix}_API_KEY / {prefix}_MODEL_ID"
+            ),
+        )
+    return cfg
+
+
+def _public_model_options() -> List[Dict[str, Any]]:
+    default_key = _default_model_key()
+    options: List[Dict[str, Any]] = []
+    for key in _MODEL_KEYS:
+        cfg = _llm_model_config(key, require_config=False)
+        options.append({
+            "key": key,
+            "label": cfg["label"],
+            "configured": bool(cfg["configured"]),
+            "default": key == default_key,
+        })
+    return options
 
 
 class AnalystItem(BaseModel):
@@ -310,7 +570,8 @@ def _run_analyze_task(job_id: str, req: AnalyzeRequest):
             report_base_name,
         )
         market = _market_norm(req.market)
-        analyst = MultiAgentStockAnalyst(use_real_llm=not req.use_mock, debate_rounds=1)
+        llm_config = None if req.use_mock else _llm_model_config(req.model_key, require_config=True)
+        analyst = MultiAgentStockAnalyst(use_real_llm=not req.use_mock, debate_rounds=1, llm_config=llm_config)
         cq_dict = None
         if req.client_quote and not req.client_quote.is_mock:
             cq_dict = req.client_quote.model_dump(exclude_none=False)
@@ -670,6 +931,65 @@ def api_screener_delete_post(req: DeleteScreenerRequest):
     return _screener_delete_impl(req.name)
 
 
+@app.get("/api/stock/history")
+def api_stock_history(symbol: str, market: str = "US", days: int = 30):
+    """统一历史日线接口：价格趋势图使用，第三方密钥只在后端读取。
+
+    US: Yahoo Finance -> Alpha Vantage fallback
+    HK/CN: 腾讯历史日线 -> 搜狐 fallback
+    """
+    sym = (symbol or "").strip().upper()
+    if not sym:
+        raise HTTPException(status_code=400, detail="symbol 不能为空")
+    m = _normalize_market_code(market)
+    n = max(1, min(int(days or 30), 120))
+    errors: List[str] = []
+
+    if m == "US":
+        sources = [
+            ("Yahoo Finance", lambda: _fetch_us_history_yahoo(sym, n)),
+            ("Alpha Vantage", lambda: _fetch_us_history_alpha_vantage(sym, n)),
+        ]
+    elif m in {"HK", "CN"}:
+        sources = [
+            ("Tencent", lambda: _fetch_tencent_history(sym, m, n)),
+            ("Sohu", lambda: _fetch_sohu_history(sym, m, n)),
+        ]
+    else:
+        raise HTTPException(status_code=400, detail=f"不支持的市场: {market}")
+
+    for source, fetcher in sources:
+        try:
+            rows = fetcher()
+            if rows:
+                return {
+                    "ok": True,
+                    "symbol": sym,
+                    "market": m,
+                    "days": n,
+                    "source": source,
+                    "has_alpha_vantage_key": bool(_alpha_vantage_key()),
+                    "history": rows[-n:],
+                }
+            errors.append(f"{source}: empty")
+        except Exception as exc:
+            errors.append(f"{source}: {exc}")
+
+    return JSONResponse(
+        {
+            "ok": False,
+            "symbol": sym,
+            "market": m,
+            "days": n,
+            "source": "",
+            "has_alpha_vantage_key": bool(_alpha_vantage_key()),
+            "history": [],
+            "errors": errors[-4:],
+        },
+        status_code=200,
+    )
+
+
 @app.get("/api/news")
 def api_news(code: str, market: str = "A 股", name: str = "", keywords: str = "", hours: int = 48):
     """拉取与该公司/股票相关的新闻（GNews + RSS）。keywords 为逗号分隔的备注关键词；hours 为新闻时效（默认 48）。"""
@@ -766,15 +1086,9 @@ def _strip_trailing_investment_disclaimer(text: str) -> str:
     return s.rstrip()
 
 
-def _vllm_env() -> tuple:
-    vllm_base = (
-        os.environ.get("VLLM_BASE_URL") or "http://vllm.tangbuy.cn:8080/v1"
-    ).strip().rstrip("/")
-    vllm_key = (os.environ.get("VLLM_API_KEY") or "123456").strip()
-    vllm_model = (
-        os.environ.get("VLLM_MODEL_ID") or os.environ.get("VLLM_MODEL") or "MiniMax-M2.1-AWQ"
-    ).strip()
-    return vllm_base, vllm_key, vllm_model
+def _vllm_env(model_key: Optional[str] = None) -> tuple:
+    cfg = _llm_model_config(model_key, require_config=True)
+    return cfg["base_url"], cfg["api_key"], cfg["model"], cfg["label"]
 
 
 def _vllm_parse_message_content(data: dict) -> str:
@@ -801,9 +1115,10 @@ def _vllm_chat_complete_json(
     *,
     max_tokens: int = 3072,
     temperature: float = 0.7,
+    model_key: Optional[str] = None,
 ) -> dict:
     """调用 OpenAI 兼容 /chat/completions；失败时尝试备选 body（部分网关）。"""
-    vllm_base, vllm_key, vllm_model = _vllm_env()
+    vllm_base, vllm_key, vllm_model, _ = _vllm_env(model_key)
     payload = {
         "model": vllm_model,
         "messages": messages,
@@ -874,14 +1189,21 @@ def _llm_chat_build_messages(req: LlmChatRequest) -> List[Dict[str, str]]:
 
 @app.get("/api/llm/meta")
 def api_llm_meta():
-    """返回当前服务端使用的模型 id（与股票分析同源），供前端展示。"""
-    _, _, mid = _vllm_env()
-    return {"ok": True, "model_id": mid}
+    """返回可选模型槽位。只暴露展示名和配置状态，不暴露密钥、地址或真实模型 ID。"""
+    default_key = _default_model_key()
+    default_cfg = _llm_model_config(default_key, require_config=False)
+    return {
+        "ok": True,
+        "default_model_key": default_key,
+        "model_key": default_key,
+        "model_label": default_cfg["label"],
+        "models": _public_model_options(),
+    }
 
 
 @app.post("/api/llm/chat")
 def api_llm_chat(req: LlmChatRequest):
-    """通用 LLM：紫微排盘等与分析页共用 VLLM_MODEL_ID / VLLM_BASE_URL。"""
+    """通用 LLM：紫微排盘等与分析页共用 LLM_MODEL1/2/3_* 槽位。"""
     if not (req.user or "").strip():
         raise HTTPException(status_code=400, detail="user 不能为空")
 
@@ -906,7 +1228,7 @@ def api_llm_chat(req: LlmChatRequest):
     messages = _llm_chat_build_messages(req)
 
     if req.stream:
-        vllm_base, vllm_key, vllm_model = _vllm_env()
+        vllm_base, vllm_key, vllm_model, _ = _vllm_env(req.model_key)
         payload = {
             "model": vllm_model,
             "messages": messages,
@@ -968,7 +1290,7 @@ def api_llm_chat(req: LlmChatRequest):
 
         return StreamingResponse(_byte_iter(), media_type="text/event-stream")
 
-    data = _vllm_chat_complete_json(messages, max_tokens=mt, temperature=temp)
+    data = _vllm_chat_complete_json(messages, max_tokens=mt, temperature=temp, model_key=req.model_key)
     content = _vllm_parse_message_content(data)
     if not content:
         content = "[vllm 无回答，请检查模型或请求]"
@@ -1054,7 +1376,7 @@ def api_analyze_chat(req: ChatRequest):
 
     try:
         data = _vllm_chat_complete_json(
-            messages, max_tokens=3072, temperature=0.7
+            messages, max_tokens=3072, temperature=0.7, model_key=req.model_key
         )
         answer = _vllm_parse_message_content(data)
         if not answer:

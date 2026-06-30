@@ -289,11 +289,11 @@ function searchStocks(query, market = 'ALL') {
 }
 
 // 获取热门股票
-function getHotStocks(market = 'ALL', limit = 6) {
+function getHotStocks(market = 'ALL', limit = 6, offset = 0) {
   const hotSymbols = {
-    US: ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA'],
-    HK: ['03690', '00700', '09988', '01810', '09618', '00941'],
-    CN: ['600036', '600519', '601318', '000858', '000333', '002594']
+    US: ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'META', 'BRK.B', 'JPM', 'V', 'AVGO', 'AMD', 'NFLX', 'COST', 'ORCL', 'UNH'],
+    HK: ['03690', '00700', '09988', '01810', '09618', '00941', '00388', '01299', '02318', '02020', '09888', '09961', '06618', '02382', '03968', '00883'],
+    CN: ['600036', '600519', '601318', '000858', '000333', '002594', '600276', '601166', '601888', '601088', '600900', '601138', '600309', '600887', '600030', '601398']
   };
 
   let markets = ['US', 'HK', 'CN'];
@@ -306,8 +306,10 @@ function getHotStocks(market = 'ALL', limit = 6) {
   for (const m of markets) {
     const symbols = hotSymbols[m] || [];
     const stocks = STOCK_DATABASE[m] || [];
+    const start = symbols.length ? Math.abs(offset) % symbols.length : 0;
+    const rotatedSymbols = [...symbols.slice(start), ...symbols.slice(0, start)];
 
-    for (const sym of symbols.slice(0, limit)) {
+    for (const sym of rotatedSymbols.slice(0, limit)) {
       const stock = stocks.find(s => s.symbol === sym);
       if (stock) {
         results.push({

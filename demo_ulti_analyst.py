@@ -58,9 +58,9 @@ except ImportError:
 # ==================== 配置中心 ====================
 CONFIG = {
     "LLM 配置": {
-        "base_url": "http://vllm.tangbuy.cn:8080/v1",
-        "api_key": "123456",
-        "model": "MiniMax-M2.1-AWQ",
+        "base_url": "",
+        "api_key": "",
+        "model": "",
         "temperature": 0.7,
         "max_tokens": 4096
     },
@@ -85,15 +85,18 @@ CONFIG = {
     }
 }
 
-# 与 Vercel / .env 同源：VLLM_BASE_URL、VLLM_API_KEY、VLLM_MODEL_ID
+# CLI 默认读取三模型槽位中的默认项；Web API 会按请求传入独立 llm_config。
 _llm = CONFIG["LLM 配置"]
-if os.environ.get("VLLM_BASE_URL"):
-    _llm["base_url"] = os.environ["VLLM_BASE_URL"].strip().rstrip("/")
-if os.environ.get("VLLM_API_KEY"):
-    _llm["api_key"] = os.environ["VLLM_API_KEY"].strip()
-_m_id = os.environ.get("VLLM_MODEL_ID") or os.environ.get("VLLM_MODEL")
-if _m_id:
-    _llm["model"] = _m_id.strip()
+_default_model_key = (os.environ.get("LLM_DEFAULT_MODEL_KEY") or "model2").strip().lower()
+if _default_model_key not in ("model1", "model2", "model3"):
+    _default_model_key = "model2"
+_llm_prefix = f"LLM_{_default_model_key.upper()}"
+if os.environ.get(f"{_llm_prefix}_BASE_URL"):
+    _llm["base_url"] = os.environ[f"{_llm_prefix}_BASE_URL"].strip().rstrip("/")
+if os.environ.get(f"{_llm_prefix}_API_KEY"):
+    _llm["api_key"] = os.environ[f"{_llm_prefix}_API_KEY"].strip()
+if os.environ.get(f"{_llm_prefix}_MODEL_ID"):
+    _llm["model"] = os.environ[f"{_llm_prefix}_MODEL_ID"].strip()
 
 # ==================== 数据结构 ====================
 def _fmt_price(p: float) -> str:
@@ -1824,18 +1827,26 @@ class StockDataService:
 class LLMClient:
     """LLM 客户端封装"""
 
-    def __init__(self, use_real: bool = True):
+    def __init__(self, use_real: bool = True, llm_config: Optional[Dict[str, Any]] = None):
         self.use_real = use_real and HAS_OPENAI
         if self.use_real:
+            cfg = {**CONFIG["LLM 配置"], **(llm_config or {})}
+            base_url = (cfg.get("base_url") or "").strip().rstrip("/")
+            api_key = (cfg.get("api_key") or "").strip()
+            model = (cfg.get("model") or "").strip()
+            if not base_url or not api_key or not model:
+                raise RuntimeError("LLM 配置不完整：请配置 base_url、api_key、model")
             self.client = OpenAI(
-                base_url=CONFIG["LLM 配置"]["base_url"],
-                api_key=CONFIG["LLM 配置"]["api_key"],
+                base_url=base_url,
+                api_key=api_key,
                 timeout=120.0
             )
-            self.model = CONFIG["LLM 配置"]["model"]
+            self.model = model
+            self.max_tokens = int(cfg.get("max_tokens") or CONFIG["LLM 配置"]["max_tokens"])
         else:
             self.client = None
             self.model = "mock"
+            self.max_tokens = CONFIG["LLM 配置"]["max_tokens"]
 
     def chat(self, system_prompt: str, user_prompt: str, temperature: float = 0.7) -> str:
         """发送对话请求。单次请求限时 120 秒，超时或失败时抛出异常以便任务明确失败。"""
@@ -1850,7 +1861,7 @@ class LLMClient:
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=temperature,
-                max_tokens=CONFIG["LLM 配置"]["max_tokens"]
+                max_tokens=self.max_tokens
             )
             raw = response.choices[0].message.content or ""
             return self._clean_llm_output(raw)
@@ -1858,7 +1869,7 @@ class LLMClient:
             err_msg = str(e).strip()
             if "timeout" in err_msg.lower() or "timed out" in err_msg.lower() or "TimeoutError" in type(e).__name__:
                 raise RuntimeError(
-                    "LLM 请求超时(120秒)，请检查 vllm 服务地址是否可达（如 vllm.tangbuy.cn）或稍后重试"
+                    "LLM 请求超时(120秒)，请检查模型服务地址是否可达或稍后重试"
                 ) from e
             raise RuntimeError(f"LLM 调用失败: {err_msg}") from e
 
@@ -2587,10 +2598,10 @@ def _debate_supplement_block(stock_data: StockData, max_chars: int = 900) -> str
 class MultiAgentStockAnalyst:
     """多智能体股票分析师"""
 
-    def __init__(self, use_real_llm: bool = True, debate_rounds: int = 1):
+    def __init__(self, use_real_llm: bool = True, debate_rounds: int = 1, llm_config: Optional[Dict[str, Any]] = None):
         self.use_real_llm = use_real_llm
         self.debate_rounds = debate_rounds
-        self.llm = LLMClient(use_real=use_real_llm)
+        self.llm = LLMClient(use_real=use_real_llm, llm_config=llm_config)
         self.data_service = StockDataService()
         self.analyst_configs = ANALYST_PROMPTS
 

@@ -12,19 +12,24 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
     <link href="https://resource.trickle.so/vendor_lib/unpkg/lucide-static@0.516.0/font/lucide.css" rel="stylesheet">
 
     <style type="text/tailwindcss">
         /* 勿用 @layer theme：部分 Tailwind CDN 不认，易整段编译失败 */
         :root {
-            --primary-color: #22d3ee;
-            --primary-hover: #06b6d4;
-            --success-color: #34d399;
-            --danger-color: #fb7185;
-            --text-primary: #f1f5f9;
-            --text-secondary: #94a3b8;
-            --border-color: rgba(148, 163, 184, 0.22);
+            --primary-color: #60a5fa;
+            --primary-hover: #93c5fd;
+            --success-color: #4ade80;
+            --danger-color: #a3e635;
+            --text-primary: #f8fafc;
+            --text-secondary: #cbd5e1;
+            --text-muted: #94a3b8;
+            --border-color: rgba(255, 255, 255, 0.28);
+            --accent-news: #f472b6;
+            --accent-analysis: #5eead4;
+            --page-bg-top: #0b1120;
+            --page-bg-bottom: #1e293b;
         }
 
         @layer base {
@@ -32,66 +37,68 @@
                 scroll-behavior: smooth;
             }
             body {
-                font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
                 color: var(--text-primary);
                 min-height: 100vh;
                 -webkit-font-smoothing: antialiased;
-                background-color: #020617;
+                -moz-osx-font-smoothing: grayscale;
+                background-color: var(--page-bg-top);
                 background-image:
-                    radial-gradient(1200px 600px at 50% -15%, rgba(34, 211, 238, 0.14), transparent 58%),
-                    radial-gradient(800px 500px at 100% 30%, rgba(45, 212, 191, 0.07), transparent 50%),
-                    radial-gradient(700px 400px at 0% 70%, rgba(56, 189, 248, 0.06), transparent 48%),
-                    linear-gradient(165deg, #020617 0%, #0f172a 42%, #020617 100%);
+                    radial-gradient(900px 480px at 15% -10%, rgba(59, 130, 246, 0.15), transparent 55%),
+                    radial-gradient(700px 400px at 90% 10%, rgba(14, 165, 233, 0.12), transparent 50%),
+                    linear-gradient(165deg, var(--page-bg-top) 0%, var(--page-bg-bottom) 45%, #1e293b 100%);
                 background-attachment: fixed;
-            }
-            body::before {
-                content: "";
-                position: fixed;
-                inset: 0;
-                pointer-events: none;
-                z-index: 0;
-                opacity: 0.35;
-                background-image:
-                    linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px),
-                    linear-gradient(90deg, rgba(148, 163, 184, 0.06) 1px, transparent 1px);
-                background-size: 48px 48px;
-                mask-image: radial-gradient(ellipse 90% 70% at 50% 40%, black 15%, transparent 70%);
             }
         }
 
         @layer components {
+            .font-display {
+                font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+            }
+            .gx-num {
+                font-variant-numeric: tabular-nums;
+                letter-spacing: 0.02em;
+            }
             .zi-card {
                 border-radius: 1rem;
-                border: 1px solid rgba(255, 255, 255, 0.09);
-                background: rgba(15, 23, 42, 0.62);
+                border: 1px solid rgba(255, 255, 255, 0.30);
+                background: linear-gradient(168deg, rgba(255, 255, 255, 0.17) 0%, rgba(255, 255, 255, 0.08) 48%, rgba(15, 23, 42, 0.34) 100%);
                 backdrop-filter: blur(20px) saturate(165%);
                 -webkit-backdrop-filter: blur(20px) saturate(165%);
                 box-shadow:
-                    0 25px 50px -12px rgba(0, 0, 0, 0.5),
-                    0 0 0 1px rgba(34, 211, 238, 0.05),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+                    0 22px 44px -14px rgba(0, 0, 0, 0.46),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.16);
             }
             .btn {
-                @apply px-4 py-2 md:px-4 md:py-2 rounded-xl font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-950 focus:ring-cyan-400/50 text-sm md:text-base;
+                @apply inline-flex items-center justify-center rounded-xl px-3 py-1.5 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 md:px-4 md:py-2 md:text-base;
+                --tw-ring-offset-color: #1e293b;
             }
             .btn-sm {
                 @apply px-3 py-1.5 text-xs md:text-sm rounded-lg;
             }
             .btn-primary {
-                @apply text-white border-0;
-                background: linear-gradient(135deg, #0891b2 0%, #0d9488 100%);
-                box-shadow: 0 4px 24px -4px rgba(34, 211, 238, 0.35);
+                @apply text-white shadow-md shadow-blue-600/25 hover:bg-[var(--primary-hover)] focus-visible:ring-blue-500;
+                background: var(--primary-color);
             }
             .btn-primary:hover:not(:disabled) {
-                filter: brightness(1.08);
-                box-shadow: 0 6px 28px -4px rgba(34, 211, 238, 0.45);
+                filter: brightness(1.05);
             }
             .btn-secondary {
-                @apply bg-slate-800/85 text-slate-200 border border-white/10 hover:bg-slate-700/90 hover:border-cyan-400/25;
+                @apply border border-white/25 text-slate-100 shadow-sm hover:bg-white/20 focus-visible:ring-amber-400/60;
+                background: linear-gradient(165deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.06) 100%);
+            }
+            .btn-success {
+                @apply bg-[var(--success-color)] text-slate-950 shadow-md shadow-emerald-600/20 hover:brightness-110 focus-visible:ring-emerald-500;
             }
             .zi-mono-label {
                 font-family: 'JetBrains Mono', ui-monospace, monospace;
                 letter-spacing: 0.12em;
+            }
+            .input-field {
+                @apply w-full rounded-xl px-3 py-2 text-sm backdrop-blur-md transition-all duration-200 md:text-base;
+                background: rgba(15, 23, 42, 0.45);
+                border: 1px solid rgba(255, 255, 255, 0.26);
+                color: var(--text-primary);
             }
         }
     </style>
@@ -99,6 +106,7 @@
 <body>
     <div id="root"></div>
     <script src="env.js"></script>
+    <script src="env.local.js?v=20260630-model-slots"></script>
     <script>
     (function () {
       var params = new URLSearchParams(window.location.search);
@@ -115,6 +123,6 @@
     })();
     </script>
     <script type="text/babel" src="utils/databaseSync.js"></script>
-    <script type="text/babel" src="ziwei-app.js"></script>
+    <script type="text/babel" src="ziwei-app.js?v=20260630-return-source"></script>
 </body>
 </html>

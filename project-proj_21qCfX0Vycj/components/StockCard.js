@@ -436,7 +436,14 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
 
     const marketStr = stock.market === 'US' ? '美股' : stock.market === 'HK' ? '港股' : 'A股';
     const keywords = Array.isArray(stock.keywords) ? stock.keywords : [];
-    const newsUrl = 'news.html?code=' + encodeURIComponent(stock.symbol) + '&market=' + encodeURIComponent(marketStr) + (stock.name ? '&name=' + encodeURIComponent(stock.name) : '') + (keywords.length ? '&keywords=' + encodeURIComponent(keywords.join(',')) : '');
+    const returnPath = typeof window !== 'undefined'
+      ? `${window.location.pathname.split('/').pop() || 'index.html'}${window.location.search || ''}${window.location.hash || ''}`
+      : 'index.html';
+    const fromParam = '&from=' + encodeURIComponent(returnPath);
+    const detailUrl = `stock-detail.html?code=${encodeURIComponent(stock.symbol)}&market=${encodeURIComponent(marketStr)}${stock.name ? '&name=' + encodeURIComponent(stock.name) : ''}`;
+    const analysisUrl = `analysis.html?code=${encodeURIComponent(stock.symbol)}&market=${encodeURIComponent(marketStr)}${stock.name ? '&name=' + encodeURIComponent(stock.name) : ''}${fromParam}`;
+    const paipanUrl = `ziwei.html?code=${encodeURIComponent(stock.symbol)}&market=${encodeURIComponent(marketStr)}${stock.name ? '&name=' + encodeURIComponent(stock.name) : ''}${fromParam}`;
+    const newsUrl = 'news.html?code=' + encodeURIComponent(stock.symbol) + '&market=' + encodeURIComponent(marketStr) + (stock.name ? '&name=' + encodeURIComponent(stock.name) : '') + (keywords.length ? '&keywords=' + encodeURIComponent(keywords.join(',')) : '') + fromParam;
 
     const handleAddKeyword = (kw) => {
       const k = (kw || '').trim();
@@ -469,6 +476,7 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
 
       {/* 主卡片内容 */}
       <div
+        id={`stock-${stock.id}`}
         className="card transition-transform duration-200 ease-out"
         style={{ transform: `translateX(${swipeX}px)` }}
       >
@@ -478,13 +486,18 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
             <h3 className="text-xl font-bold text-[var(--text-primary)]">
               {stock.symbol}
             </h3>
-            <div className="flex items-center gap-1 flex-wrap">
-              <a href={`analysis.html?code=${encodeURIComponent(stock.symbol)}&market=${marketStr}${stock.name ? '&name=' + encodeURIComponent(stock.name) : ''}`} className="btn btn-primary btn-sm">分析</a>
-              <a href={newsUrl} className="btn btn-sm" style={{ backgroundColor: '#d02f5e', color: 'white' }}>新闻</a>
-              <button type="button" onClick={() => { try { handleRefreshPrice(); } catch (e) { console.error(e); setIsRefreshingPrice(false); } }} disabled={isRefreshingPrice} className="btn btn-success btn-sm disabled:opacity-50 touch-manipulation">{isRefreshingPrice ? '刷新中' : '刷新'}</button>
-              <button type="button" onClick={() => { try { handleFetchHistory30(); } catch (e) { console.error(e); setIsFetchingHistory(false); } }} disabled={isFetchingHistory} className="btn btn-primary btn-sm disabled:opacity-50 touch-manipulation" title="拉取最近30个交易日收盘价">{isFetchingHistory ? '…' : '30日'}</button>
-              <button type="button" onClick={() => { try { setShowDeleteConfirm(true); } catch (e) { console.error(e); } }} className="btn btn-danger btn-sm touch-manipulation md:hidden">删除</button>
-              <button type="button" onClick={onDelete} className="btn btn-danger btn-sm touch-manipulation hidden md:inline-block">删除</button>
+            <div className="flex items-center justify-end gap-1.5 flex-wrap">
+              <a href={detailUrl} className="btn btn-secondary btn-sm min-w-[3.25rem]">详情</a>
+              <a href={analysisUrl} className="btn btn-primary btn-sm min-w-[3.25rem]">分析</a>
+              <a href={paipanUrl} className="btn btn-accent-paipan btn-sm min-w-[3.25rem]">排盘</a>
+              <a href={newsUrl} className="btn btn-accent-news btn-sm min-w-[3.25rem]">新闻</a>
+              <button type="button" onClick={() => { try { handleRefreshPrice(); } catch (e) { console.error(e); setIsRefreshingPrice(false); } }} disabled={isRefreshingPrice} className="btn btn-success btn-sm min-w-[3.25rem] disabled:opacity-50 touch-manipulation">{isRefreshingPrice ? '刷新中' : '刷新'}</button>
+              <button type="button" onClick={() => { try { setShowDeleteConfirm(true); } catch (e) { console.error(e); } }} className="btn btn-danger btn-sm p-1.5 touch-manipulation md:hidden" title="删除" aria-label="删除">
+                <div className="icon-trash-2 text-sm"></div>
+              </button>
+              <button type="button" onClick={onDelete} className="btn btn-danger btn-sm p-1.5 touch-manipulation hidden md:inline-flex" title="删除" aria-label="删除">
+                <div className="icon-trash-2 text-sm"></div>
+              </button>
               <button type="button" onClick={onToggleCollapse} className="btn btn-secondary btn-sm p-1.5 touch-manipulation" title={isCollapsed ? '展开' : '折叠'} aria-label={isCollapsed ? '展开' : '折叠'}>
                 <div className={`icon-chevron-${isCollapsed ? 'down' : 'up'} text-sm`}></div>
               </button>
@@ -544,47 +557,63 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
 
       {!isCollapsed && (
         <>
-          <MarketDataSection stock={stock} />
-          <StockCharts stock={stock} />
-          <HoldingsAnalysisSection stockAnalysis={stockAnalysis} stock={stock} />
-        
-        <HoldingsSectionErrorBoundary>
-          <PositionsSection
-            stock={stock}
-            brokerChannel={brokerChannel}
-            onUpdatePosition={handleUpdatePosition}
-            onDeletePosition={handleDeletePosition}
-            showPositionForm={showPositionForm}
-            setShowPositionForm={setShowPositionForm}
-            editingPosition={editingPosition}
-            setEditingPosition={setEditingPosition}
-            showBuyFeesDetail={showBuyFeesDetail}
-            setShowBuyFeesDetail={setShowBuyFeesDetail}
-            onAddPosition={handleAddPosition}
-          />
-        </HoldingsSectionErrorBoundary>
+          <div className="mt-3 rounded-2xl border border-white/12 bg-slate-950/18 p-3">
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+              <div className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2">
+                <div className="text-[11px] text-slate-400">当前市值</div>
+                <div className="gx-num mt-0.5 text-sm font-bold text-slate-100 tabular-nums">
+                  {formatPrice(stockAnalysis.currentValue, 2)}
+                </div>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2">
+                <div className="text-[11px] text-slate-400">浮动盈亏</div>
+                <div className={`gx-num mt-0.5 text-sm font-bold tabular-nums ${stockAnalysis.profit >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                  {stockAnalysis.profit >= 0 ? '+' : ''}{formatPrice(stockAnalysis.profit, 2)}
+                </div>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2">
+                <div className="text-[11px] text-slate-400">平均成本</div>
+                <div className="gx-num mt-0.5 text-sm font-bold text-slate-100 tabular-nums">
+                  {formatPrice(stockAnalysis.avgCost, 3)}
+                </div>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2">
+                <div className="text-[11px] text-slate-400">有效股数</div>
+                <div className="gx-num mt-0.5 text-sm font-bold text-slate-100 tabular-nums">
+                  {formatPrice(stockAnalysis.totalShares, 0)}
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3">
+              <p className="text-xs text-slate-400">
+                完整持仓批次、价格趋势、卖出模拟和费率测算已迁入详情页，首页只保留决策摘要。
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setShowPositionForm(true)}
+                  className="btn btn-primary btn-sm gap-1.5"
+                >
+                  <div className="icon-plus text-sm"></div>
+                  <span>加仓</span>
+                </button>
+                <a href={detailUrl} className="btn btn-secondary btn-sm gap-1.5">
+                  <div className="icon-layout-dashboard text-sm"></div>
+                  <span>查看详情</span>
+                </a>
+              </div>
+            </div>
+          </div>
 
-        <SellSimulationSection
-          sellSimulations={sellSimulations}
-          addSellSimulation={addSellSimulation}
-          updateSellSimulation={updateSellSimulation}
-          removeSellSimulation={removeSellSimulation}
-          stock={stock}
-          brokerChannel={brokerChannel}
-          stockAnalysis={stockAnalysis}
-          showFeeModal={showFeeModal}
-          setShowFeeModal={setShowFeeModal}
-          onConfirmSell={handleConfirmSell}
-          capitalPool={capitalPool}
-          onUpdateCapitalPool={onUpdateCapitalPool}
-        />
-
-            <FeeStructureSection 
-              brokerChannel={brokerChannel}
+          {showPositionForm && (
+            <PositionForm
               stock={stock}
-              showFeeModal={showFeeModal}
-              setShowFeeModal={setShowFeeModal}
+              onAdd={handleAddPosition}
+              onClose={() => setShowPositionForm(false)}
+              brokerChannel={brokerChannel}
+              onBrokerChannelChange={handleBrokerChannelChange}
             />
+          )}
           </>
         )}
         {/* 删除确认弹窗 */}

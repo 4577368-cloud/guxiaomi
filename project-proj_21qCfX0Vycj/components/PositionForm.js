@@ -1,8 +1,9 @@
-function PositionForm({ stock, position, onAdd, onClose }) {
+function PositionForm({ stock, position, onAdd, onClose, brokerChannel, onBrokerChannelChange, showBrokerChannel = true }) {
   var s = stock && typeof stock === "object" ? stock : {};
   var market = s.market === "US" ? "US" : s.market === "CN" ? "CN" : "HK";
+  const [channel, setChannel] = React.useState(brokerChannel || s.brokerChannel || 'futu');
   const [formData, setFormData] = React.useState({
-    price: position?.price || '',
+    price: position?.price || (s.currentPrice ? String(s.currentPrice) : ''),
     shares: position?.shares || '',
     date: position?.date || new Date().toISOString().split('T')[0]
   });
@@ -15,10 +16,15 @@ function PositionForm({ stock, position, onAdd, onClose }) {
     var sh = parseInt(formData.shares, 10);
     if (!Number.isFinite(pr) || pr < 0 || !Number.isFinite(sh) || sh <= 0) return;
 
+    if (onBrokerChannelChange && channel) {
+      onBrokerChannelChange(channel);
+    }
+
     onAdd({
       price: pr,
       shares: sh,
       date: formData.date,
+      brokerChannel: channel,
       enabled: true
     });
   };
@@ -27,7 +33,7 @@ function PositionForm({ stock, position, onAdd, onClose }) {
     <div className="modal-overlay">
       <div className="modal-panel mx-auto max-h-[90vh] overflow-y-auto">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-display text-lg font-semibold text-slate-900">
+          <h3 className="font-display text-lg font-semibold text-slate-50">
             {position ? '编辑持仓记录' : '添加持仓记录'}
           </h3>
           <button type="button" onClick={onClose} className="rounded-lg p-1 text-slate-400 transition-colors hover:bg-white/60 hover:text-slate-600">
@@ -36,6 +42,23 @@ function PositionForm({ stock, position, onAdd, onClose }) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {showBrokerChannel && (
+            <div>
+              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
+                购入渠道
+              </label>
+              <select
+                value={channel}
+                onChange={(e) => setChannel(e.target.value)}
+                className="input-field"
+              >
+                <option value="futu">富途</option>
+                <option value="longbridge">长桥</option>
+                <option value="boc">中银</option>
+              </select>
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
               买入价格 ({market === "US" ? "USD" : market === "CN" ? "CNY" : "HKD"})
