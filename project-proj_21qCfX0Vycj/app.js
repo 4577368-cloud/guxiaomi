@@ -653,7 +653,7 @@ function App() {
                   </button>
                   <a
                     href="analysis.html?from=index.html"
-                    className="btn btn-accent-analysis top-action gap-1.5"
+                    className="btn btn-accent-news top-action gap-1.5"
                   >
                     <div className="icon-bar-chart-2 text-sm"></div>
                     <span>分析</span>
@@ -664,13 +664,6 @@ function App() {
                   >
                     <div className="icon-sparkles text-sm"></div>
                     <span>排盘</span>
-                  </a>
-                  <a
-                    href="news.html?from=index.html"
-                    className="btn btn-accent-news top-action gap-1.5"
-                  >
-                    <div className="icon-newspaper text-sm"></div>
-                    <span>新闻</span>
                   </a>
                   <button
                     type="button"

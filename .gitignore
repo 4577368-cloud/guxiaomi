@@ -23,3 +23,5 @@ reports/*.json
 reports/*.md
 reports/*.html
 predictions/*.json
+.vercel
+.env*.local

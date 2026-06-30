@@ -1099,7 +1099,7 @@ function DetailInlineAnalysis({ stock, onReportDone, className }) {
 
   return (
     <>
-      <button type="button" onClick={run} disabled={running} className={`btn btn-accent-analysis btn-sm disabled:opacity-50 ${className || ''}`}>
+      <button type="button" onClick={run} disabled={running} className={`btn btn-accent-analysis btn-sm min-w-[4.5rem] disabled:opacity-50 ${className || ''}`}>
         {running ? '分析中…' : '分析'}
       </button>
       {status && <div className="basis-full rounded-xl border border-cyan-300/20 bg-cyan-400/10 px-3 py-2 text-xs text-cyan-100">{status}</div>}

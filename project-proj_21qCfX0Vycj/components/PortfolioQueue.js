@@ -61,7 +61,6 @@ function PortfolioQueue({ portfolio, capitalPool, summary, isRefreshing, onAddSt
       const fromParam = `&from=${encodeURIComponent(returnPath)}`;
       const detailUrl = `stock-detail.html?code=${encodeURIComponent(stock.symbol)}&market=${encodeURIComponent(marketLabel)}${stock.name ? '&name=' + encodeURIComponent(stock.name) : ''}`;
       const analysisUrl = `analysis.html?code=${encodeURIComponent(stock.symbol)}&market=${encodeURIComponent(marketLabel)}${stock.name ? '&name=' + encodeURIComponent(stock.name) : ''}${fromParam}`;
-      const newsUrl = `news.html?code=${encodeURIComponent(stock.symbol)}&market=${encodeURIComponent(marketLabel)}${stock.name ? '&name=' + encodeURIComponent(stock.name) : ''}${fromParam}`;
       return {
         idx,
         stock,
@@ -76,7 +75,6 @@ function PortfolioQueue({ portfolio, capitalPool, summary, isRefreshing, onAddSt
         currency,
         detailUrl,
         analysisUrl,
-        newsUrl,
       };
     });
 
@@ -124,7 +122,7 @@ function PortfolioQueue({ portfolio, capitalPool, summary, isRefreshing, onAddSt
     const totalDailyProfit = todayProfitForRows(sortedRows);
 
     return (
-      <section className="mb-4 rounded-2xl border border-white/10 bg-white/[0.045] p-3 shadow-lg backdrop-blur-md" data-name="portfolio-queue" data-file="components/PortfolioQueue.js">
+      <section className="card mb-4 p-4" data-name="portfolio-queue" data-file="components/PortfolioQueue.js">
         <div className="mb-3 flex flex-wrap items-start justify-between gap-3 px-1">
           <div>
             <h2 className="font-display flex items-center gap-2 text-sm font-bold text-slate-100 md:text-base">
@@ -253,7 +251,6 @@ function PortfolioQueue({ portfolio, capitalPool, summary, isRefreshing, onAddSt
                       onClick={(e) => e.stopPropagation()}
                       className="absolute right-0 top-7 z-50 w-32 overflow-hidden rounded-xl border border-white/15 bg-slate-950/95 p-1 shadow-2xl shadow-black/40 backdrop-blur-xl"
                     >
-                      <a href={row.newsUrl} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-medium text-slate-200 hover:bg-white/[0.08]">新闻</a>
                       <button
                         type="button"
                         onClick={() => {

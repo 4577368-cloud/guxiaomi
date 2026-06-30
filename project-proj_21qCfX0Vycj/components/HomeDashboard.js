@@ -148,6 +148,7 @@ function HomeDashboard({ portfolio, watchlist, summary, capitalPool, onUpdateCap
     const [dailyRunning, setDailyRunning] = React.useState(false);
     const [dailyError, setDailyError] = React.useState('');
     const [expandedDailyId, setExpandedDailyId] = React.useState('');
+    const [expandedCard, setExpandedCard] = React.useState(null); // 'movers' | 'tasks' | null
     const [editingCapital, setEditingCapital] = React.useState(false);
     const [capitalDraft, setCapitalDraft] = React.useState({
       usd: Number(capitalPool?.usd) || 0,
@@ -681,7 +682,20 @@ function HomeDashboard({ portfolio, watchlist, summary, capitalPool, onUpdateCap
                 <div className="icon-zap text-amber-300"></div>
                 今日异动
               </h3>
-              <span className="text-xs text-slate-500">{movers.length} 条</span>
+              <div className="flex items-center gap-2">
+                {movers.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setExpandedCard('movers')}
+                    className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/[0.08] text-slate-300 transition-colors hover:bg-white/[0.14] hover:text-slate-100"
+                    title="展开查看全部"
+                    aria-label="展开查看全部"
+                  >
+                    <div className="icon-maximize-2 text-xs"></div>
+                  </button>
+                )}
+                <span className="text-xs text-slate-500">{movers.length} 条</span>
+              </div>
             </div>
             {movers.length === 0 ? (
               <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 text-sm text-slate-400">
@@ -713,7 +727,20 @@ function HomeDashboard({ portfolio, watchlist, summary, capitalPool, onUpdateCap
                 <div className="icon-list-checks text-sky-300"></div>
                 待处理事项
               </h3>
-              <span className="text-xs text-slate-500">{tasks.length} 项</span>
+              <div className="flex items-center gap-2">
+                {tasks.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setExpandedCard('tasks')}
+                    className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/[0.08] text-slate-300 transition-colors hover:bg-white/[0.14] hover:text-slate-100"
+                    title="展开查看全部"
+                    aria-label="展开查看全部"
+                  >
+                    <div className="icon-maximize-2 text-xs"></div>
+                  </button>
+                )}
+                <span className="text-xs text-slate-500">{tasks.length} 项</span>
+              </div>
             </div>
             <div className="gx-soft-scrollbar max-h-[7.5rem] space-y-2 overflow-y-auto pr-1">
               {tasks.map((task, idx) => (
@@ -735,6 +762,87 @@ function HomeDashboard({ portfolio, watchlist, summary, capitalPool, onUpdateCap
             </div>
           </div>
         </div>
+
+        {expandedCard && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            onClick={(e) => e.target === e.currentTarget && setExpandedCard(null)}
+          >
+            <div className="w-full max-w-lg max-h-[80vh] overflow-hidden rounded-2xl border border-white/20 bg-slate-900/95 p-5 shadow-2xl">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="flex items-center gap-2 text-lg font-bold text-slate-50">
+                  {expandedCard === 'movers' ? (
+                    <>
+                      <div className="icon-zap text-amber-300"></div>
+                      今日异动 ({movers.length} 条)
+                    </>
+                  ) : (
+                    <>
+                      <div className="icon-list-checks text-sky-300"></div>
+                      待处理事项 ({tasks.length} 项)
+                    </>
+                  )}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setExpandedCard(null)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/10 hover:text-slate-100"
+                  aria-label="关闭"
+                >
+                  <div className="icon-x text-lg"></div>
+                </button>
+              </div>
+              <div className="gx-soft-scrollbar max-h-[60vh] space-y-2 overflow-y-auto pr-1">
+                {expandedCard === 'movers' ? (
+                  movers.length === 0 ? (
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4 text-sm text-slate-400">
+                      暂无明显异动。
+                    </div>
+                  ) : (
+                    movers.map((item) => (
+                      <a
+                        key={`modal-${item.source}-${item.market}-${item.symbol}`}
+                        href={item.detailUrl}
+                        className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3 transition-colors hover:border-cyan-300/35 hover:bg-white/[0.1]"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate font-bold text-slate-100">{item.symbol}</span>
+                            <span className="rounded-full bg-white/[0.08] px-2 py-0.5 text-[10px] text-slate-400">{item.source}</span>
+                          </div>
+                          {item.name && item.name !== item.symbol && (
+                            <div className="truncate text-xs text-slate-500">{item.name}</div>
+                          )}
+                        </div>
+                        <span className={`gx-num shrink-0 text-sm font-bold tabular-nums ${Number(item.changePercent) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                          {Number(item.changePercent) >= 0 ? '+' : ''}{Number(item.changePercent).toFixed(2)}%
+                        </span>
+                      </a>
+                    ))
+                  )
+                ) : (
+                  tasks.map((task, idx) => (
+                    <div
+                      key={`modal-task-${idx}`}
+                      className={`rounded-xl border px-4 py-3 ${
+                        task.tone === 'red'
+                          ? 'border-rose-300/20 bg-rose-400/10'
+                          : task.tone === 'amber'
+                            ? 'border-amber-300/20 bg-amber-400/10'
+                            : task.tone === 'green'
+                              ? 'border-emerald-300/20 bg-emerald-400/10'
+                              : 'border-white/10 bg-white/[0.06]'
+                      }`}
+                    >
+                      <div className="text-sm font-semibold text-slate-100">{task.title}</div>
+                      {task.desc && <div className="mt-1 text-xs text-slate-400">{task.desc}</div>}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </section>
       <section className="card mb-4 p-4" data-name="investment-daily-card" data-file="components/HomeDashboard.js">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">

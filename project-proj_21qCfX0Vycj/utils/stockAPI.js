@@ -42,12 +42,23 @@ async function fetchExchangeRates() {
     }
     
     console.log('开始获取实时汇率...');
-    const response = await fetch('https://api.frankfurter.app/latest?from=USD&to=HKD,CNY');
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    const apiUrl = 'https://api.frankfurter.app/latest?from=USD&to=HKD,CNY';
+    let response;
+    try {
+      const proxyUrl = `https://proxy-api.trickle-app.host/?url=${encodeURIComponent(apiUrl)}`;
+      response = await fetch(proxyUrl, {
+        method: 'GET',
+        headers: { Accept: '*/*' },
+      });
+      if (!response.ok) throw new Error(`proxy status ${response.status}`);
+    } catch (proxyErr) {
+      console.warn('汇率代理请求失败，尝试直连:', proxyErr.message);
+      response = await fetch(apiUrl);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
     }
-    
+
     const data = await response.json();
     
     if (data.rates && data.rates.HKD) {

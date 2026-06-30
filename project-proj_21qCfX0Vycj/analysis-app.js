@@ -569,6 +569,42 @@ function groupPredictionsByDate(items, trendType, symbolType) {
   return { grouped: grouped, keys: keys };
 }
 
+/** 按日期汇总有哪些日/周/月快照，忽略趋势方向（用于同时展示看涨/看跌） */
+function groupPredictionsByDateAllTrends(items, symbolType) {
+  var grouped = {};
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
+    var parsed = parseScreenerBaseName(item.base_name);
+    if (!parsed || parsed.st !== symbolType) continue;
+    var dk = savedAtToDateKey(item.saved_at);
+    if (!dk) continue;
+    if (!grouped[dk]) grouped[dk] = { 0: null, 1: null, 2: null };
+    var pt = parsed.pt;
+    if (pt >= 0 && pt <= 2) grouped[dk][pt] = true;
+  }
+  var keys = Object.keys(grouped).sort(function (a, b) {
+    return b.localeCompare(a);
+  });
+  return { grouped: grouped, keys: keys };
+}
+
+/** 判断指定日期、资产、周期是否至少有一个趋势方向存在快照 */
+function hasScreenerSnapshotForPeriodAnyTrend(
+  items,
+  dateKey,
+  symbolType,
+  periodTab,
+) {
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
+    var parsed = parseScreenerBaseName(item.base_name);
+    if (!parsed || parsed.st !== symbolType) continue;
+    if (parsed.pt !== periodTab) continue;
+    if (savedAtToDateKey(item.saved_at) === dateKey) return true;
+  }
+  return false;
+}
+
 function formatReportValue(val) {
   if (val == null) return "";
   if (typeof val !== "object") return String(val);
@@ -1153,6 +1189,10 @@ function AnalysisApp() {
       use_mock: false,
     };
   });
+  const formRef = React.useRef(form);
+  React.useEffect(function () {
+    formRef.current = form;
+  }, [form]);
   const [modelOptions, setModelOptions] = React.useState(FALLBACK_MODEL_OPTIONS);
   const [selectedModelKey, setSelectedModelKey] = React.useState(function () {
     try {
@@ -1231,7 +1271,8 @@ function AnalysisApp() {
   /** Intellectia 选股器 / 股票预测快照 */
   const [predList, setPredList] = React.useState([]);
   const [predListLoading, setPredListLoading] = React.useState(true);
-  const [predDetail, setPredDetail] = React.useState(null);
+  const [predBullDetail, setPredBullDetail] = React.useState(null);
+  const [predBearDetail, setPredBearDetail] = React.useState(null);
   const [predFetchLoading, setPredFetchLoading] = React.useState(false);
   const [predError, setPredError] = React.useState("");
   const [predParams, setPredParams] = React.useState({
@@ -1439,9 +1480,16 @@ function AnalysisApp() {
     loadPredList({ initial: true });
   }, [loadPredList]);
 
-  const applyScreenerDetailPayload = React.useCallback(function (j) {
+  const applyScreenerDetailPayload = React.useCallback(function (j, trendType) {
     if (!j || !j.base_name) return;
-    setPredDetail(j);
+    var tt = trendType != null ? Number(trendType) : null;
+    if (tt === 0) setPredBullDetail(j);
+    else if (tt === 1) setPredBearDetail(j);
+    else {
+      // 未指定趋势时按当前选择回写（兼容旧缓存）
+      if (predParams.trend_type === 1) setPredBearDetail(j);
+      else setPredBullDetail(j);
+    }
     var pt =
       j.period_type != null && !Number.isNaN(Number(j.period_type))
         ? Math.min(2, Math.max(0, parseInt(String(j.period_type), 10)))
@@ -1466,19 +1514,23 @@ function AnalysisApp() {
         ? Number(j.data.total)
         : null;
     setPredRemoteTotal(tot != null && !Number.isNaN(tot) ? tot : null);
-  }, []);
+  }, [predParams.trend_type]);
 
-  const loadScreenerDetail = async (baseName) => {
+  const loadScreenerDetail = async (baseName, trendType) => {
     setPredError("");
+    var tt = trendType != null ? Number(trendType) : null;
     if (!baseName) {
-      setPredDetail(null);
+      if (tt === 0) setPredBullDetail(null);
+      else if (tt === 1) setPredBearDetail(null);
+      else {
+        setPredBullDetail(null);
+        setPredBearDetail(null);
+      }
       return;
     }
     var cached = getCachedScreenerBody(baseName);
     if (cached && cached.base_name) {
-      applyScreenerDetailPayload(cached);
-    } else {
-      setPredDetail(null);
+      applyScreenerDetailPayload(cached, tt);
     }
     try {
       const res = await fetch(
@@ -1495,7 +1547,7 @@ function AnalysisApp() {
           typeof d === "string" ? d : d ? JSON.stringify(d) : "加载失败",
         );
       }
-      applyScreenerDetailPayload(j);
+      applyScreenerDetailPayload(j, tt);
       cacheScreenerBody(baseName, j);
     } catch (e) {
       if (cached && cached.base_name) {
@@ -1503,7 +1555,12 @@ function AnalysisApp() {
         return;
       }
       setPredError(e.message || "加载预测快照失败");
-      setPredDetail(null);
+      if (tt === 0) setPredBullDetail(null);
+      else if (tt === 1) setPredBearDetail(null);
+      else {
+        setPredBullDetail(null);
+        setPredBearDetail(null);
+      }
     }
   };
 
@@ -1511,25 +1568,29 @@ function AnalysisApp() {
     setPredError("");
     setPredFetchLoading(true);
     try {
-      for (var pi = 0; pi < 3; pi++) {
-        const res = await fetch(`${apiBase}/api/screener/fetch`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            period_type: pi,
-            trend_type: predParams.trend_type,
-            symbol_type: predParams.symbol_type,
-            page: predParams.page,
-            size: predParams.size,
-          }),
-        });
-        await res.json().catch(() => ({}));
-        /* 某一周期未取到数据时不提示报错 */
-      }
+      // 同时获取看涨（0）与看跌（1）两个趋势，用于下方分表展示
+      await Promise.all(
+        [0, 1].map(async function (tt) {
+          for (var pi = 0; pi < 3; pi++) {
+            const res = await fetch(`${apiBase}/api/screener/fetch`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                period_type: pi,
+                trend_type: tt,
+                symbol_type: predParams.symbol_type,
+                page: predParams.page,
+                size: predParams.size,
+              }),
+            });
+            await res.json().catch(() => ({}));
+            /* 某一周期未取到数据时不提示报错 */
+          }
+        }),
+      );
       var items = await loadPredList();
-      var tt = predParams.trend_type;
       var st = predParams.symbol_type;
-      var g = groupPredictionsByDate(items, tt, st);
+      var g = groupPredictionsByDateAllTrends(items, st);
       var keys = g.keys;
       var grouped = g.grouped;
       var tk = localDateKey();
@@ -1546,7 +1607,8 @@ function AnalysisApp() {
         }
       } else {
         setSelectedPredDateKey(null);
-        setPredDetail(null);
+        setPredBullDetail(null);
+        setPredBearDetail(null);
         setPredRemoteTotal(null);
       }
       setPredError("");
@@ -1604,22 +1666,22 @@ function AnalysisApp() {
         saveScreenerListCache(next);
         return next;
       });
-      if (predDetail && predDetail.base_name === baseName) setPredDetail(null);
+      if (predBullDetail && predBullDetail.base_name === baseName) setPredBullDetail(null);
+      if (predBearDetail && predBearDetail.base_name === baseName) setPredBearDetail(null);
     } catch (e) {
       setPredError(e.message || "删除失败");
     }
   };
 
-  /** groupPredictionsByDate 返回 { grouped, keys }，勿写成 predGrouped/predDateKeys 以免白屏 */
+  /** 同时汇总看涨/看跌两个方向的日期，避免只展示单方向快照 */
   const { grouped: predGrouped, keys: predDateKeys } = React.useMemo(
     function () {
-      return groupPredictionsByDate(
+      return groupPredictionsByDateAllTrends(
         predList,
-        predParams.trend_type,
         predParams.symbol_type,
       );
     },
-    [predList, predParams.trend_type, predParams.symbol_type],
+    [predList, predParams.symbol_type],
   );
 
   React.useEffect(
@@ -1636,13 +1698,13 @@ function AnalysisApp() {
     [predDateKeys],
   );
 
-  const currentPredSnapshotName = React.useMemo(
+  const currentBullSnapshotName = React.useMemo(
     function () {
       if (!selectedPredDateKey) return null;
       return findScreenerSnapshotName(
         predList,
         selectedPredDateKey,
-        predParams.trend_type,
+        0,
         predParams.symbol_type,
         predPeriodTab,
         predParams.page,
@@ -1651,7 +1713,27 @@ function AnalysisApp() {
     [
       predList,
       selectedPredDateKey,
-      predParams.trend_type,
+      predParams.symbol_type,
+      predParams.page,
+      predPeriodTab,
+    ],
+  );
+
+  const currentBearSnapshotName = React.useMemo(
+    function () {
+      if (!selectedPredDateKey) return null;
+      return findScreenerSnapshotName(
+        predList,
+        selectedPredDateKey,
+        1,
+        predParams.symbol_type,
+        predPeriodTab,
+        predParams.page,
+      );
+    },
+    [
+      predList,
+      selectedPredDateKey,
       predParams.symbol_type,
       predParams.page,
       predPeriodTab,
@@ -1660,13 +1742,16 @@ function AnalysisApp() {
 
   React.useEffect(
     function () {
-      if (!currentPredSnapshotName) {
-        setPredDetail(null);
-        return;
-      }
-      loadScreenerDetail(currentPredSnapshotName);
+      loadScreenerDetail(currentBullSnapshotName, 0);
     },
-    [currentPredSnapshotName],
+    [currentBullSnapshotName],
+  );
+
+  React.useEffect(
+    function () {
+      loadScreenerDetail(currentBearSnapshotName, 1);
+    },
+    [currentBearSnapshotName],
   );
 
   const stockTags = React.useMemo(() => {
@@ -1738,8 +1823,9 @@ function AnalysisApp() {
     }
   };
 
-  const runAnalysis = async () => {
-    if (!form.stock_code.trim()) {
+  const runAnalysis = async (opts) => {
+    const f = (opts && opts.overrideForm) || formRef.current || form;
+    if (!f.stock_code.trim()) {
       setError("请输入股票代码");
       return;
     }
@@ -1763,16 +1849,16 @@ function AnalysisApp() {
         if (!t || !String(t).trim()) return "";
         var line = String(t).split(/\r?\n/)[0].trim();
         return line.length > 80 ? line.slice(0, 80) : line;
-      })(form.user_data_notes);
+      })(f.user_data_notes);
       try {
         if (typeof getStockPrice === "function") {
           var stockApiMkt =
-            form.market === "港股"
+            f.market === "港股"
               ? "HK"
-              : form.market === "美股"
+              : f.market === "美股"
                 ? "US"
                 : "CN";
-          var pq = await getStockPrice(form.stock_code.trim(), stockApiMkt);
+          var pq = await getStockPrice(f.stock_code.trim(), stockApiMkt);
           if (pq && pq.isMock !== true && Number(pq.price) > 0) {
             clientQuote = {
               price: Number(pq.price),
@@ -1789,11 +1875,11 @@ function AnalysisApp() {
         console.warn("分析前浏览器询价失败（将依赖服务端拉数）", eq);
       }
       var analyzeBody = JSON.stringify({
-        stock_code: form.stock_code.trim(),
-        market: marketMap[form.market] || form.market,
-        user_data_notes: form.user_data_notes.trim() || null,
-        days: form.days,
-        use_mock: form.use_mock,
+        stock_code: f.stock_code.trim(),
+        market: marketMap[f.market] || f.market,
+        user_data_notes: f.user_data_notes.trim() || null,
+        days: f.days,
+        use_mock: f.use_mock,
         client_quote: clientQuote,
         model_key: selectedModelKey,
       });
@@ -2016,6 +2102,47 @@ function AnalysisApp() {
     }
   };
 
+  const deleteAllHistoryReports = async () => {
+    if (
+      !window.confirm(
+        "确定删除全部历史报告吗？将同时删除已保存的 JSON / MD / HTML 文件，且不可恢复。",
+      )
+    ) {
+      return;
+    }
+    setError("");
+    try {
+      var itemsToDelete = historyList.slice();
+      itemsToDelete.forEach(function (item) {
+        if (item && item.base_name) {
+          addDeletedReportBaseName(item.base_name);
+          removeCachedReportBody(item.base_name);
+        }
+      });
+      setHistoryList([]);
+      saveHistoryListCache([]);
+      await Promise.allSettled(
+        itemsToDelete.map(function (item) {
+          if (!item || !item.base_name) return Promise.resolve();
+          return fetch(`${apiBase}/api/reports/delete`, {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ name: item.base_name }),
+          }).catch(function () {});
+        }),
+      );
+      if (report) {
+        setReport(null);
+        setChatOpen(false);
+      }
+    } catch (e) {
+      setError(e.message || "删除全部报告失败");
+    }
+  };
+
   const openDeepDiagnosis = () => {
     if (!report) return;
     if (chatOpen) {
@@ -2179,7 +2306,7 @@ function AnalysisApp() {
     if (apiUsage.apis.length === 0 && !apiUsage.loading) fetchApiUsage();
   };
 
-  /** 加入监控列表 */
+  /** 加入关注列表 */
   const handleAddToWatchlistFromPred = function (row) {
     if (!row || !row.symbol) {
       alert('股票代码无效');
@@ -2204,13 +2331,69 @@ function AnalysisApp() {
     if (window.addToWatchlist) {
       var result = window.addToWatchlist(stockData);
       if (result.success) {
-        alert('已添加到监控列表');
+        alert('已添加到关注列表');
       } else {
-        alert(result.message || '该股票已在监控列表中');
+        alert(result.message || '该股票已在关注列表中');
       }
     } else {
-      alert('监控功能不可用，请确保已正确加载');
+      alert('关注功能不可用，请确保已正确加载');
     }
+  };
+
+  /** 从预测列表直接分析：获取行情后填充表单并触发分析 */
+  const handleAnalyzeFromPred = async function (row) {
+    if (!row || !row.symbol) {
+      alert('股票代码无效');
+      return;
+    }
+    if (analysisSubmitting) return;
+
+    var symbol = String(row.symbol || '').trim().toUpperCase();
+    var code = String(row.code || '').trim();
+    var name = String(row.name || '').trim();
+
+    // 判断市场：优先根据 symbol / code 规则，兜底美股
+    var market = '美股';
+    if (/^\d{6}$/.test(symbol) || /^\d{6}$/.test(code) || /^(0|3|6)\d{5}$/.test(code)) {
+      market = 'A股';
+    } else if (/^\d{5}$/.test(symbol) || /^\d{5}$/.test(code) || /^HK/i.test(code)) {
+      market = '港股';
+    }
+
+    // 回到分析工作台并预填表单
+    scrollToAnalysisWorkbench();
+    var baseNotes = name || '';
+    var nextForm = {
+      ...form,
+      stock_code: symbol,
+      market: market,
+      user_data_notes: baseNotes,
+    };
+    setForm(nextForm);
+
+    // 先获取实时行情，再自动触发分析
+    setPredFetchLoading(true);
+    try {
+      var stockApiMkt = market === '港股' ? 'HK' : market === '美股' ? 'US' : 'CN';
+      var priceData = await getStockPrice(symbol, stockApiMkt);
+      if (priceData && Number(priceData.price) > 0) {
+        var priceNote = '当前价 ' + priceData.price;
+        if (priceData.changePercent != null && !Number.isNaN(Number(priceData.changePercent))) {
+          priceNote += ' (' + (Number(priceData.changePercent) >= 0 ? '+' : '') + priceData.changePercent + '%)';
+        }
+        nextForm = {
+          ...nextForm,
+          user_data_notes: baseNotes ? baseNotes + ' · ' + priceNote : priceNote,
+        };
+        setForm(nextForm);
+      }
+    } catch (err) {
+      console.warn('预测列表分析前询价失败:', err);
+      alert('未能获取实时行情，将使用服务端数据继续分析');
+    } finally {
+      setPredFetchLoading(false);
+    }
+    runAnalysis({ overrideForm: nextForm });
   };
 
   /** 从报告区回到上方：分析表单 / 历史 / 预测 */
@@ -2222,6 +2405,101 @@ function AnalysisApp() {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }, []);
+
+  /** 渲染看涨/看跌单张预测表 */
+  function renderPredictionTable(detail, title, titleClass) {
+    if (
+      !detail ||
+      (detail.period_type != null &&
+        Number(detail.period_type) !== predPeriodTab)
+    ) {
+      return null;
+    }
+    var rows = (detail.data && detail.data.list) || [];
+    return (
+      <div className="shrink-0 overflow-hidden rounded-xl border border-white/12 bg-slate-950/22">
+        <div className={`px-2.5 py-1.5 text-xs font-semibold border-b border-white/8 ${titleClass}`}>
+          {title}
+        </div>
+        <div className="max-h-[min(28vh,280px)] min-h-[100px] flex-1 overflow-y-auto overflow-x-auto">
+          <table className="w-full text-xs md:text-sm">
+            <thead className="sticky top-0 bg-slate-950/95 text-left text-slate-300 backdrop-blur-md">
+              <tr>
+                <th className="p-1.5 font-medium">代码</th>
+                <th className="p-1.5 font-medium">标的</th>
+                <th className="p-1.5 font-medium">名称</th>
+                <th className="p-1.5 font-medium">价格</th>
+                <th className="p-1.5 font-medium">涨跌%</th>
+                <th className="p-1.5 font-medium">概率</th>
+                <th className="p-1.5 font-medium">profit</th>
+                <th className="p-1.5 font-medium">操作</th>
+                <th className="p-1.5 font-medium">分析</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, ri) => (
+                <tr
+                  key={ri}
+                  className="border-t border-white/8 text-slate-200 hover:bg-white/[0.06]"
+                >
+                  <td className="p-1.5 font-mono text-[11px] text-slate-300 md:text-xs">
+                    {row.code || "—"}
+                  </td>
+                  <td className="p-1.5 font-semibold text-slate-50">{row.symbol || "—"}</td>
+                  <td className="max-w-[200px] truncate p-1.5 text-slate-300" title={row.name}>
+                    {row.name || "—"}
+                  </td>
+                  <td className="gx-num p-1.5 tabular-nums text-amber-100">{row.price != null ? row.price : "—"}</td>
+                  <td className="gx-num p-1.5 tabular-nums text-slate-200">
+                    {row.change_ratio != null ? row.change_ratio : "—"}
+                  </td>
+                  <td className="gx-num p-1.5 tabular-nums text-cyan-200">
+                    {row.probability != null ? row.probability : "—"}
+                  </td>
+                  <td className="gx-num p-1.5 tabular-nums text-emerald-200">
+                    {row.profit != null ? row.profit : "—"}
+                  </td>
+                  <td className="p-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleAddToWatchlistFromPred(row)}
+                      className="btn btn-xs bg-cyan-500 text-white hover:bg-cyan-600 border-0 shrink-0 min-w-[3.5rem]"
+                      title="加入关注列表"
+                    >
+                      +关注
+                    </button>
+                  </td>
+                  <td className="p-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleAnalyzeFromPred(row)}
+                      disabled={analyzing || predFetchLoading}
+                      className="btn btn-xs bg-emerald-500 text-white hover:bg-emerald-600 border-0 shrink-0 min-w-[3.5rem] disabled:opacity-50"
+                      title="获取股票信息并生成分析报告"
+                    >
+                      分析
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {rows.length === 0 && (
+            <p className="p-4 text-sm text-slate-400">本快照无列表数据</p>
+          )}
+        </div>
+        {detail.intellectia_ret != null &&
+          detail.intellectia_ret !== 0 && (
+            <p className="border-t border-amber-300/20 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">
+              API ret={String(detail.intellectia_ret)}{" "}
+              {detail.intellectia_msg
+                ? `· ${detail.intellectia_msg}`
+                : ""}
+            </p>
+          )}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen w-full max-w-none mx-auto">
@@ -2333,7 +2611,7 @@ function AnalysisApp() {
         id="analysis-workbench"
         className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-5 xl:gap-6 items-stretch lg:min-h-[min(64vh,720px)] scroll-mt-20"
       >
-        <div className="order-1 flex flex-col gap-4 w-full lg:col-span-4 min-h-0 h-full lg:min-h-[min(64vh,720px)]">
+        <div className="order-2 flex flex-col gap-4 w-full lg:col-span-4 min-h-0 h-full lg:min-h-[min(64vh,720px)]">
         <div className="glass-card w-full mb-0 p-4 md:p-5 shrink-0">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
@@ -2344,15 +2622,6 @@ function AnalysisApp() {
               填入标的、市场和模型后即可生成完整分析报告。
             </p>
           </div>
-          <button
-            type="button"
-            className="btn btn-secondary btn-xs shrink-0"
-            onClick={function () {
-              setShowUsageModal(true);
-            }}
-          >
-            API 用量
-          </button>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -2473,18 +2742,24 @@ function AnalysisApp() {
         </div>
 
         <div className="glass-card w-full mb-0 p-4 md:p-5 flex flex-col shrink-0">
-        <h2 className="text-base md:text-lg font-semibold text-slate-50 tracking-tight mb-3 shrink-0">
-          历史报告
-        </h2>
+        <div className="flex items-center justify-between gap-3 mb-3 shrink-0">
+          <h2 className="text-base md:text-lg font-semibold text-slate-50 tracking-tight">
+            历史报告
+          </h2>
+          {!historyLoading && historyList.length > 0 && (
+            <button
+              type="button"
+              className="btn btn-xs bg-rose-500 text-white hover:bg-rose-600 border-0 shrink-0"
+              onClick={deleteAllHistoryReports}
+              title="删除全部历史报告"
+            >
+              全部删除
+            </button>
+          )}
+        </div>
 
         {stockTags.length > 0 && (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-2 mb-4 shrink-0">
-            <span className="text-slate-100 text-sm font-semibold shrink-0">
-              历史报告筛选
-            </span>
-            <span className="text-slate-400 text-xs leading-snug max-w-[min(100%,20rem)] shrink-0">
-              点下方股票代码 → 只显示该标的；点「全部」→ 显示全部报告。
-            </span>
             <button
               type="button"
               className="btn btn-xs btn-secondary"
@@ -2620,7 +2895,7 @@ function AnalysisApp() {
         </div>
 
 
-        <div className="glass-card order-2 w-full lg:col-span-8 mb-0 p-4 md:p-5 flex flex-col min-h-0 h-full">
+        <div className="glass-card order-1 w-full lg:col-span-8 mb-0 p-4 md:p-5 flex flex-col min-h-0 h-full">
         <div className="shrink-0">
         <div className="mb-1.5">
           <h2 className="text-sm md:text-base font-semibold text-slate-50 tracking-tight">
@@ -2632,36 +2907,6 @@ function AnalysisApp() {
           <strong className="text-slate-200">日期</strong>换批次，再选日/周/月看表。
         </p>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-2">
-          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-            <span className="text-[11px] font-semibold text-slate-300 shrink-0">
-              方向
-            </span>
-            <div className="segmented-shell p-0.5">
-            {[
-              { v: 0, l: "看涨" },
-              { v: 1, l: "看跌" },
-            ].map((x) => (
-              <button
-                key={x.v}
-                type="button"
-                className={`seg-btn !py-1 !px-2.5 text-xs ${
-                  predParams.trend_type === x.v ? "on" : ""
-                } first:rounded-l-lg last:rounded-r-lg`}
-                onClick={() => {
-                  setPredRemoteTotal(null);
-                  setPredDetail(null);
-                  setPredParams((p) => ({
-                    ...p,
-                    trend_type: x.v,
-                    page: 1,
-                  }));
-                }}
-              >
-                {x.l}
-              </button>
-            ))}
-          </div>
-          </div>
           <div className="flex flex-wrap items-center gap-1.5 min-w-0">
             <span className="text-[11px] font-semibold text-slate-300 shrink-0">
               资产
@@ -2680,7 +2925,8 @@ function AnalysisApp() {
                 } first:rounded-l-lg last:rounded-r-lg`}
                 onClick={() => {
                   setPredRemoteTotal(null);
-                  setPredDetail(null);
+                  setPredBullDetail(null);
+                  setPredBearDetail(null);
                   setPredParams((p) => ({
                     ...p,
                     symbol_type: x.v,
@@ -2752,10 +2998,9 @@ function AnalysisApp() {
               >
                 {x.l}
                 {selectedPredDateKey &&
-                  !hasScreenerSnapshotForPeriod(
+                  !hasScreenerSnapshotForPeriodAnyTrend(
                     predList,
                     selectedPredDateKey,
-                    predParams.trend_type,
                     predParams.symbol_type,
                     x.v,
                   ) && (
@@ -2767,85 +3012,18 @@ function AnalysisApp() {
             ))}
           </div>
 
-        {predDetail &&
-          (predDetail.period_type == null ||
-            Number(predDetail.period_type) === predPeriodTab) && (
-          <div className="shrink-0 overflow-hidden rounded-xl border border-white/12 bg-slate-950/22">
-            <div className="max-h-[min(48vh,480px)] min-h-[200px] flex-1 overflow-y-auto overflow-x-auto">
-              <table className="w-full text-xs md:text-sm">
-                <thead className="sticky top-0 bg-slate-950/95 text-left text-slate-300 backdrop-blur-md">
-                  <tr>
-                    <th className="p-1.5 font-medium">代码</th>
-                    <th className="p-1.5 font-medium">标的</th>
-                    <th className="p-1.5 font-medium">名称</th>
-                    <th className="p-1.5 font-medium">价格</th>
-                    <th className="p-1.5 font-medium">涨跌%</th>
-                    <th className="p-1.5 font-medium">概率</th>
-                    <th className="p-1.5 font-medium">profit</th>
-                    <th className="p-1.5 font-medium">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(
-                    (predDetail.data && predDetail.data.list) ||
-                    []
-                  ).map((row, ri) => (
-                    <tr
-                      key={ri}
-                      className="border-t border-white/8 text-slate-200 hover:bg-white/[0.06]"
-                    >
-                      <td className="p-1.5 font-mono text-[11px] text-slate-300 md:text-xs">
-                        {row.code || "—"}
-                      </td>
-                      <td className="p-1.5 font-semibold text-slate-50">{row.symbol || "—"}</td>
-                      <td className="max-w-[200px] truncate p-1.5 text-slate-300" title={row.name}>
-                        {row.name || "—"}
-                      </td>
-                      <td className="gx-num p-1.5 tabular-nums text-amber-100">{row.price != null ? row.price : "—"}</td>
-                      <td className="gx-num p-1.5 tabular-nums text-slate-200">
-                        {row.change_ratio != null ? row.change_ratio : "—"}
-                      </td>
-                      <td className="gx-num p-1.5 tabular-nums text-cyan-200">
-                        {row.probability != null ? row.probability : "—"}
-                      </td>
-                      <td className="gx-num p-1.5 tabular-nums text-emerald-200">
-                        {row.profit != null ? row.profit : "—"}
-                      </td>
-                      <td className="p-1.5">
-                        <button
-                          type="button"
-                          onClick={() => handleAddToWatchlistFromPred(row)}
-                          className="btn btn-xs bg-cyan-500 text-white hover:bg-cyan-600 border-0 shrink-0"
-                          title="加入监控列表"
-                        >
-                          +监控
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {(!(predDetail.data && predDetail.data.list) ||
-                predDetail.data.list.length === 0) && (
-                <p className="p-4 text-sm text-slate-400">本快照无列表数据</p>
-              )}
-            </div>
-            {predDetail.intellectia_ret != null &&
-              predDetail.intellectia_ret !== 0 && (
-                <p className="border-t border-amber-300/20 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">
-                  API ret={String(predDetail.intellectia_ret)}{" "}
-                  {predDetail.intellectia_msg
-                    ? `· ${predDetail.intellectia_msg}`
-                    : ""}
-                </p>
-              )}
-          </div>
-        )}
-        {(!predDetail ||
-          (predDetail.period_type != null &&
-            Number(predDetail.period_type) !== predPeriodTab)) && (
+        <div className="space-y-3 min-h-0">
+          {renderPredictionTable(predBullDetail, "看涨股票", "text-emerald-200 bg-emerald-500/10")}
+          {renderPredictionTable(predBearDetail, "看跌股票", "text-rose-200 bg-rose-500/10")}
+        </div>
+        {((!predBullDetail ||
+          (predBullDetail.period_type != null &&
+            Number(predBullDetail.period_type) !== predPeriodTab)) &&
+         (!predBearDetail ||
+          (predBearDetail.period_type != null &&
+            Number(predBearDetail.period_type) !== predPeriodTab))) && (
           <p className="shrink-0 rounded-xl border border-dashed border-white/18 bg-white/[0.05] py-5 text-center text-xs text-slate-400">
-            {currentPredSnapshotName
+            {currentBullSnapshotName || currentBearSnapshotName
               ? "正在加载该周期…"
               : "该日期下暂无此周期快照，可切换日期或点击「获取」。"}
           </p>
