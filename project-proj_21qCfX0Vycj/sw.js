@@ -1,5 +1,5 @@
 // 股小蜜 Service Worker
-const CACHE_NAME = 'guxiaomi-v5.0-yahoo-proxy';
+const CACHE_NAME = 'guxiaomi-v5.0-compact-top-actions';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
