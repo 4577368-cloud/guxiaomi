@@ -42,17 +42,7 @@ function calculateRSI(prices, period = 14) {
 async function getUSYahooHistoricalData(symbol) {
   const ticker = String(symbol || '').trim().toUpperCase().replace(/[^A-Z0-9.\-]/g, '');
   if (!ticker) return [];
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
-  try {
-    console.log(`获取美股 ${ticker} 历史数据(Yahoo Finance)`);
-    const params = new URLSearchParams({ range: '3mo', interval: '1d' });
-    const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?${params.toString()}`, {
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-    if (!response.ok) throw new Error(`Yahoo Finance HTTP ${response.status}`);
-    const data = await response.json();
+  const parseYahooChart = (data) => {
     const result = data?.chart?.result?.[0];
     const timestamps = result?.timestamp || [];
     const quote = result?.indicators?.quote?.[0] || {};
@@ -61,7 +51,7 @@ async function getUSYahooHistoricalData(symbol) {
     const lows = quote.low || [];
     const closes = quote.close || [];
     const volumes = quote.volume || [];
-    const history = timestamps.map((ts, idx) => {
+    return timestamps.map((ts, idx) => {
       const close = Number(closes[idx]);
       if (!Number.isFinite(close) || close <= 0) return null;
       return {
@@ -74,10 +64,39 @@ async function getUSYahooHistoricalData(symbol) {
         source: 'Yahoo Finance'
       };
     }).filter(Boolean);
+  };
+  const fetchYahoo = async (url) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (!response.ok) throw new Error(`Yahoo Finance HTTP ${response.status}`);
+      const text = await response.text();
+      return parseYahooChart(JSON.parse(text));
+    } catch (error) {
+      clearTimeout(timeoutId);
+      throw error;
+    }
+  };
+  try {
+    console.log(`获取美股 ${ticker} 历史数据(Yahoo Finance)`);
+    const params = new URLSearchParams({ range: '3mo', interval: '1d' });
+    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?${params.toString()}`;
+    let history = [];
+    try {
+      history = await fetchYahoo(yahooUrl);
+    } catch (directError) {
+      console.warn('Yahoo Finance 直连失败，尝试代理:', directError);
+      const proxyUrl = `https://proxy-api.trickle-app.host/?url=${encodeURIComponent(yahooUrl)}`;
+      history = await fetchYahoo(proxyUrl);
+    }
     console.log(`Yahoo Finance 美股历史记录条数: ${history.length}`);
+    if (history.length) {
+      window.LAST_HISTORY_FETCH_META = { ok: true, source: 'Yahoo Finance', history };
+    }
     return history;
   } catch (err) {
-    clearTimeout(timeoutId);
     console.warn('Yahoo Finance 美股历史数据获取失败', err);
     return [];
   }
@@ -94,7 +113,7 @@ async function getUSAlphaVantageHistoricalData(symbol) {
 
   try {
     console.log(`获取美股 ${symbol} 历史数据(Alpha Vantage)`);
-    const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY_ADJUSTED&symbol=${symbol}&outputsize=compact&apikey=${key}`;
+    const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${encodeURIComponent(symbol)}&outputsize=compact&apikey=${key}`;
     const response = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
     if (!response.ok) {
@@ -103,6 +122,7 @@ async function getUSAlphaVantageHistoricalData(symbol) {
     const data = await response.json();
     if (!data['Time Series (Daily)']) {
       console.warn('Alpha Vantage 无历史数据', data);
+      window.LAST_HISTORY_FETCH_META = { ok: false, source: 'Alpha Vantage', detail: data?.Note || data?.Information || data?.['Error Message'] || 'Alpha Vantage 未返回日线' };
       return [];
     }
     const series = data['Time Series (Daily)'];
@@ -121,6 +141,9 @@ async function getUSAlphaVantageHistoricalData(symbol) {
       });
 
     console.log(`美股历史记录条数: ${history.length}`);
+    if (history.length) {
+      window.LAST_HISTORY_FETCH_META = { ok: true, source: 'Alpha Vantage', history };
+    }
     return history;
   } catch (err) {
     clearTimeout(timeoutId);
@@ -396,6 +419,7 @@ async function getHistoricalClose30Days(symbol, market, totalShares = 0) {
 
     const result = await getHistoricalDataAndIndicators(symbol, market);
     if (!result || !Array.isArray(result.history) || result.history.length === 0) {
+      window.LAST_HISTORY_FETCH_META = window.LAST_HISTORY_FETCH_META || { ok: false, detail: '历史数据源均未返回有效日线' };
       throw new Error('历史收盘数据为空');
     }
 

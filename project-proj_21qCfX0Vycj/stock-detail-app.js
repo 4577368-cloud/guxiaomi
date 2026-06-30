@@ -1162,14 +1162,10 @@ function StockDetailApp() {
       const remote = normalizeDetailHistoryRows(rows);
       if (!remote.length) {
         const isUS = normalizeDetailMarket(stock.market) === 'US';
-        const historyMeta = window.LAST_HISTORY_FETCH_META || {};
-        const hasAlphaKey = Boolean(historyMeta.has_alpha_vantage_key || ((window.API_CONFIG && window.API_CONFIG.ALPHA_VANTAGE_KEY) || '').trim());
         if (!silent) {
-          setHistoryMessage(historyMeta.detail
-            ? '后端历史行情接口不可用或仍是旧版本，请重启 API 服务后再刷新趋势。'
-            : isUS && !hasAlphaKey
-              ? '美股历史走势会优先走后端 Yahoo Finance，Alpha Vantage 作为备用；当前仅显示本地已记录价格点。'
-              : '未获取到更多历史价格，当前显示本地已记录价格点。');
+          setHistoryMessage(isUS
+            ? '暂时无法获取美股历史日线，已保留本地价格点。系统已尝试 Yahoo Finance 与 Alpha Vantage。'
+            : '未获取到更多历史价格，当前显示本地已记录价格点。');
         }
         return;
       }
