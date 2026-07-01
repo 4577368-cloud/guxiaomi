@@ -6,21 +6,29 @@ const API_CONFIG = {
   PROXY_BASE: window.API_CONFIG?.PROXY_BASE || '',
   HK_EXCHANGE_RATE: 7.78, // USD to HKD
   CN_EXCHANGE_RATE: 1, // CNY to CNY
-  REQUEST_TIMEOUT: 10000 // 10 seconds timeout
+  REQUEST_TIMEOUT: 15000 // 15 seconds timeout
 };
+
+function getAnalysisApiBase() {
+  var injected = String(window.ANALYSIS_API_BASE || '').replace(/\/$/, '');
+  if (injected) return injected;
+  if (typeof location === 'undefined') return '';
+  var host = location.hostname || '';
+  if (host === 'localhost' || host === '127.0.0.1') {
+    return 'http://localhost:8123';
+  }
+  // Vercel 等同域 FastAPI：env.js 未注入时走当前站点 origin
+  return String(location.origin || '').replace(/\/$/, '');
+}
 
 // 检查是否配置了API密钥
 function checkApiConfig() {
-  const missing = [];
+  const base = getAnalysisApiBase();
+  if (!base) {
+    console.warn('⚠️ 股小蜜: 未配置 ANALYSIS_API_BASE，刷新价格将尝试浏览器直连（可能受 CORS 限制）');
+  }
   if (!window.API_CONFIG?.ALPHA_VANTAGE_KEY) {
-    missing.push('Alpha Vantage (美股)');
-  }
-  if (!window.API_CONFIG?.CN_STOCK_API_KEY) {
-    missing.push('A股 API');
-  }
-  if (missing.length > 0) {
-    console.warn(`⚠️ 股小蜜: 以下API未配置，将使用模拟数据: ${missing.join(', ')}`);
-    console.warn('请编辑 env.js 文件配置API密钥，或复制 env.js 为 env.local.js 并填入密钥');
+    console.info('股小蜜: 美股浏览器直连需 Alpha Vantage Key；推荐通过后端 API 获取真实行情');
   }
 }
 
@@ -100,43 +108,79 @@ function throttle(fn, limit) {
   };
 }
 
-async function getStockPrice(symbol, market) {
+async function fetchQuoteFromBackend(symbol, market) {
+  const base = getAnalysisApiBase();
+  if (!base) {
+    throw new Error('后端 API 未配置（ANALYSIS_API_BASE）');
+  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(function () {
+    controller.abort();
+  }, API_CONFIG.REQUEST_TIMEOUT);
   try {
-    console.log(`开始获取股价: ${symbol} (${market})`);
-    
+    const url =
+      base +
+      '/api/stock/quote?symbol=' +
+      encodeURIComponent(symbol) +
+      '&market=' +
+      encodeURIComponent(market);
+    const response = await fetch(url, {
+      method: 'GET',
+      signal: controller.signal,
+      headers: { Accept: 'application/json' },
+    });
+    clearTimeout(timeoutId);
+    const data = await response.json();
+    if (!data || !data.ok || !data.quote || Number(data.quote.price) <= 0) {
+      const errMsg =
+        (data && Array.isArray(data.errors) && data.errors.length
+          ? data.errors.join('；')
+          : '') || '后端未返回有效行情';
+      throw new Error(errMsg);
+    }
+    const q = data.quote;
+    return Object.assign({}, q, {
+      isMock: false,
+      source: data.source || q.source || 'backend',
+    });
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
+
+async function getStockPrice(symbol, market) {
+  console.log(`开始获取股价: ${symbol} (${market})`);
+  const errors = [];
+
+  try {
+    const backendQuote = await fetchQuoteFromBackend(symbol, market);
+    console.log(
+      `后端行情成功 ${symbol}: ${backendQuote.price}（${backendQuote.source || 'backend'}）`,
+    );
+    return backendQuote;
+  } catch (backendError) {
+    const msg = backendError && backendError.message ? backendError.message : String(backendError);
+    console.warn(`后端行情失败 ${symbol}: ${msg}`);
+    errors.push('后端: ' + msg);
+  }
+
+  try {
     if (market === 'US') {
-      try {
-        return await getUSStockPrice(symbol);
-      } catch (apiError) {
-        console.warn(`美股API失败，使用模拟数据: ${apiError.message}`);
-        return generateMockUSData(symbol);
-      }
-    } else if (market === 'HK') {
-      try {
-        return await getHKStockPrice(symbol);
-      } catch (apiError) {
-        console.warn(`港股API失败，使用模拟数据: ${apiError.message}`);
-        return generateMockHKData(symbol);
-      }
-    } else if (market === 'CN') {
-      try {
-        return await getCNStockPrice(symbol);
-      } catch (apiError) {
-        console.warn(`A股API失败，使用模拟数据: ${apiError.message}`);
-        return generateMockCNData(symbol);
-      }
+      return await getUSStockPrice(symbol);
+    }
+    if (market === 'HK') {
+      return await getHKStockPrice(symbol);
+    }
+    if (market === 'CN') {
+      return await getCNStockPrice(symbol);
     }
     throw new Error('不支持的市场类型');
-  } catch (error) {
-    console.error(`获取 ${symbol} 股价失败:`, error.message);
-    
-    if (market === 'HK') {
-      return generateMockHKData(symbol);
-    } else if (market === 'CN') {
-      return generateMockCNData(symbol);
-    } else {
-      return generateMockUSData(symbol);
-    }
+  } catch (directError) {
+    const msg = directError && directError.message ? directError.message : String(directError);
+    console.error(`浏览器直连行情失败 ${symbol}: ${msg}`);
+    errors.push('直连: ' + msg);
+    throw new Error('无法获取真实行情：' + errors.join('；'));
   }
 }
 
@@ -194,21 +238,33 @@ function convertCurrency(amount, fromMarket, toMarket = 'HK', exchangeRate = 7.7
  * 拉取腾讯 qt.gtimg.cn 文本；优先 trickle 代理，失败则尝试直连（部分环境可跨域）。
  */
 async function fetchGtimgQuoteText(apiUrl, signal) {
-  const proxyUrl = `https://proxy-api.trickle-app.host/?url=${encodeURIComponent(apiUrl)}`;
+  const proxyCandidates = [];
+  const proxyBase = String(API_CONFIG.PROXY_BASE || '').replace(/\/$/, '');
+  if (proxyBase) {
+    proxyCandidates.push(
+      proxyBase + (proxyBase.indexOf('?') >= 0 ? '&' : '?') + 'url=' + encodeURIComponent(apiUrl),
+    );
+  }
+  proxyCandidates.push(
+    `https://proxy-api.trickle-app.host/?url=${encodeURIComponent(apiUrl)}`,
+  );
+
   let proxyErr = null;
-  try {
-    const res = await fetch(proxyUrl, {
-      method: 'GET',
-      signal,
-      headers: { Accept: '*/*' },
-    });
-    if (res.ok) {
-      const text = await res.text();
-      if (text && text.length > 8 && /="/.test(text)) return text;
+  for (let i = 0; i < proxyCandidates.length; i++) {
+    try {
+      const res = await fetch(proxyCandidates[i], {
+        method: 'GET',
+        signal,
+        headers: { Accept: '*/*' },
+      });
+      if (res.ok) {
+        const text = await res.text();
+        if (text && text.length > 8 && /="/.test(text)) return text;
+      }
+      proxyErr = new Error(`代理响应异常 ${res.status}`);
+    } catch (e) {
+      proxyErr = e;
     }
-    proxyErr = new Error(`代理响应异常 ${res.status}`);
-  } catch (e) {
-    proxyErr = e;
   }
   try {
     const direct = await fetch(apiUrl, {

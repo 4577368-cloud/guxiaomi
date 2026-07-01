@@ -1,5 +1,5 @@
 // 股小蜜 Service Worker
-const CACHE_NAME = 'guxiaomi-v5.4-deep-diagnosis';
+const CACHE_NAME = 'guxiaomi-v5.5-real-quote';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

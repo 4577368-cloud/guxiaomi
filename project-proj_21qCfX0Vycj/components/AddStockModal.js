@@ -76,15 +76,14 @@ function AddStockModal({ onAdd, onClose, onAddToWatchlist }) {
             console.log(`${symbol.toUpperCase()}: 成功获取最新价格 ${currentPrice}`);
           }
         } catch (error) {
-          console.error('获取股价失败，将使用模拟数据:', error);
-          if (market === 'HK') {
-            marketData = generateMockHKData(symbol.toUpperCase());
-          } else if (market === 'CN') {
-            marketData = generateMockCNData(symbol.toUpperCase());
-          } else {
-            marketData = generateMockUSData(symbol.toUpperCase());
-          }
-          currentPrice = marketData.price;
+          console.error('获取股价失败:', error);
+          alert(
+            (symbol.toUpperCase() || '标的') +
+              ' 无法获取真实行情：' +
+              (error && error.message ? error.message : '请确认后端 API 已启动（run_web.py）'),
+          );
+          setIsLoading(false);
+          return;
         }
 
         const selectedStockMeta = searchResults.find(s => s.symbol === symbol.toUpperCase() && s.market === market)

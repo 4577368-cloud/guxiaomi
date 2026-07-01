@@ -521,6 +521,7 @@ function App() {
       setIsRefreshing(true);
       console.log('开始批量刷新所有股票价格和技术指标...');
       try {
+        let failCount = 0;
         const refreshPromises = portfolio.map(async (stock) => {
           try {
             console.log(`正在刷新股票 ${stock.symbol} 的价格...`);
@@ -556,6 +557,7 @@ function App() {
               priceHistory: priceHistory
             };
           } catch (error) {
+            failCount += 1;
             console.error(`获取股票 ${stock.symbol} 价格失败:`, error);
             return stock;
           }
@@ -566,6 +568,12 @@ function App() {
         setPortfolio(updatedPortfolio);
         savePortfolio(updatedPortfolio);
         console.log('批量刷新完成');
+        if (failCount > 0 && typeof alert === 'function') {
+          alert(
+            failCount +
+              ' 只标的未能获取真实行情，请确认已运行 run_web.py 且后端 API 可访问后重试。',
+          );
+        }
         if (typeof document !== 'undefined') {
           document.body.classList.add('gx-data-flash');
           window.setTimeout(function () {

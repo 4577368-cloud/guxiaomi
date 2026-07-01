@@ -334,9 +334,6 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
           ? getUSTechnicalIndicators(stock.symbol)
           : Promise.resolve(stock.technicalIndicators || null);
         const [priceData, indicators] = await Promise.all([pricePromise, indicatorsPromise]);
-        if (priceData && priceData.isMock) {
-          console.warn(`${stock.symbol}: API不可用，使用模拟数据；仍继续更新本地历史。`);
-        }
 
         if (priceData) {
           try {

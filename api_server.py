@@ -241,6 +241,189 @@ def _fetch_us_history_yahoo(symbol: str, days: int) -> List[Dict[str, Any]]:
     return rows[-max(days, 1):]
 
 
+def _market_label_for_service(market_code: str) -> str:
+    m = _normalize_market_code(market_code)
+    if m == "US":
+        return "美股"
+    if m == "HK":
+        return "港股"
+    return "A 股"
+
+
+def _parse_change_percent(value: Any) -> float:
+    if value is None:
+        return 0.0
+    s = str(value).strip().replace("%", "")
+    try:
+        return float(s)
+    except Exception:
+        return 0.0
+
+
+def _quote_response_from_fields(
+    symbol: str,
+    market_code: str,
+    *,
+    price: float,
+    open_: float = 0.0,
+    high: float = 0.0,
+    low: float = 0.0,
+    volume: int = 0,
+    previous_close: float = 0.0,
+    change_percent: Optional[float] = None,
+    name: str = "",
+    source: str = "",
+    is_mock: bool = False,
+) -> Dict[str, Any]:
+    m = _normalize_market_code(market_code)
+    digits = 2 if m == "CN" else 3
+    prev = float(previous_close or 0)
+    px = float(price or 0)
+    if px <= 0:
+        raise ValueError("无效价格")
+    chg = round(px - prev, digits) if prev > 0 else 0.0
+    pct = change_percent
+    if pct is None:
+        pct = (chg / prev * 100.0) if prev > 0 else 0.0
+    return {
+        "price": round(px, digits),
+        "open": round(float(open_ or 0), digits),
+        "high": round(float(high or px), digits),
+        "low": round(float(low or px), digits),
+        "volume": int(volume or 0),
+        "previousClose": round(prev, digits) if prev > 0 else round(px, digits),
+        "change": round(chg, digits),
+        "changePercent": round(float(pct), 2),
+        "symbol": (symbol or "").strip().upper(),
+        "market": m,
+        "name": (name or "").strip(),
+        "isMock": bool(is_mock),
+        "source": source or "",
+    }
+
+
+def _fetch_us_quote_yahoo(symbol: str) -> Dict[str, Any]:
+    ticker = re.sub(r"[^A-Za-z0-9.\-]", "", symbol or "").upper()
+    if not ticker:
+        raise ValueError("无效美股代码")
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+    params = {"range": "1d", "interval": "1d"}
+    res = requests.get(url, params=params, headers=HISTORY_REQUEST_HEADERS, timeout=12)
+    res.raise_for_status()
+    data = res.json()
+    result = (((data.get("chart") or {}).get("result") or []) or [None])[0]
+    if not result:
+        raise RuntimeError("Yahoo 未返回行情")
+    meta = result.get("meta") or {}
+    price = _parse_float(meta.get("regularMarketPrice"))
+    if price is None or price <= 0:
+        price = _parse_float(meta.get("previousClose"))
+    if price is None or price <= 0:
+        raise RuntimeError("Yahoo 无有效现价")
+    prev = _parse_float(meta.get("chartPreviousClose")) or _parse_float(meta.get("previousClose")) or price
+    return _quote_response_from_fields(
+        ticker,
+        "US",
+        price=price,
+        open_=_parse_float(meta.get("regularMarketOpen")) or price,
+        high=_parse_float(meta.get("regularMarketDayHigh")) or price,
+        low=_parse_float(meta.get("regularMarketDayLow")) or price,
+        volume=int(_parse_float(meta.get("regularMarketVolume")) or 0),
+        previous_close=prev or price,
+        name=str(meta.get("longName") or meta.get("shortName") or ticker),
+        source="Yahoo Finance",
+    )
+
+
+def _fetch_us_quote_alpha_vantage(symbol: str) -> Dict[str, Any]:
+    key = _alpha_vantage_key()
+    if not key:
+        raise RuntimeError("未配置 ALPHA_VANTAGE_API_KEY")
+    ticker = re.sub(r"[^A-Za-z0-9.\-]", "", symbol or "").upper()
+    url = "https://www.alphavantage.co/query"
+    params = {"function": "GLOBAL_QUOTE", "symbol": ticker, "apikey": key}
+    res = requests.get(url, params=params, headers=HISTORY_REQUEST_HEADERS, timeout=12)
+    res.raise_for_status()
+    data = res.json()
+    if data.get("Note") or data.get("Information"):
+        raise RuntimeError(str(data.get("Note") or data.get("Information")))
+    if data.get("Error Message"):
+        raise RuntimeError(str(data.get("Error Message")))
+    quote = data.get("Global Quote") or {}
+    if not quote:
+        raise RuntimeError("Alpha Vantage 无 Global Quote")
+    price = _parse_float(quote.get("05. price"))
+    if price is None or price <= 0:
+        raise RuntimeError("Alpha Vantage 价格无效")
+    prev = _parse_float(quote.get("08. previous close")) or price
+    chg = _parse_float(quote.get("09. change")) or 0.0
+    pct_raw = quote.get("10. change percent")
+    pct = _parse_float(str(pct_raw).replace("%", "")) if pct_raw is not None else None
+    return _quote_response_from_fields(
+        ticker,
+        "US",
+        price=price,
+        open_=_parse_float(quote.get("02. open")) or price,
+        high=_parse_float(quote.get("03. high")) or price,
+        low=_parse_float(quote.get("04. low")) or price,
+        volume=int(_parse_float(quote.get("06. volume")) or 0),
+        previous_close=prev,
+        change_percent=pct if pct is not None else (chg / prev * 100.0 if prev else 0.0),
+        name=ticker,
+        source="Alpha Vantage",
+    )
+
+
+def _fetch_tencent_spot_quote(symbol: str, market: str) -> Dict[str, Any]:
+    from demo_ulti_analyst import _http_get_text, _parse_tencent_gtimg_quote_line
+
+    formatted = _tencent_history_symbol(symbol, market)
+    if not formatted:
+        raise ValueError("无效代码")
+    url = f"https://qt.gtimg.cn/q={formatted}"
+    text = _http_get_text(url, timeout=12.0)
+    q = _parse_tencent_gtimg_quote_line(text)
+    m = _normalize_market_code(market)
+    sym = re.sub(r"\D", "", symbol or "")
+    if m == "HK":
+        sym = sym.zfill(5)
+    elif m == "CN":
+        sym = sym.zfill(6)
+    return _quote_response_from_fields(
+        sym,
+        m,
+        price=float(q["price"]),
+        open_=float(q.get("open") or 0),
+        high=float(q.get("high") or 0),
+        low=float(q.get("low") or 0),
+        volume=int(float(q.get("volume_hands") or 0) * 100),
+        previous_close=float(q.get("previous_close") or 0),
+        change_percent=float(q.get("change_pct") or 0),
+        name=str(q.get("name") or ""),
+        source="Tencent",
+    )
+
+
+def _fetch_quote_via_stock_service(symbol: str, market_code: str) -> Dict[str, Any]:
+    from demo_ulti_analyst import StockDataService
+
+    m = _normalize_market_code(market_code)
+    label = _market_label_for_service(m)
+    sd = StockDataService().get_stock_info(symbol, label, days=10)
+    if (sd.股票名称 or "").startswith("【行情不可用") or (sd.最新价 or 0) <= 0:
+        raise RuntimeError("多源合并后仍无有效现价")
+    pct = _parse_change_percent(sd.涨跌幅)
+    return _quote_response_from_fields(
+        symbol,
+        m,
+        price=float(sd.最新价),
+        previous_close=float(sd.最新价) / (1 + pct / 100.0) if pct else float(sd.最新价),
+        change_percent=pct,
+        name=str(sd.股票名称 or ""),
+        source=str(sd.数据溯源 or "多源合并"),
+    )
+
+
 def _tencent_history_symbol(symbol: str, market: str) -> str:
     code = re.sub(r"\D", "", symbol or "")
     if market == "HK":
@@ -930,6 +1113,68 @@ def api_screener_delete(name: str):
 def api_screener_delete_post(req: DeleteScreenerRequest):
     """删除预测快照（JSON body: {\"name\": \"...\"}）。"""
     return _screener_delete_impl(req.name)
+
+
+@app.get("/api/stock/quote")
+def api_stock_quote(symbol: str, market: str = "US"):
+    """实时行情：由后端拉取真实数据源，避免浏览器 CORS/代理导致落入模拟价。"""
+    sym = (symbol or "").strip().upper()
+    if not sym:
+        raise HTTPException(status_code=400, detail="symbol 不能为空")
+    m = _normalize_market_code(market)
+    errors: List[str] = []
+
+    if m == "US":
+        fetchers = [
+            ("Yahoo Finance", lambda: _fetch_us_quote_yahoo(sym)),
+            ("Alpha Vantage", lambda: _fetch_us_quote_alpha_vantage(sym)),
+        ]
+    elif m in {"HK", "CN"}:
+        fetchers = [
+            ("Tencent", lambda: _fetch_tencent_spot_quote(sym, m)),
+        ]
+    else:
+        raise HTTPException(status_code=400, detail=f"不支持的市场: {market}")
+
+    for source, fetcher in fetchers:
+        try:
+            quote = fetcher()
+            return {
+                "ok": True,
+                "symbol": sym,
+                "market": m,
+                "source": source,
+                "has_alpha_vantage_key": bool(_alpha_vantage_key()),
+                "quote": quote,
+            }
+        except Exception as exc:
+            errors.append(f"{source}: {exc}")
+
+    try:
+        quote = _fetch_quote_via_stock_service(sym, m)
+        return {
+            "ok": True,
+            "symbol": sym,
+            "market": m,
+            "source": quote.get("source") or "多源合并",
+            "has_alpha_vantage_key": bool(_alpha_vantage_key()),
+            "quote": quote,
+        }
+    except Exception as exc:
+        errors.append(f"多源合并: {exc}")
+
+    return JSONResponse(
+        {
+            "ok": False,
+            "symbol": sym,
+            "market": m,
+            "source": "",
+            "has_alpha_vantage_key": bool(_alpha_vantage_key()),
+            "quote": None,
+            "errors": errors[-6:],
+        },
+        status_code=200,
+    )
 
 
 @app.get("/api/stock/history")
