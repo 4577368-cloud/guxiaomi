@@ -626,6 +626,63 @@ class DeleteScreenerRequest(BaseModel):
     name: str
 
 
+class WatchlistItemPayload(BaseModel):
+    """关注列表单项。"""
+    symbol: str
+    market: str
+    name: Optional[str] = None
+    currentPrice: Optional[float] = 0
+    previousClose: Optional[float] = None
+    change: Optional[float] = 0
+    changePercent: Optional[float] = 0
+    marketData: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    priceHistory: Optional[List[Any]] = Field(default_factory=list)
+    keywords: Optional[List[str]] = Field(default_factory=list)
+    addedAt: Optional[str] = None
+    watchStartPrice: Optional[float] = 0
+    notes: Optional[str] = ""
+    alertEnabled: Optional[bool] = False
+    alertThreshold: Optional[float] = 5
+
+
+class WatchlistRemoveRequest(BaseModel):
+    symbol: str
+    market: str
+
+
+class WatchlistReplaceRequest(BaseModel):
+    items: List[WatchlistItemPayload] = Field(default_factory=list)
+
+
+class PortfolioStockPayload(BaseModel):
+    """持仓股票单项。"""
+    symbol: str
+    market: str
+    brokerChannel: Optional[str] = ""
+    currentPrice: Optional[float] = 0
+    marketData: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    technicalIndicators: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    positions: Optional[List[Any]] = Field(default_factory=list)
+    priceHistory: Optional[List[Any]] = Field(default_factory=list)
+    keywords: Optional[List[str]] = Field(default_factory=list)
+
+
+class PortfolioRemoveRequest(BaseModel):
+    symbol: str
+    market: str
+
+
+class CapitalPoolPayload(BaseModel):
+    usd: float = 0
+    hkd: float = 0
+    cny: float = 0
+
+
+class SettingsPayload(BaseModel):
+    selectedModel: Optional[str] = None
+    settings: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+
 _MODEL_KEYS = ("model1", "model2", "model3")
 _MODEL_LABEL_DEFAULTS = {
     "model1": "MiniMax",
@@ -1169,6 +1226,101 @@ def api_screener_delete(name: str):
 def api_screener_delete_post(req: DeleteScreenerRequest):
     """删除预测快照（JSON body: {\"name\": \"...\"}）。"""
     return _screener_delete_impl(req.name)
+
+
+# ---------------------------------------------------------------------------
+# User data: watchlist, portfolio, capital pool, settings
+# ---------------------------------------------------------------------------
+
+@app.get("/api/watchlist/list")
+def api_watchlist_list():
+    """获取当前用户的关注列表。"""
+    return {"ok": True, "items": db.watchlist_list()}
+
+
+@app.post("/api/watchlist/add")
+def api_watchlist_add(item: WatchlistItemPayload):
+    """添加或更新关注列表中的某一项。"""
+    db.watchlist_upsert("default", item.model_dump())
+    return {"ok": True, "items": db.watchlist_list()}
+
+
+@app.post("/api/watchlist/remove")
+def api_watchlist_remove(req: WatchlistRemoveRequest):
+    """从关注列表移除指定股票。"""
+    db.watchlist_delete("default", req.symbol, req.market)
+    return {"ok": True, "items": db.watchlist_list()}
+
+
+@app.post("/api/watchlist/replace")
+def api_watchlist_replace(req: WatchlistReplaceRequest):
+    """全量替换关注列表（用于前端批量同步）。"""
+    db.watchlist_replace("default", [it.model_dump() for it in req.items])
+    return {"ok": True, "items": db.watchlist_list()}
+
+
+@app.post("/api/watchlist/clear")
+def api_watchlist_clear():
+    """清空关注列表。"""
+    db.watchlist_replace("default", [])
+    return {"ok": True, "items": db.watchlist_list()}
+
+
+@app.get("/api/portfolio/list")
+def api_portfolio_list():
+    """获取当前用户的持仓列表。"""
+    return {"ok": True, "items": db.portfolio_list()}
+
+
+@app.post("/api/portfolio/save")
+def api_portfolio_save(stock: PortfolioStockPayload):
+    """保存或更新持仓股票。"""
+    db.portfolio_upsert("default", stock.model_dump())
+    return {"ok": True, "items": db.portfolio_list()}
+
+
+@app.post("/api/portfolio/save-all")
+def api_portfolio_save_all(stocks: List[PortfolioStockPayload]):
+    """批量保存持仓股票（全量 upsert）。"""
+    for stock in stocks:
+        db.portfolio_upsert("default", stock.model_dump())
+    return {"ok": True, "items": db.portfolio_list()}
+
+
+@app.post("/api/portfolio/remove")
+def api_portfolio_remove(req: PortfolioRemoveRequest):
+    """移除持仓股票。"""
+    db.portfolio_delete("default", req.symbol, req.market)
+    return {"ok": True, "items": db.portfolio_list()}
+
+
+@app.get("/api/capital-pool/get")
+def api_capital_pool_get():
+    """获取资金池。"""
+    return {"ok": True, "pool": db.capital_pool_get()}
+
+
+@app.post("/api/capital-pool/set")
+def api_capital_pool_set(pool: CapitalPoolPayload):
+    """设置资金池。"""
+    db.capital_pool_set("default", pool.model_dump())
+    return {"ok": True, "pool": db.capital_pool_get()}
+
+
+@app.get("/api/settings/get")
+def api_settings_get():
+    """获取用户设置。"""
+    return {"ok": True, "settings": db.settings_get()}
+
+
+@app.post("/api/settings/set")
+def api_settings_set(payload: SettingsPayload):
+    """保存用户设置。"""
+    data = payload.model_dump()
+    if payload.selectedModel:
+        data["selectedModel"] = payload.selectedModel
+    db.settings_set("default", data)
+    return {"ok": True, "settings": db.settings_get()}
 
 
 @app.get("/api/stock/quote")

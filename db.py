@@ -7,6 +7,7 @@
 """
 import os
 import json
+import math
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from pathlib import Path
@@ -135,6 +136,91 @@ def init_db() -> None:
         """
         CREATE INDEX IF NOT EXISTS idx_screener_dims
             ON screener_snapshots(period_type, trend_type, symbol_type, saved_at DESC);
+        """,
+        commit=True,
+    )
+    _execute(
+        """
+        CREATE TABLE IF NOT EXISTS watchlist_items (
+            id SERIAL PRIMARY KEY,
+            user_id VARCHAR(64) DEFAULT 'default',
+            symbol VARCHAR(32) NOT NULL,
+            market VARCHAR(32) NOT NULL,
+            name VARCHAR(128),
+            current_price NUMERIC(18,4),
+            previous_close NUMERIC(18,4),
+            change NUMERIC(18,4),
+            change_percent NUMERIC(18,4),
+            market_data JSONB,
+            price_history JSONB,
+            keywords JSONB,
+            added_at TIMESTAMP,
+            watch_start_price NUMERIC(18,4),
+            notes TEXT,
+            alert_enabled BOOLEAN DEFAULT FALSE,
+            alert_threshold NUMERIC(18,4) DEFAULT 5,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW(),
+            UNIQUE(user_id, market, symbol)
+        );
+        """,
+        commit=True,
+    )
+    _execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_watchlist_user
+            ON watchlist_items(user_id, updated_at DESC);
+        """,
+        commit=True,
+    )
+    _execute(
+        """
+        CREATE TABLE IF NOT EXISTS portfolio_stocks (
+            id SERIAL PRIMARY KEY,
+            user_id VARCHAR(64) DEFAULT 'default',
+            symbol VARCHAR(32) NOT NULL,
+            market VARCHAR(32) NOT NULL,
+            broker_channel VARCHAR(64),
+            current_price NUMERIC(18,4),
+            market_data JSONB,
+            technical_indicators JSONB,
+            positions JSONB,
+            price_history JSONB,
+            keywords JSONB,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW(),
+            UNIQUE(user_id, market, symbol)
+        );
+        """,
+        commit=True,
+    )
+    _execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_portfolio_user
+            ON portfolio_stocks(user_id, updated_at DESC);
+        """,
+        commit=True,
+    )
+    _execute(
+        """
+        CREATE TABLE IF NOT EXISTS capital_pool (
+            user_id VARCHAR(64) PRIMARY KEY DEFAULT 'default',
+            usd NUMERIC(18,4) DEFAULT 0,
+            hkd NUMERIC(18,4) DEFAULT 0,
+            cny NUMERIC(18,4) DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT NOW()
+        );
+        """,
+        commit=True,
+    )
+    _execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_settings (
+            user_id VARCHAR(64) PRIMARY KEY DEFAULT 'default',
+            selected_model VARCHAR(32),
+            settings_json JSONB,
+            updated_at TIMESTAMP DEFAULT NOW()
+        );
         """,
         commit=True,
     )
@@ -375,3 +461,304 @@ def screener_delete(base_name: str) -> bool:
         commit=True,
     )
     return True
+
+
+# ---------------------------------------------------------------------------
+# Watchlist
+# ---------------------------------------------------------------------------
+
+def _num_or_none(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value) if math.isfinite(value) else None
+    try:
+        n = float(value)
+        return n if math.isfinite(n) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def watchlist_list(user_id: str = "default") -> List[Dict[str, Any]]:
+    if not is_db_enabled():
+        return []
+    rows = _execute(
+        """
+        SELECT id, symbol, market, name, current_price, previous_close, change,
+               change_percent, market_data, price_history, keywords, added_at,
+               watch_start_price, notes, alert_enabled, alert_threshold
+        FROM watchlist_items
+        WHERE user_id = %s
+        ORDER BY added_at DESC NULLS LAST, updated_at DESC
+        """,
+        (user_id,),
+        fetch=True,
+    )
+    items = []
+    for row in rows or []:
+        items.append({
+            "id": str(row["id"]),
+            "symbol": row["symbol"],
+            "market": row["market"],
+            "name": row["name"] or row["symbol"],
+            "currentPrice": float(row["current_price"]) if row["current_price"] is not None else 0,
+            "previousClose": float(row["previous_close"]) if row["previous_close"] is not None else None,
+            "change": float(row["change"]) if row["change"] is not None else 0,
+            "changePercent": float(row["change_percent"]) if row["change_percent"] is not None else 0,
+            "marketData": row["market_data"] or {},
+            "priceHistory": row["price_history"] or [],
+            "keywords": row["keywords"] or [],
+            "addedAt": row["added_at"].isoformat() if row["added_at"] else datetime.now().isoformat(),
+            "watchStartPrice": float(row["watch_start_price"]) if row["watch_start_price"] is not None else 0,
+            "notes": row["notes"] or "",
+            "alertEnabled": bool(row["alert_enabled"]),
+            "alertThreshold": float(row["alert_threshold"]) if row["alert_threshold"] is not None else 5,
+        })
+    return items
+
+
+def watchlist_upsert(user_id: str, item: Dict[str, Any]) -> None:
+    if not is_db_enabled():
+        return
+    symbol = str(item.get("symbol", "")).upper().strip()
+    market = str(item.get("market", "")).upper().strip()
+    if not symbol or not market:
+        raise ValueError("symbol 和 market 不能为空")
+    added_at = _parse_dt(item.get("addedAt")) or datetime.now()
+    _execute(
+        """
+        INSERT INTO watchlist_items (
+            user_id, symbol, market, name, current_price, previous_close, change,
+            change_percent, market_data, price_history, keywords, added_at,
+            watch_start_price, notes, alert_enabled, alert_threshold
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (user_id, market, symbol) DO UPDATE SET
+            name = EXCLUDED.name,
+            current_price = EXCLUDED.current_price,
+            previous_close = EXCLUDED.previous_close,
+            change = EXCLUDED.change,
+            change_percent = EXCLUDED.change_percent,
+            market_data = EXCLUDED.market_data,
+            price_history = EXCLUDED.price_history,
+            keywords = EXCLUDED.keywords,
+            added_at = EXCLUDED.added_at,
+            watch_start_price = EXCLUDED.watch_start_price,
+            notes = EXCLUDED.notes,
+            alert_enabled = EXCLUDED.alert_enabled,
+            alert_threshold = EXCLUDED.alert_threshold,
+            updated_at = NOW();
+        """,
+        (
+            user_id,
+            symbol,
+            market,
+            str(item.get("name", "")).strip() or symbol,
+            _num_or_none(item.get("currentPrice")),
+            _num_or_none(item.get("previousClose")),
+            _num_or_none(item.get("change")),
+            _num_or_none(item.get("changePercent")),
+            json.dumps(item.get("marketData") or {}, ensure_ascii=False),
+            json.dumps(item.get("priceHistory") or [], ensure_ascii=False),
+            json.dumps(item.get("keywords") or [], ensure_ascii=False),
+            added_at,
+            _num_or_none(item.get("watchStartPrice")),
+            str(item.get("notes", "")).strip(),
+            bool(item.get("alertEnabled", False)),
+            _num_or_none(item.get("alertThreshold", 5)) or 5,
+        ),
+        commit=True,
+    )
+
+
+def watchlist_delete(user_id: str, symbol: str, market: str) -> bool:
+    if not is_db_enabled():
+        return False
+    _execute(
+        "DELETE FROM watchlist_items WHERE user_id = %s AND market = %s AND symbol = %s",
+        (user_id, market.upper().strip(), symbol.upper().strip()),
+        commit=True,
+    )
+    return True
+
+
+def watchlist_replace(user_id: str, items: List[Dict[str, Any]]) -> None:
+    """全量替换关注列表（用于前端批量同步）。"""
+    if not is_db_enabled():
+        return
+    _execute(
+        "DELETE FROM watchlist_items WHERE user_id = %s",
+        (user_id,),
+        commit=True,
+    )
+    for item in items:
+        watchlist_upsert(user_id, item)
+
+
+# ---------------------------------------------------------------------------
+# Portfolio & Capital Pool
+# ---------------------------------------------------------------------------
+
+def portfolio_list(user_id: str = "default") -> List[Dict[str, Any]]:
+    if not is_db_enabled():
+        return []
+    rows = _execute(
+        """
+        SELECT id, symbol, market, broker_channel, current_price, market_data,
+               technical_indicators, positions, price_history, keywords
+        FROM portfolio_stocks
+        WHERE user_id = %s
+        ORDER BY updated_at DESC
+        """,
+        (user_id,),
+        fetch=True,
+    )
+    items = []
+    for row in rows or []:
+        items.append({
+            "id": str(row["id"]),
+            "symbol": row["symbol"],
+            "market": row["market"],
+            "brokerChannel": row["broker_channel"] or "",
+            "currentPrice": float(row["current_price"]) if row["current_price"] is not None else 0,
+            "marketData": row["market_data"] or {},
+            "technicalIndicators": row["technical_indicators"] or {},
+            "positions": row["positions"] or [],
+            "priceHistory": row["price_history"] or [],
+            "keywords": row["keywords"] or [],
+        })
+    return items
+
+
+def portfolio_upsert(user_id: str, stock: Dict[str, Any]) -> None:
+    if not is_db_enabled():
+        return
+    symbol = str(stock.get("symbol", "")).upper().strip()
+    market = str(stock.get("market", "")).upper().strip()
+    if not symbol or not market:
+        raise ValueError("symbol 和 market 不能为空")
+    _execute(
+        """
+        INSERT INTO portfolio_stocks (
+            user_id, symbol, market, broker_channel, current_price, market_data,
+            technical_indicators, positions, price_history, keywords
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (user_id, market, symbol) DO UPDATE SET
+            broker_channel = EXCLUDED.broker_channel,
+            current_price = EXCLUDED.current_price,
+            market_data = EXCLUDED.market_data,
+            technical_indicators = EXCLUDED.technical_indicators,
+            positions = EXCLUDED.positions,
+            price_history = EXCLUDED.price_history,
+            keywords = EXCLUDED.keywords,
+            updated_at = NOW();
+        """,
+        (
+            user_id,
+            symbol,
+            market,
+            str(stock.get("brokerChannel", "")).strip(),
+            _num_or_none(stock.get("currentPrice")),
+            json.dumps(stock.get("marketData") or {}, ensure_ascii=False),
+            json.dumps(stock.get("technicalIndicators") or {}, ensure_ascii=False),
+            json.dumps(stock.get("positions") or [], ensure_ascii=False),
+            json.dumps(stock.get("priceHistory") or [], ensure_ascii=False),
+            json.dumps(stock.get("keywords") or [], ensure_ascii=False),
+        ),
+        commit=True,
+    )
+
+
+def portfolio_delete(user_id: str, symbol: str, market: str) -> bool:
+    if not is_db_enabled():
+        return False
+    _execute(
+        "DELETE FROM portfolio_stocks WHERE user_id = %s AND market = %s AND symbol = %s",
+        (user_id, market.upper().strip(), symbol.upper().strip()),
+        commit=True,
+    )
+    return True
+
+
+def capital_pool_get(user_id: str = "default") -> Dict[str, float]:
+    if not is_db_enabled():
+        return {"usd": 0, "hkd": 0, "cny": 0}
+    rows = _execute(
+        "SELECT usd, hkd, cny FROM capital_pool WHERE user_id = %s",
+        (user_id,),
+        fetch=True,
+    )
+    if not rows:
+        return {"usd": 0, "hkd": 0, "cny": 0}
+    row = rows[0]
+    return {
+        "usd": float(row["usd"]) if row["usd"] is not None else 0,
+        "hkd": float(row["hkd"]) if row["hkd"] is not None else 0,
+        "cny": float(row["cny"]) if row["cny"] is not None else 0,
+    }
+
+
+def capital_pool_set(user_id: str, pool: Dict[str, Any]) -> None:
+    if not is_db_enabled():
+        return
+    _execute(
+        """
+        INSERT INTO capital_pool (user_id, usd, hkd, cny)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (user_id) DO UPDATE SET
+            usd = EXCLUDED.usd,
+            hkd = EXCLUDED.hkd,
+            cny = EXCLUDED.cny,
+            updated_at = NOW();
+        """,
+        (
+            user_id,
+            _num_or_none(pool.get("usd")) or 0,
+            _num_or_none(pool.get("hkd")) or 0,
+            _num_or_none(pool.get("cny")) or 0,
+        ),
+        commit=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# User settings
+# ---------------------------------------------------------------------------
+
+def settings_get(user_id: str = "default") -> Dict[str, Any]:
+    if not is_db_enabled():
+        return {}
+    rows = _execute(
+        "SELECT selected_model, settings_json FROM user_settings WHERE user_id = %s",
+        (user_id,),
+        fetch=True,
+    )
+    if not rows:
+        return {}
+    row = rows[0]
+    settings = row["settings_json"] or {}
+    if row["selected_model"]:
+        settings["selectedModel"] = row["selected_model"]
+    return settings
+
+
+def settings_set(user_id: str, settings: Dict[str, Any]) -> None:
+    if not is_db_enabled():
+        return
+    selected_model = settings.get("selectedModel") or settings.get("selected_model")
+    settings_json = {k: v for k, v in settings.items() if k not in ("selectedModel", "selected_model")}
+    _execute(
+        """
+        INSERT INTO user_settings (user_id, selected_model, settings_json)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (user_id) DO UPDATE SET
+            selected_model = EXCLUDED.selected_model,
+            settings_json = EXCLUDED.settings_json,
+            updated_at = NOW();
+        """,
+        (
+            user_id,
+            selected_model,
+            json.dumps(settings_json, ensure_ascii=False),
+        ),
+        commit=True,
+    )
