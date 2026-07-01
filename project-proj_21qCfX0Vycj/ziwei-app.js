@@ -2174,7 +2174,7 @@ ${allStocksData}
                     value={selectedModelKey}
                     onChange={(e) => setSelectedModelKey(normalizeZiweiModelKey(e.target.value))}
                     disabled={isGenerating || isAnalyzingStock || isGeneratingBasic || isGeneratingWealth || isGeneratingPortfolio}
-                    className="input-field !w-auto !rounded-lg !px-2 !py-1 !text-xs"
+                    className="input-field input-field-compact nav-model-select !w-auto max-w-[10rem]"
                   >
                     {modelOptions.map((m) => (
                       <option key={m.key} value={m.key}>

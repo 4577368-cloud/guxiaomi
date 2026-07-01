@@ -134,11 +134,8 @@ function WatchlistSection({ watchlist, onRemoveItem, onRefreshItem, onAddPositio
             <div className="icon-eye text-cyan-400"></div>
             关注列表
             <span className="text-xs font-normal text-slate-400">({safeWatchlist.length})</span>
-          </h2>
-          <p className="mt-0.5 text-[11px] text-slate-400">
-            关注股票的摘要、明细和操作入口，单只深度信息进入详情页。
-          </p>
-        </div>
+            </h2>
+          </div>
         <div className="flex items-center gap-2">
           {onAddStock && (
             <button

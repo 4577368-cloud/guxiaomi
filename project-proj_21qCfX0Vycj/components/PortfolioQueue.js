@@ -130,9 +130,6 @@ function PortfolioQueue({ portfolio, capitalPool, summary, isRefreshing, onAddSt
               组合持仓列表
               <span className="text-xs font-normal text-slate-400">({safePortfolio.length})</span>
             </h2>
-            <p className="mt-0.5 text-xs text-slate-400 md:text-sm">
-              摘要、明细和操作入口合并到这一张列表卡片；单只股票深度信息进入详情页。
-            </p>
           </div>
           <div className="flex items-center gap-2">
             <button

@@ -1029,7 +1029,6 @@ function HomeDashboard({
               我的投资日报
               <span className="text-xs font-normal text-slate-500">({dailyReports.length})</span>
             </h3>
-            <p className="mt-1 text-xs text-slate-400">按时间保存最近日报，最新一篇默认展开。</p>
           </div>
           <button
             type="button"

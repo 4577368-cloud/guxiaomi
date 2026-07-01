@@ -2781,9 +2781,6 @@ function AnalysisApp() {
             <h2 className="text-base md:text-lg font-semibold text-slate-50 tracking-tight">
               分析参数
             </h2>
-            <p className="mt-1 text-xs text-slate-400">
-              填入标的、市场和模型后即可生成完整分析报告。
-            </p>
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2823,7 +2820,7 @@ function AnalysisApp() {
               模型
             </label>
             <select
-              className="input-field"
+              className="input-field input-field-compact"
               value={selectedModelKey}
               onChange={(e) => setSelectedModelKey(normalizeModelKey(e.target.value))}
               disabled={analyzing}
@@ -2836,9 +2833,6 @@ function AnalysisApp() {
                 );
               })}
             </select>
-            <p className="mt-1 text-[11px] text-slate-400">
-              默认使用模型2：Gemma；这里只切换模型槽位，密钥和真实模型 ID 只在后端环境变量中配置。
-            </p>
           </div>
           <div className="sm:col-span-2">
             <label className="block text-xs font-semibold uppercase tracking-wide text-slate-300 mb-1.5">
@@ -3074,10 +3068,6 @@ function AnalysisApp() {
             股票预测
           </h2>
         </div>
-        <p className="text-[11px] text-slate-400 mb-2 leading-snug">
-          「获取」静默拉取<strong className="text-slate-200">日/周/月</strong>；按
-          <strong className="text-slate-200">日期</strong>换批次，再选日/周/月看表。
-        </p>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-2">
           <div className="flex flex-wrap items-center gap-1.5 min-w-0">
             <span className="text-[11px] font-semibold text-slate-300 shrink-0">
