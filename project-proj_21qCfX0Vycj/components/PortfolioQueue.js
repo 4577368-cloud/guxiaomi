@@ -122,7 +122,7 @@ function PortfolioQueue({ portfolio, capitalPool, summary, isRefreshing, onAddSt
     const totalDailyProfit = todayProfitForRows(sortedRows);
 
     return (
-      <section className="card mb-4 p-4" id="portfolio-queue" data-name="portfolio-queue" data-file="components/PortfolioQueue.js">
+      <section className="card mb-4" id="portfolio-queue" data-name="portfolio-queue" data-file="components/PortfolioQueue.js">
         <div className="mb-3 flex flex-wrap items-start justify-between gap-3 px-1">
           <div>
             <h2 className="font-display flex items-center gap-2 text-sm font-bold text-slate-100 md:text-base">
@@ -130,34 +130,32 @@ function PortfolioQueue({ portfolio, capitalPool, summary, isRefreshing, onAddSt
               组合持仓列表
               <span className="text-xs font-normal text-slate-400">({safePortfolio.length})</span>
             </h2>
-            <p className="mt-0.5 text-[11px] text-slate-400">
+            <p className="mt-0.5 text-xs text-slate-400 md:text-sm">
               摘要、明细和操作入口合并到这一张列表卡片；单只股票深度信息进入详情页。
             </p>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={onAddStock}
-                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-cyan-300/20 bg-cyan-400/20 px-3 text-sm font-bold text-cyan-50 shadow-sm shadow-cyan-950/20 transition-colors hover:bg-cyan-400/30"
-              >
-                <div className="icon-plus text-sm"></div>
-                新增
-              </button>
-              <button
-                type="button"
-                onClick={onRefreshAll}
-                disabled={!safePortfolio.length || isRefreshing}
-                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-white/12 bg-white/[0.09] px-3 text-sm font-bold text-slate-100 shadow-sm shadow-slate-950/20 transition-colors hover:bg-white/[0.14] disabled:opacity-50"
-              >
-                <div className={`icon-refresh-cw text-sm ${isRefreshing ? 'animate-spin' : ''}`}></div>
-                {isRefreshing ? '刷新中' : '刷新'}
-              </button>
-            </div>
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            <button
+              type="button"
+              onClick={onAddStock}
+              className="btn btn-secondary nav-chip gap-1"
+            >
+              <div className="icon-plus"></div>
+              新增
+            </button>
+            <button
+              type="button"
+              onClick={onRefreshAll}
+              disabled={!safePortfolio.length || isRefreshing}
+              className="btn btn-secondary nav-chip gap-1 disabled:opacity-50"
+            >
+              <div className={`icon-refresh-cw ${isRefreshing ? 'animate-spin' : ''}`}></div>
+              {isRefreshing ? '刷新中' : '刷新'}
+            </button>
           </div>
         </div>
 
-        <div className="mb-2 flex flex-wrap gap-1.5 px-1">
+        <div className="mb-2 flex flex-wrap gap-2 px-1">
           {[
             ['default', '默认'],
             ['move', '今日异动'],
@@ -171,10 +169,10 @@ function PortfolioQueue({ portfolio, capitalPool, summary, isRefreshing, onAddSt
                 setOpenMenuId(null);
                 setSortKey(key);
               }}
-              className={`rounded-md px-2 py-1 text-[11px] font-semibold transition-colors ${
+              className={`btn btn-sm ${
                 sortKey === key
-                  ? 'bg-cyan-400/18 text-cyan-100'
-                  : 'bg-white/[0.05] text-slate-300 hover:bg-white/[0.10] hover:text-slate-100'
+                  ? 'border-sky-400/35 bg-cyan-400/18 text-cyan-100'
+                  : 'btn-secondary'
               }`}
             >
               {label}
@@ -234,25 +232,25 @@ function PortfolioQueue({ portfolio, capitalPool, summary, isRefreshing, onAddSt
                   ref={openMenuId === row.stock.id ? menuRootRef : null}
                   className="relative flex justify-start gap-1 lg:col-span-2 lg:justify-end"
                 >
-                  <a href={row.detailUrl} className="inline-flex h-8 min-w-[3.4rem] items-center justify-center rounded-xl border border-white/10 bg-white/[0.08] px-3 text-xs font-bold text-slate-100 transition-colors hover:bg-white/[0.14]">详情</a>
+                  <a href={row.detailUrl} className="btn btn-secondary btn-sm min-w-[3.4rem]">详情</a>
                   <button
                     type="button"
                     onClick={() => {
                       if (window.GuxiaomiChatDiagnosis) window.GuxiaomiChatDiagnosis.openFromHoldingRow(row);
                     }}
                     title="AI 诊断"
-                    className="inline-flex h-8 min-w-[3.4rem] items-center justify-center rounded-xl border border-white/10 bg-white/[0.08] px-3 text-xs font-bold text-slate-100 transition-colors hover:bg-white/[0.14]"
+                    className="btn btn-secondary btn-sm min-w-[3.4rem]"
                   >
                     AI
                   </button>
-                  <a href={row.analysisUrl} className="inline-flex h-8 min-w-[3.4rem] items-center justify-center rounded-xl border border-white/10 bg-white/[0.08] px-3 text-xs font-bold text-cyan-100 transition-colors hover:bg-white/[0.14]">分析</a>
+                  <a href={row.analysisUrl} className="btn btn-secondary btn-sm min-w-[3.4rem] text-cyan-100">分析</a>
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       setOpenMenuId(openMenuId === row.stock.id ? null : row.stock.id);
                     }}
-                    className="inline-flex h-8 min-w-[3.4rem] items-center justify-center rounded-xl border border-white/10 bg-white/[0.08] px-3 text-xs font-bold text-slate-100 transition-colors hover:bg-white/[0.14]"
+                    className="btn btn-secondary btn-sm min-w-[3.4rem]"
                     aria-expanded={openMenuId === row.stock.id}
                   >
                     更多

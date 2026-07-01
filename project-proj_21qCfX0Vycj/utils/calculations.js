@@ -238,71 +238,108 @@ function calculateBreakEvenPrice(stock, totalShares, totalCostWithFees, brokerCh
 }
 
 /**
- * 在固定单价下，找整数股数使净盈利最接近目标（优先符合「按市价卖多少股」的习惯）。
+ * 在固定单价下，找最少股数使净盈利 ≥ 目标（优先部分卖出，避免不必要的清仓）。
  */
 function closestIntegerSharesForTargetProfit(stock, brokerChannel, unitPrice, targetNetProfit, maxShares) {
   if (!(unitPrice > 0) || maxShares < 1) return null;
 
+  const tol = Math.max(1, targetNetProfit * 0.02);
   const simFull = (s) => calculateSellSimulation(stock, unitPrice, s, brokerChannel);
   const np = (s) => simFull(s).netProfit;
-  const candidates = new Set();
 
-  if (maxShares <= 400) {
-    for (let s = 1; s <= maxShares; s++) candidates.add(s);
-  } else {
-    const v1 = np(1);
-    const vMax = np(maxShares);
-    candidates.add(1);
-    candidates.add(maxShares);
+  const npMax = np(maxShares);
+  if (npMax < targetNetProfit - tol) {
+    return { s: maxShares, sim: simFull(maxShares), diff: Math.abs(npMax - targetNetProfit), belowTarget: true };
+  }
 
-    if (vMax >= v1 - 1e-9) {
-      let lo = 1;
-      let hi = maxShares;
-      let rb = 0;
-      while (lo <= hi) {
-        const mid = (lo + hi) >> 1;
-        if (np(mid) <= targetNetProfit) {
-          rb = mid;
-          lo = mid + 1;
-        } else hi = mid - 1;
-      }
-      for (const x of [rb - 1, rb, rb + 1, rb + 2]) {
-        if (x >= 1 && x <= maxShares) candidates.add(x);
-      }
+  let lo = 1;
+  let hi = maxShares;
+  let firstMeet = null;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (np(mid) >= targetNetProfit - tol) {
+      firstMeet = mid;
+      hi = mid - 1;
     } else {
-      // 单价偏低时净盈利可能随股数递减：找「最大 s 仍 ≥ 目标」与相邻点
-      let lo = 1;
-      let hi = maxShares;
-      let cut = 0;
-      while (lo <= hi) {
-        const mid = (lo + hi) >> 1;
-        if (np(mid) >= targetNetProfit) {
-          cut = mid;
-          lo = mid + 1;
-        } else hi = mid - 1;
-      }
-      for (const x of [cut, cut + 1, 1, maxShares]) {
-        if (x >= 1 && x <= maxShares) candidates.add(x);
-      }
-      const stride = Math.ceil(maxShares / 300);
-      for (let s = 1; s <= maxShares; s += stride) candidates.add(s);
-      for (let s = Math.max(1, maxShares - 60); s <= maxShares; s++) candidates.add(s);
+      lo = mid + 1;
     }
   }
 
-  let bestS = 1;
-  let bestDiff = Infinity;
-  let bestSim = simFull(1);
+  if (firstMeet === null) {
+    const sim = simFull(maxShares);
+    return { s: maxShares, sim, diff: Math.abs(sim.netProfit - targetNetProfit), belowTarget: true };
+  }
+
+  const candidates = new Set();
+  for (let x = Math.max(1, firstMeet - 2); x <= Math.min(maxShares, firstMeet + 2); x++) {
+    candidates.add(x);
+  }
+
+  let best = null;
   for (const s of candidates) {
     const sm = simFull(s);
     const d = Math.abs(sm.netProfit - targetNetProfit);
-    if (d < bestDiff - 1e-12 || (Math.abs(d - bestDiff) < 1e-12 && s > bestS)) {
-      bestDiff = d;
-      bestS = s;
-      bestSim = sm;
+    const meets = sm.netProfit >= targetNetProfit - tol;
+    if (!best) {
+      best = { s, sim: sm, diff: d, belowTarget: !meets };
+      continue;
     }
+    const better =
+      (meets && best.sim.netProfit < targetNetProfit - tol) ||
+      (meets === (best.sim.netProfit >= targetNetProfit - tol) &&
+        (d < best.diff - 1e-12 || (Math.abs(d - best.diff) < 1e-12 && s < best.s)));
+    if (better) best = { s, sim: sm, diff: d, belowTarget: !meets };
   }
-  return { s: bestS, sim: bestSim, diff: bestDiff };
+  return best;
+}
+
+function clampSellShares(shares, maxShares) {
+  const max = Math.floor(Number(maxShares) || 0);
+  const s = Math.floor(Number(shares) || 0);
+  if (max <= 0) return 0;
+  return Math.min(max, Math.max(0, s));
+}
+
+function resolveManualSellPrice(priceMode, opts) {
+  const current = Number(opts.currentPrice) || 0;
+  const breakEven = Number(opts.breakEvenPrice) || 0;
+  const val = Number(opts.priceValue);
+  switch (priceMode) {
+    case 'breakeven':
+      return breakEven > 0 ? breakEven : 0;
+    case 'current':
+      return current > 0 ? current : 0;
+    case 'custom':
+      return Number.isFinite(val) && val > 0 ? val : 0;
+    case 'offset_amount':
+      return current > 0 ? current + (Number.isFinite(val) ? val : 0) : 0;
+    case 'offset_percent':
+      return current > 0 ? current * (1 + (Number.isFinite(val) ? val : 0) / 100) : 0;
+    default:
+      return 0;
+  }
+}
+
+function resolveManualSellShares(sharesMode, opts) {
+  const max = Math.floor(Number(opts.totalShares) || 0);
+  const val = Number(opts.sharesValue);
+  let shares = 0;
+  switch (sharesMode) {
+    case 'full':
+      shares = max;
+      break;
+    case 'half':
+      shares = max <= 1 ? max : Math.max(1, Math.floor(max / 2));
+      break;
+    case 'percent':
+      shares = Math.floor(max * ((Number.isFinite(val) ? val : 0) / 100));
+      break;
+    case 'custom':
+    default:
+      shares = Math.floor(Number.isFinite(val) ? val : 0);
+      break;
+  }
+  return clampSellShares(shares, max);
 }
 
 /**
@@ -362,63 +399,13 @@ function findSellPlanForTargetNetProfit(stock, stockAnalysis, brokerChannel, tar
   const refPrice =
     currentPrice > 0 ? currentPrice : breakEven > 0 ? breakEven : avgCost;
 
-  const pack = (sim, sellPrice, sellShares, planMode, planHint) => ({
-    sellPrice,
-    sellShares,
-    remainingShares: maxShares - sellShares,
-    netProfit: sim.netProfit,
-    grossAmount: sim.grossAmount,
-    totalFees: sim.totalFees,
-    netAmount: sim.netAmount,
-    profitPercent: sim.profitPercent,
-    planMode,
-    planHint,
-    referencePriceUsed: refPrice,
-  });
+  const maxAtRef =
+    refPrice > 0
+      ? calculateSellSimulation(stock, refPrice, maxShares, brokerChannel)
+      : null;
+  const maxNetProfitAtRefPrice = maxAtRef ? maxAtRef.netProfit : 0;
 
-  const simAt = function (price, sh) {
-    if (price <= 0 || sh <= 0) return { netProfit: -1e18, grossAmount: 1e18 };
-    return calculateSellSimulation(stock, price, sh, brokerChannel);
-  };
-
-  // —— A. 参考价下满仓是否够得着目标 ——
-  if (refPrice > 0) {
-    const npMaxAtRef = calculateSellSimulation(stock, refPrice, maxShares, brokerChannel).netProfit;
-    if (npMaxAtRef >= targetNetProfit - tol) {
-      const hit = closestIntegerSharesForTargetProfit(
-        stock,
-        brokerChannel,
-        refPrice,
-        targetNetProfit,
-        maxShares,
-      );
-      if (hit) {
-        if (hit.diff <= tol) {
-          return pack(
-            hit.sim,
-            refPrice,
-            hit.s,
-            "at_reference_price",
-            currentPrice > 0
-              ? "按当前价测算：卖出上述股数时，该笔净盈利约等于目标（已含卖出手续费与对应持仓成本）。"
-              : "按参考价（无现价时用保本/均价）测算：卖出上述股数约实现目标净盈利。",
-          );
-        }
-        if (hit.diff <= relaxedTol) {
-          return pack(
-            hit.sim,
-            refPrice,
-            hit.s,
-            "at_reference_price_approx",
-            "按当前参考价测算，与目标略有偏差；可微调股数或价格。",
-          );
-        }
-      }
-    }
-  }
-
-  // —— B. 一次性卖光全部持仓，反推单价 ——
-  const liq = binarySearchPriceForTargetOnShares(
+  const fullLiqPlan = binarySearchPriceForTargetOnShares(
     stock,
     brokerChannel,
     maxShares,
@@ -427,19 +414,112 @@ function findSellPlanForTargetNetProfit(stock, stockAnalysis, brokerChannel, tar
     breakEven,
     avgCost,
   );
-  if (liq && Math.abs(liq.sim.netProfit - targetNetProfit) <= relaxedTol) {
-    return pack(
-      liq.sim,
-      liq.price,
+
+  const buildMeta = () => ({
+    refPrice,
+    breakEven,
+    avgCost,
+    currentPrice,
+    maxShares,
+    targetNetProfit,
+    maxNetProfitAtRefPrice,
+    achievableAtCurrentPrice: maxNetProfitAtRefPrice >= targetNetProfit - tol,
+    fullLiquidationForTarget: fullLiqPlan
+      ? {
+          sellPrice: fullLiqPlan.price,
+          sellShares: maxShares,
+          netProfit: fullLiqPlan.sim.netProfit,
+          priceGapFromCurrent: currentPrice > 0 ? fullLiqPlan.price - currentPrice : 0,
+          priceGapPercentFromCurrent:
+            currentPrice > 0 ? ((fullLiqPlan.price / currentPrice) - 1) * 100 : 0,
+        }
+      : null,
+  });
+
+  const pack = (sim, sellPrice, sellShares, planMode, planHint) => {
+    const gap = currentPrice > 0 ? sellPrice - currentPrice : 0;
+    const gapPct = currentPrice > 0 ? ((sellPrice / currentPrice) - 1) * 100 : 0;
+    return {
+      feasible: true,
+      sellPrice,
+      sellShares,
+      remainingShares: maxShares - sellShares,
+      netProfit: sim.netProfit,
+      grossAmount: sim.grossAmount,
+      totalFees: sim.totalFees,
+      netAmount: sim.netAmount,
+      profitPercent: sim.profitPercent,
+      planMode,
+      planHint,
+      referencePriceUsed: refPrice,
+      currentPrice,
+      maxNetProfitAtRefPrice,
+      targetNetProfit,
+      priceGapFromCurrent: gap,
+      priceGapPercentFromCurrent: gapPct,
+      meta: buildMeta(),
+    };
+  };
+
+  const simAt = function (price, sh) {
+    if (price <= 0 || sh <= 0) return { netProfit: -1e18, grossAmount: 1e18 };
+    return calculateSellSimulation(stock, price, sh, brokerChannel);
+  };
+
+  // —— A. 参考价下用部分仓位达成目标 ——
+  if (refPrice > 0 && maxNetProfitAtRefPrice >= targetNetProfit - tol) {
+    const hit = closestIntegerSharesForTargetProfit(
+      stock,
+      brokerChannel,
+      refPrice,
+      targetNetProfit,
       maxShares,
-      "liquidate_all",
-      "在卖光全部持仓（" +
-        maxShares.toLocaleString() +
-        " 股）的前提下，约需上述卖出单价才能实现目标净盈利；若达不到该价，需降低目标或保留部分仓位。",
+    );
+    if (hit && !hit.belowTarget) {
+      if (hit.diff <= tol) {
+        return pack(
+          hit.sim,
+          refPrice,
+          hit.s,
+          'partial_at_reference',
+          currentPrice > 0
+            ? `按现价测算：卖出 ${hit.s.toLocaleString()} 股即可接近目标净盈利，无需清仓（剩余 ${(maxShares - hit.s).toLocaleString()} 股）。`
+            : `按参考价测算：卖出 ${hit.s.toLocaleString()} 股约实现目标净盈利。`,
+        );
+      }
+      if (hit.diff <= relaxedTol) {
+        return pack(
+          hit.sim,
+          refPrice,
+          hit.s,
+          'partial_at_reference_approx',
+          `按现价测算卖出 ${hit.s.toLocaleString()} 股，与目标略有偏差，可微调股数。`,
+        );
+      }
+    }
+  }
+
+  // —— B. 现价下满仓仍不够：反推全仓卖出所需单价 ——
+  if (fullLiqPlan && Math.abs(fullLiqPlan.sim.netProfit - targetNetProfit) <= relaxedTol) {
+    const gap = currentPrice > 0 ? fullLiqPlan.price - currentPrice : 0;
+    const gapPct = currentPrice > 0 ? ((fullLiqPlan.price / currentPrice) - 1) * 100 : 0;
+    const lossHint =
+      maxNetProfitAtRefPrice < 0
+        ? `当前持仓处于浮亏，现价全仓卖出净盈利约 ${maxNetProfitAtRefPrice.toFixed(2)}，未达目标。`
+        : `现价全仓卖出净盈利约 ${maxNetProfitAtRefPrice.toFixed(2)}，未达目标。`;
+    return pack(
+      fullLiqPlan.sim,
+      fullLiqPlan.price,
+      maxShares,
+      'liquidate_all',
+      `${lossHint}若坚持净盈利目标 ${targetNetProfit.toLocaleString()}，需一次性卖光全部 ${maxShares.toLocaleString()} 股，约需卖出单价 ${fullLiqPlan.price.toFixed(3)}` +
+        (currentPrice > 0
+          ? `（较现价 ${gap >= 0 ? '上涨' : '下跌'} ${Math.abs(gap).toFixed(3)}，约 ${gapPct >= 0 ? '+' : ''}${gapPct.toFixed(2)}%）。`
+          : '。'),
     );
   }
 
-  // —— C. 联合搜索：评分 = 误差优先，其次贴近参考价，再次多卖股（杜绝「只卖 1 股」）——
+  // —— C. 联合搜索 ——
   const shareList = (function buildShareList() {
     if (maxShares <= 800) {
       const arr = [];
@@ -490,18 +570,46 @@ function findSellPlanForTargetNetProfit(stock, stockAnalysis, brokerChannel, tar
     const sim = simAt(r, shares);
     const diff = Math.abs(sim.netProfit - targetNetProfit);
     const pricePen = Math.abs(r - refPrice) * (100 + maxShares * 0.02);
-    const score = diff * 1e15 + pricePen * 5e2 - shares;
+    const score = diff * 1e15 + pricePen * 5e2 + shares;
     if (score < bestScore) {
       bestScore = score;
       best = pack(
         sim,
         r,
         shares,
-        "general",
-        "综合费率数值解：已优先贴近参考价并避免「极少股数 + 极端单价」的不合理组合。",
+        'general',
+        shares < maxShares
+          ? `卖出 ${shares.toLocaleString()} 股、单价 ${r.toFixed(3)} 时接近目标净盈利。`
+          : `需卖光全部持仓，单价约 ${r.toFixed(3)} 才能接近目标净盈利。`,
       );
     }
   }
 
-  return best;
+  if (best) return best;
+
+  const meta = buildMeta();
+  return {
+    feasible: false,
+    planMode: 'unachievable',
+    currentPrice,
+    maxNetProfitAtRefPrice,
+    targetNetProfit,
+    planHint:
+      maxNetProfitAtRefPrice < targetNetProfit
+        ? `现价下满仓卖出净盈利约 ${maxNetProfitAtRefPrice.toFixed(2)}，低于目标 ${targetNetProfit.toLocaleString()}。` +
+          (meta.fullLiquidationForTarget
+            ? ` 若全仓卖出，约需单价 ${meta.fullLiquidationForTarget.sellPrice.toFixed(3)}（较现价 ${meta.fullLiquidationForTarget.priceGapPercentFromCurrent >= 0 ? '+' : ''}${meta.fullLiquidationForTarget.priceGapPercentFromCurrent.toFixed(2)}%）。`
+            : ' 在当前费率与持仓下，该目标过高。')
+        : '在当前费率与持仓下，无法在合理单价范围内凑出该净盈利目标。',
+    meta,
+    fullLiquidationForTarget: meta.fullLiquidationForTarget,
+    priceGapFromCurrent: meta.fullLiquidationForTarget
+      ? meta.fullLiquidationForTarget.priceGapFromCurrent
+      : 0,
+    priceGapPercentFromCurrent: meta.fullLiquidationForTarget
+      ? meta.fullLiquidationForTarget.priceGapPercentFromCurrent
+      : 0,
+    sellPrice: meta.fullLiquidationForTarget ? meta.fullLiquidationForTarget.sellPrice : 0,
+    sellShares: maxShares,
+  };
 }

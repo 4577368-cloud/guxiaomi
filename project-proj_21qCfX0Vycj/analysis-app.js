@@ -1554,7 +1554,7 @@ function AnalysisApp() {
     ];
     const hash = [...code].reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
     const pick = palette[hash % palette.length];
-    return `${selectedStockCode === code ? "bg-blue-600 text-white border-blue-500" : pick} btn btn-xs`;
+    return `${selectedStockCode === code ? "bg-blue-600 text-white border-blue-500" : pick} btn btn-sm`;
   };
 
   // 放弃当前任务（停止轮询、清除 job_id，可重新发起分析）
@@ -2613,7 +2613,7 @@ function AnalysisApp() {
                   <td className="p-1.5">
                     {isPredRowWatched(row) ? (
                       <span
-                        className="inline-flex h-7 min-w-[3.5rem] items-center justify-center rounded-lg border border-emerald-400/30 bg-emerald-500/15 px-2 text-[11px] font-semibold text-emerald-200"
+                        className="btn btn-sm shrink-0 border border-emerald-400/30 bg-emerald-500/15 font-semibold text-emerald-200 min-w-[3.5rem]"
                         title="已在关注列表"
                       >
                         已关注
@@ -2622,7 +2622,7 @@ function AnalysisApp() {
                       <button
                         type="button"
                         onClick={() => handleAddToWatchlistFromPred(row)}
-                        className="btn btn-xs bg-cyan-500 text-white hover:bg-cyan-600 border-0 shrink-0 min-w-[3.5rem]"
+                        className="btn btn-sm bg-cyan-500 text-white hover:bg-cyan-600 border-0 shrink-0 min-w-[3.5rem]"
                         title="加入关注列表"
                       >
                         +关注
@@ -2634,7 +2634,7 @@ function AnalysisApp() {
                       type="button"
                       onClick={() => handleAnalyzeFromPred(row)}
                       disabled={analyzing || predFetchLoading}
-                      className="btn btn-xs bg-emerald-500 text-white hover:bg-emerald-600 border-0 shrink-0 min-w-[3.5rem] disabled:opacity-50"
+                      className="btn btn-sm bg-emerald-500 text-white hover:bg-emerald-600 border-0 shrink-0 min-w-[3.5rem] disabled:opacity-50"
                       title="获取股票信息并生成分析报告"
                     >
                       分析
@@ -2680,15 +2680,18 @@ function AnalysisApp() {
               </h1>
             </div>
           </a>
-          <div className="ml-auto flex items-center gap-1.5 overflow-x-auto">
-            <button type="button" onClick={goBackToSource} className="btn btn-secondary btn-sm shrink-0">
-              返回
+          <div className="ml-auto flex items-center gap-1 overflow-x-auto">
+            <button type="button" onClick={goBackToSource} className="btn btn-secondary nav-chip gap-1 shrink-0">
+              <div className="icon-arrow-left"></div>
+              <span>返回</span>
             </button>
-            <a href={withCurrentSource("ziwei.html")} className="btn btn-accent-paipan btn-sm shrink-0">
-              排盘
+            <a href={withCurrentSource("ziwei.html")} className="btn btn-secondary nav-chip gap-1 shrink-0">
+              <div className="icon-sparkles"></div>
+              <span>排盘</span>
             </a>
-            <a href={withCurrentSource("news.html")} className="btn btn-accent-news btn-sm shrink-0">
-              新闻
+            <a href={withCurrentSource("news.html")} className="btn btn-secondary nav-chip gap-1 shrink-0">
+              <div className="icon-newspaper"></div>
+              <span>新闻</span>
             </a>
           </div>
         </div>
@@ -2887,7 +2890,7 @@ function AnalysisApp() {
               <button
                 type="button"
                 onClick={stopAnalysis}
-                className="btn btn-secondary btn-xs shrink-0"
+                className="btn btn-secondary btn-sm shrink-0"
               >
                 停止
               </button>
@@ -2909,7 +2912,7 @@ function AnalysisApp() {
           {!historyLoading && historyList.length > 0 && (
             <button
               type="button"
-              className="btn btn-xs bg-rose-500 text-white hover:bg-rose-600 border-0 shrink-0 !min-w-8 !px-2"
+              className="btn btn-sm bg-rose-500 text-white hover:bg-rose-600 border-0 shrink-0"
               onClick={deleteAllHistoryReports}
               title="删除全部历史报告"
               aria-label="删除全部历史报告"
@@ -2923,7 +2926,7 @@ function AnalysisApp() {
           <div className="flex flex-wrap items-center gap-x-2 gap-y-2 mb-4 shrink-0">
             <button
               type="button"
-              className="btn btn-xs btn-secondary"
+              className="btn btn-secondary btn-sm"
               onClick={() => setSelectedStockCode("")}
             >
               全部
@@ -3025,7 +3028,7 @@ function AnalysisApp() {
                 <div className="flex items-center gap-1.5 flex-wrap justify-end">
                   <button
                     type="button"
-                    className="btn btn-xs btn-secondary disabled:opacity-40"
+                    className="btn btn-secondary btn-sm disabled:opacity-40"
                     disabled={historyPageClamped <= 1}
                     onClick={() =>
                       setHistoryPage(function (p) {
@@ -3040,7 +3043,7 @@ function AnalysisApp() {
                   </span>
                   <button
                     type="button"
-                    className="btn btn-xs btn-secondary disabled:opacity-40"
+                    className="btn btn-secondary btn-sm disabled:opacity-40"
                     disabled={historyPageClamped >= historyTotalPages}
                     onClick={() =>
                       setHistoryPage(function (p) {
@@ -3111,7 +3114,7 @@ function AnalysisApp() {
           <div className="flex flex-wrap items-center gap-1.5 ml-auto">
             <button
               type="button"
-              className="btn btn-primary btn-xs shrink-0 !min-h-8 !px-3 !py-1 text-xs"
+              className="btn btn-primary btn-sm shrink-0"
               disabled={predFetchLoading}
               onClick={fetchScreener}
             >
@@ -3136,10 +3139,10 @@ function AnalysisApp() {
               <button
                 key={dk}
                 type="button"
-                className={`btn btn-xs rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+                className={`btn btn-sm font-medium transition-colors ${
                   selectedPredDateKey === dk
                     ? "border border-cyan-300/45 bg-cyan-400/20 text-cyan-50 shadow-sm"
-                    : "border border-white/15 bg-white/[0.06] text-slate-300 hover:bg-white/[0.12] hover:text-slate-100"
+                    : "btn-secondary"
                 }`}
                 onClick={() => setSelectedPredDateKey(dk)}
                 title={dk}
@@ -3201,7 +3204,7 @@ function AnalysisApp() {
           <span className="shrink-0 text-[11px] text-slate-400">列表翻页</span>
           <button
             type="button"
-            className="btn btn-xs btn-secondary rounded-md disabled:opacity-40 !min-h-7 !py-0.5 text-xs"
+            className="btn btn-secondary btn-sm disabled:opacity-40"
             disabled={predParams.page <= 1}
             onClick={() =>
               setPredParams((p) => ({
@@ -3216,7 +3219,7 @@ function AnalysisApp() {
             第
             <input
               type="number"
-              className="input-field input-field-compact w-11 text-center text-xs py-0.5 min-h-7"
+              className="input-field input-field-compact w-11 text-center text-xs"
               min={1}
               value={predParams.page}
               onChange={(e) => {
@@ -3236,7 +3239,7 @@ function AnalysisApp() {
           </label>
           <button
             type="button"
-            className="btn btn-xs btn-secondary rounded-md disabled:opacity-40 !min-h-7 !py-0.5 text-xs"
+            className="btn btn-secondary btn-sm disabled:opacity-40"
             disabled={
               predMaxPage != null && predParams.page >= predMaxPage
             }
@@ -3281,7 +3284,7 @@ function AnalysisApp() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  className="inline-flex h-8 min-w-[3.4rem] items-center justify-center rounded-xl border border-cyan-400/35 bg-cyan-400/15 px-3 text-xs font-bold text-cyan-100 transition-colors hover:bg-cyan-400/25 hover:text-white"
+                  className="btn btn-sm shrink-0 border border-cyan-400/35 bg-cyan-400/15 font-bold text-cyan-100 hover:bg-cyan-400/25 hover:text-white min-w-[3.4rem]"
                   title="AI 诊断"
                   onClick={openCurrentReportDiagnosis}
                 >

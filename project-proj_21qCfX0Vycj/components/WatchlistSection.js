@@ -104,7 +104,7 @@ function WatchlistSection({ watchlist, onRemoveItem, onRefreshItem, onAddPositio
 
   if (safeWatchlist.length === 0) {
     return (
-      <section className="card mb-4 p-4" id="watchlist-section" data-name="watchlist-section" data-file="components/WatchlistSection.js">
+      <section className="card mb-4" id="watchlist-section" data-name="watchlist-section" data-file="components/WatchlistSection.js">
         <div className="mb-3 flex flex-wrap items-start justify-between gap-3 px-1">
           <div>
             <h2 className="font-display flex items-center gap-2 text-sm font-bold text-slate-100 md:text-base">
@@ -112,7 +112,7 @@ function WatchlistSection({ watchlist, onRemoveItem, onRefreshItem, onAddPositio
               关注列表
               <span className="text-xs font-normal text-slate-400">(0)</span>
             </h2>
-            <p className="mt-0.5 text-[11px] text-slate-400">
+            <p className="mt-0.5 text-xs text-slate-400 md:text-sm">
               关注感兴趣的股票，实时监控价格变动。
             </p>
           </div>
@@ -127,7 +127,7 @@ function WatchlistSection({ watchlist, onRemoveItem, onRefreshItem, onAddPositio
   }
 
   return (
-    <section className="card mb-4 p-4" id="watchlist-section" data-name="watchlist-section" data-file="components/WatchlistSection.js">
+    <section className="card mb-4" id="watchlist-section" data-name="watchlist-section" data-file="components/WatchlistSection.js">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3 px-1">
         <div>
           <h2 className="font-display flex items-center gap-2 text-sm font-bold text-slate-100 md:text-base">
@@ -142,9 +142,9 @@ function WatchlistSection({ watchlist, onRemoveItem, onRefreshItem, onAddPositio
         <button
           type="button"
           onClick={onRefreshAll}
-          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-white/12 bg-white/[0.09] px-3 text-sm font-bold text-slate-100 shadow-sm shadow-slate-950/20 transition-colors hover:bg-white/[0.14] disabled:opacity-50"
+          className="btn btn-secondary nav-chip gap-1 disabled:opacity-50"
         >
-          <div className="icon-refresh-cw text-sm"></div>
+          <div className="icon-refresh-cw"></div>
           刷新
         </button>
       </div>
@@ -202,25 +202,25 @@ function WatchlistSection({ watchlist, onRemoveItem, onRefreshItem, onAddPositio
                 ref={openMenuId === id ? menuRootRef : null}
                 className="relative flex justify-start gap-1 lg:col-span-2 lg:justify-end"
               >
-                <a href={row.detailUrl} className="inline-flex h-8 min-w-[3.4rem] items-center justify-center rounded-xl border border-white/10 bg-white/[0.08] px-3 text-xs font-bold text-slate-100 transition-colors hover:bg-white/[0.14]">详情</a>
+                <a href={row.detailUrl} className="btn btn-secondary btn-sm min-w-[3.4rem]">详情</a>
                 <button
                   type="button"
                   onClick={() => {
                     if (window.GuxiaomiChatDiagnosis) window.GuxiaomiChatDiagnosis.openFromWatchlistRow(row);
                   }}
                   title="AI 诊断"
-                  className="inline-flex h-8 min-w-[3.4rem] items-center justify-center rounded-xl border border-white/10 bg-white/[0.08] px-3 text-xs font-bold text-slate-100 transition-colors hover:bg-white/[0.14]"
+                  className="btn btn-secondary btn-sm min-w-[3.4rem]"
                 >
                   AI
                 </button>
-                <a href={row.analysisUrl} className="inline-flex h-8 min-w-[3.4rem] items-center justify-center rounded-xl border border-white/10 bg-white/[0.08] px-3 text-xs font-bold text-cyan-100 transition-colors hover:bg-white/[0.14]">分析</a>
+                <a href={row.analysisUrl} className="btn btn-secondary btn-sm min-w-[3.4rem] text-cyan-100">分析</a>
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     setOpenMenuId(openMenuId === id ? null : id);
                   }}
-                  className="inline-flex h-8 min-w-[3.4rem] items-center justify-center rounded-xl border border-white/10 bg-white/[0.08] px-3 text-xs font-bold text-slate-100 transition-colors hover:bg-white/[0.14]"
+                  className="btn btn-secondary btn-sm min-w-[3.4rem]"
                   aria-expanded={openMenuId === id}
                 >
                   更多

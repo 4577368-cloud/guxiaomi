@@ -467,7 +467,7 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
           className="p-3 rounded-full bg-white/20 text-white touch-manipulation"
           aria-label="删除"
         >
-          <div className="icon-trash-2 text-xl"></div>
+          <div className="icon-trash-2"></div>
         </button>
       </div>
 
@@ -483,20 +483,35 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
             <h3 className="text-xl font-bold text-[var(--text-primary)]">
               {stock.symbol}
             </h3>
-            <div className="flex items-center justify-end gap-1.5 flex-wrap">
-              <a href={detailUrl} className="btn btn-secondary btn-sm min-w-[3.25rem]">详情</a>
-              <a href={analysisUrl} className="btn btn-primary btn-sm min-w-[3.25rem]">分析</a>
-              <a href={paipanUrl} className="btn btn-accent-paipan btn-sm min-w-[3.25rem]">排盘</a>
-              <a href={newsUrl} className="btn btn-accent-news btn-sm min-w-[3.25rem]">新闻</a>
-              <button type="button" onClick={() => { try { handleRefreshPrice(); } catch (e) { console.error(e); setIsRefreshingPrice(false); } }} disabled={isRefreshingPrice} className="btn btn-success btn-sm min-w-[3.25rem] disabled:opacity-50 touch-manipulation">{isRefreshingPrice ? '刷新中' : '刷新'}</button>
-              <button type="button" onClick={() => { try { setShowDeleteConfirm(true); } catch (e) { console.error(e); } }} className="btn btn-danger btn-sm p-1.5 touch-manipulation md:hidden" title="删除" aria-label="删除">
-                <div className="icon-trash-2 text-sm"></div>
+            <div className="flex items-center justify-end gap-1 flex-wrap">
+              <a href={detailUrl} className="btn btn-secondary nav-chip gap-1">
+                <div className="icon-layout-dashboard"></div>
+                <span>详情</span>
+              </a>
+              <a href={analysisUrl} className="btn btn-secondary nav-chip gap-1">
+                <div className="icon-bar-chart-2"></div>
+                <span>分析</span>
+              </a>
+              <a href={paipanUrl} className="btn btn-secondary nav-chip gap-1">
+                <div className="icon-sparkles"></div>
+                <span>排盘</span>
+              </a>
+              <a href={newsUrl} className="btn btn-secondary nav-chip gap-1">
+                <div className="icon-newspaper"></div>
+                <span>新闻</span>
+              </a>
+              <button type="button" onClick={() => { try { handleRefreshPrice(); } catch (e) { console.error(e); setIsRefreshingPrice(false); } }} disabled={isRefreshingPrice} className="btn btn-secondary nav-chip gap-1 disabled:opacity-50 touch-manipulation">
+                <div className={`icon-refresh-cw ${isRefreshingPrice ? 'animate-spin' : ''}`}></div>
+                <span>{isRefreshingPrice ? '刷新中' : '刷新'}</span>
               </button>
-              <button type="button" onClick={onDelete} className="btn btn-danger btn-sm p-1.5 touch-manipulation hidden md:inline-flex" title="删除" aria-label="删除">
-                <div className="icon-trash-2 text-sm"></div>
+              <button type="button" onClick={() => { try { setShowDeleteConfirm(true); } catch (e) { console.error(e); } }} className="btn btn-danger btn-icon touch-manipulation md:hidden" title="删除" aria-label="删除">
+                <div className="icon-trash-2"></div>
               </button>
-              <button type="button" onClick={onToggleCollapse} className="btn btn-secondary btn-sm p-1.5 touch-manipulation" title={isCollapsed ? '展开' : '折叠'} aria-label={isCollapsed ? '展开' : '折叠'}>
-                <div className={`icon-chevron-${isCollapsed ? 'down' : 'up'} text-sm`}></div>
+              <button type="button" onClick={onDelete} className="btn btn-danger btn-icon touch-manipulation hidden md:inline-flex" title="删除" aria-label="删除">
+                <div className="icon-trash-2"></div>
+              </button>
+              <button type="button" onClick={onToggleCollapse} className="btn btn-secondary btn-icon touch-manipulation" title={isCollapsed ? '展开' : '折叠'} aria-label={isCollapsed ? '展开' : '折叠'}>
+                <div className={`icon-chevron-${isCollapsed ? 'down' : 'up'}`}></div>
               </button>
             </div>
           </div>

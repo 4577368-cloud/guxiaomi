@@ -641,7 +641,7 @@ function App() {
       <>
         <div className="flex min-h-screen flex-col" data-name="app" data-file="app.js">
           <header className="glass-nav sticky top-0 z-40">
-            <div className="container mx-auto px-2 py-2 md:px-4">
+            <div className="container mx-auto px-4 py-2 md:px-6">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <div className="relative shrink-0">
@@ -669,33 +669,33 @@ function App() {
                   <button
                     type="button"
                     onClick={() => setShowAddModal(true)}
-                    className="btn btn-primary top-action gap-1.5"
+                    className="btn btn-secondary nav-chip gap-1"
                   >
-                    <div className="icon-plus text-sm"></div>
+                    <div className="icon-plus"></div>
                     <span>新增</span>
                   </button>
                   <a
                     href="analysis.html?from=index.html"
-                    className="btn btn-accent-news top-action gap-1.5"
+                    className="btn btn-secondary nav-chip gap-1"
                   >
-                    <div className="icon-bar-chart-2 text-sm"></div>
+                    <div className="icon-bar-chart-2"></div>
                     <span>分析</span>
                   </a>
                   <a
                     href="ziwei.html?from=index.html"
-                    className="btn btn-accent-paipan top-action gap-1.5"
+                    className="btn btn-secondary nav-chip gap-1"
                   >
-                    <div className="icon-sparkles text-sm"></div>
+                    <div className="icon-sparkles"></div>
                     <span>排盘</span>
                   </a>
                   <button
                     type="button"
                     onClick={handleRefreshAll}
                     disabled={isRefreshing || portfolio.length === 0}
-                    className="btn btn-success top-action gap-1.5 disabled:opacity-50"
+                    className="btn btn-secondary nav-chip gap-1 disabled:opacity-50"
                     title={portfolio.length === 0 ? '添加股票后可刷新行情' : '刷新行情'}
                   >
-                    <div className={`icon-refresh-cw text-sm ${isRefreshing ? 'animate-spin' : ''}`}></div>
+                    <div className={`icon-refresh-cw ${isRefreshing ? 'animate-spin' : ''}`}></div>
                     <span>刷新</span>
                   </button>
                 </div>
@@ -704,7 +704,7 @@ function App() {
             </div>
           </header>
 
-          <main className="app-shell container mx-auto px-2 pb-8 pt-3 md:px-4 md:pb-12 md:pt-4">
+          <main className="app-shell container mx-auto px-4 pb-8 pt-4 md:px-6 md:pb-12 md:pt-6">
           {portfolio.length > 1 && (
             <div className="mb-3">
               <StockNavigation portfolio={portfolio} />

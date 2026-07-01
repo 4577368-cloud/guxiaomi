@@ -197,6 +197,110 @@ function getDetailApiBase() {
   return typeof location !== 'undefined' && location.origin ? location.origin : '';
 }
 
+function formatPriceVsBreakEven(price, breakEven, market) {
+  const p = Number(price);
+  const be = Number(breakEven);
+  if (!Number.isFinite(p) || p <= 0 || !Number.isFinite(be) || be <= 0) return null;
+  const pct = ((p / be) - 1) * 100;
+  const diff = p - be;
+  const above = diff >= 0;
+  return {
+    pct,
+    diff,
+    above,
+    label: above ? '高于回本线' : '低于回本线',
+    arrow: above ? '↑' : '↓',
+    pctText: detailPercent(pct),
+    diffText: `${diff >= 0 ? '+' : ''}${detailMoney(diff, market, 3)}`,
+  };
+}
+
+function SellSimStat({ label, value, valueClass, sub }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 border-b border-white/[0.06] py-1.5 text-xs last:border-0">
+      <span className="shrink-0 text-slate-500">{label}</span>
+      <span className={`gx-num text-right font-semibold tabular-nums ${valueClass || 'text-slate-100'}`}>
+        {value}
+        {sub ? <span className="ml-1 text-[10px] font-normal text-slate-500">{sub}</span> : null}
+      </span>
+    </div>
+  );
+}
+
+function TargetPlanResultTable({ plan, market, targetAmount }) {
+  if (!plan) return null;
+  const currentPrice = Number(plan.currentPrice) || Number(plan.meta && plan.meta.currentPrice) || 0;
+  const maxAtCurrent =
+    plan.maxNetProfitAtRefPrice != null
+      ? plan.maxNetProfitAtRefPrice
+      : plan.meta && plan.meta.maxNetProfitAtRefPrice != null
+        ? plan.meta.maxNetProfitAtRefPrice
+        : null;
+  const sellPrice = Number(plan.sellPrice) || 0;
+  const gap = plan.priceGapFromCurrent != null
+    ? plan.priceGapFromCurrent
+    : plan.fullLiquidationForTarget
+      ? plan.fullLiquidationForTarget.priceGapFromCurrent
+      : currentPrice > 0 && sellPrice > 0
+        ? sellPrice - currentPrice
+        : 0;
+  const gapPct = plan.priceGapPercentFromCurrent != null
+    ? plan.priceGapPercentFromCurrent
+    : plan.fullLiquidationForTarget
+      ? plan.fullLiquidationForTarget.priceGapPercentFromCurrent
+      : currentPrice > 0 && sellPrice > 0
+        ? ((sellPrice / currentPrice) - 1) * 100
+        : 0;
+  const target = Number(targetAmount) || Number(plan.targetNetProfit) || 0;
+  const feasible = plan.feasible !== false;
+
+  return (
+    <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-2">
+      {target > 0 && (
+        <SellSimStat label="目标净盈利" value={detailMoney(target, market, 2)} valueClass="text-amber-100" />
+      )}
+      {currentPrice > 0 && (
+        <SellSimStat label="现价" value={detailMoney(currentPrice, market, 3)} valueClass="text-cyan-200" />
+      )}
+      {maxAtCurrent != null && (
+        <SellSimStat
+          label="现价全仓净盈利"
+          value={`${maxAtCurrent >= 0 ? '+' : ''}${detailMoney(maxAtCurrent, market, 2)}`}
+          valueClass={maxAtCurrent >= 0 ? 'text-emerald-300' : 'text-rose-300'}
+        />
+      )}
+      {sellPrice > 0 && (
+        <SellSimStat
+          label={feasible && plan.planMode === 'liquidate_all' ? '全仓达标卖出价' : '参考卖出价'}
+          value={detailMoney(sellPrice, market, 3)}
+          valueClass="text-amber-200"
+        />
+      )}
+      {currentPrice > 0 && sellPrice > 0 && (
+        <SellSimStat
+          label="卖出价较现价"
+          value={detailPercent(gapPct)}
+          valueClass={gap >= 0 ? 'text-emerald-300' : 'text-rose-300'}
+          sub={`${gap >= 0 ? '+' : ''}${detailMoney(gap, market, 3)}`}
+        />
+      )}
+      {feasible && plan.sellShares > 0 && (
+        <SellSimStat label="卖出股数" value={`${formatPrice(plan.sellShares, 0)} 股`} />
+      )}
+      {feasible && plan.netProfit != null && (
+        <SellSimStat
+          label="预计净盈利"
+          value={`${plan.netProfit >= 0 ? '+' : ''}${detailMoney(plan.netProfit, market, 2)}`}
+          valueClass={plan.netProfit >= 0 ? 'text-emerald-300' : 'text-rose-300'}
+        />
+      )}
+      {feasible && plan.remainingShares != null && (
+        <SellSimStat label="剩余持仓" value={`${formatPrice(plan.remainingShares, 0)} 股`} />
+      )}
+    </div>
+  );
+}
+
 function DetailMetric({ label, value, valueClass, hint }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3">
@@ -458,26 +562,79 @@ function DetailSparkline({ history, currentPrice, positive, market }) {
 function DetailSellSimulator({ stock, stockAnalysis, market }) {
   const [brokerChannel, setBrokerChannel] = React.useState(stock.brokerChannel || 'futu');
   const [targetProfit, setTargetProfit] = React.useState('');
+  const totalShares = Math.floor(Number(stockAnalysis.totalShares) || 0);
+  const currentPrice = Number(stock.currentPrice) || 0;
+  const breakEven = Number(stockAnalysis.breakEvenPrice) || 0;
+  const avgCost = Number(stockAnalysis.avgCost) || 0;
+
   const [manual, setManual] = React.useState({
-    price: stock.currentPrice ? String(stock.currentPrice) : '',
-    shares: stockAnalysis.totalShares ? String(Math.round(stockAnalysis.totalShares)) : '',
+    priceMode: 'current',
+    priceValue: '',
+    sharesMode: 'custom',
+    sharesValue: totalShares ? String(totalShares) : '',
   });
 
+  React.useEffect(() => {
+    setManual((prev) => ({
+      ...prev,
+      sharesValue:
+        prev.sharesMode === 'custom' && !prev.sharesValue && totalShares
+          ? String(totalShares)
+          : prev.sharesValue,
+    }));
+  }, [totalShares]);
+
+  const parsedTarget = React.useMemo(() => {
+    const raw = String(targetProfit || '').trim();
+    if (!raw) return NaN;
+    const n = parseFloat(raw);
+    return Number.isFinite(n) && n > 0 ? n : NaN;
+  }, [targetProfit]);
+
   const targetPlan = React.useMemo(() => {
-    const target = Number(targetProfit);
-    if (!Number.isFinite(target) || target <= 0 || stockAnalysis.totalShares <= 0) return null;
+    if (!Number.isFinite(parsedTarget) || parsedTarget <= 0 || totalShares <= 0) return null;
     if (typeof findSellPlanForTargetNetProfit !== 'function') return null;
-    return findSellPlanForTargetNetProfit(stock, stockAnalysis, brokerChannel, target);
-  }, [stock, stockAnalysis, brokerChannel, targetProfit]);
+    return findSellPlanForTargetNetProfit(stock, stockAnalysis, brokerChannel, parsedTarget);
+  }, [stock, stockAnalysis, brokerChannel, parsedTarget, totalShares]);
+
+  const resolvedManual = React.useMemo(() => {
+    const price =
+      typeof resolveManualSellPrice === 'function'
+        ? resolveManualSellPrice(manual.priceMode, {
+            currentPrice,
+            breakEvenPrice: breakEven,
+            priceValue: manual.priceValue,
+          })
+        : Number(manual.priceValue) || currentPrice;
+    const rawShares =
+      typeof resolveManualSellShares === 'function'
+        ? resolveManualSellShares(manual.sharesMode, {
+            totalShares,
+            sharesValue: manual.sharesValue,
+          })
+        : Number(manual.sharesValue) || 0;
+    const shares =
+      typeof clampSellShares === 'function'
+        ? clampSellShares(rawShares, totalShares)
+        : Math.min(totalShares, rawShares);
+    const requestedShares = Math.floor(Number(manual.sharesValue) || 0);
+    const sharesCapped =
+      manual.sharesMode === 'custom' && requestedShares > totalShares && totalShares > 0;
+    return { price, shares, sharesCapped, requestedShares };
+  }, [manual, currentPrice, breakEven, totalShares]);
 
   const manualResult = React.useMemo(() => {
-    const price = Number(manual.price);
-    const shares = Number(manual.shares);
+    const { price, shares } = resolvedManual;
     if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(shares) || shares <= 0) return null;
     return calculateSellSimulation(stock, price, shares, brokerChannel);
-  }, [stock, brokerChannel, manual]);
+  }, [stock, brokerChannel, resolvedManual]);
 
-  if (!stockAnalysis || stockAnalysis.totalShares <= 0) {
+  const fullAtCurrent = React.useMemo(() => {
+    if (!currentPrice || totalShares <= 0) return null;
+    return calculateSellSimulation(stock, currentPrice, totalShares, brokerChannel);
+  }, [stock, brokerChannel, currentPrice, totalShares]);
+
+  if (!stockAnalysis || totalShares <= 0) {
     return (
       <section className="card mt-4 p-4">
         <h3 className="text-lg font-bold text-slate-50">卖出模拟</h3>
@@ -489,15 +646,28 @@ function DetailSellSimulator({ stock, stockAnalysis, market }) {
   }
 
   const quickTargets = market === 'US' ? [500, 1000, 5000, 10000] : [1000, 5000, 10000, 50000];
+  const priceModeOptions = [
+    { id: 'current', label: '现价' },
+    { id: 'breakeven', label: '回本线' },
+    { id: 'offset_amount', label: '现价±金额' },
+    { id: 'offset_percent', label: '现价±%' },
+    { id: 'custom', label: '自定义价' },
+  ];
+  const sharesModeOptions = [
+    { id: 'full', label: '全仓' },
+    { id: 'half', label: '半仓' },
+    { id: 'custom', label: '自定义股数' },
+  ];
+  const priceVsBreakEven = formatPriceVsBreakEven(currentPrice, breakEven, market);
+  const sellPriceVsBreakEven =
+    resolvedManual.price > 0 ? formatPriceVsBreakEven(resolvedManual.price, breakEven, market) : null;
 
   return (
     <section className="card mt-4 p-4">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-lg font-bold text-slate-50">卖出模拟</h3>
-          <p className="mt-1 text-xs text-slate-400">
-            用当前持仓和费率估算卖出价格、股数、手续费与净盈亏。这里先做模拟，不直接改动持仓。
-          </p>
+          <p className="mt-0.5 text-[11px] text-slate-400">基于持仓与费率估算，不改动实际持仓。</p>
         </div>
         <label className="flex items-center gap-2 text-xs text-slate-300">
           渠道
@@ -513,17 +683,60 @@ function DetailSellSimulator({ stock, stockAnalysis, market }) {
         </label>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-white/12 bg-slate-950/22 p-4">
-          <h4 className="mb-2 text-sm font-semibold text-amber-100">净盈利目标 → 卖出规模</h4>
-          <div className="mb-3 flex flex-wrap gap-2">
+      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-white/10 bg-slate-950/35 px-3 py-2 text-[11px] text-slate-300">
+        <span>持仓 <strong className="text-slate-100">{formatPrice(totalShares, 0)}</strong> 股</span>
+        <span className="hidden text-white/15 sm:inline">|</span>
+        <span>均价 <strong className="text-slate-100">{detailMoney(avgCost, market, 3)}</strong></span>
+        <span className="hidden text-white/15 sm:inline">|</span>
+        <span>现价 <strong className="text-cyan-200">{detailMoney(currentPrice, market, 3)}</strong></span>
+        <span className="hidden text-white/15 sm:inline">|</span>
+        <span>回本线 <strong className="text-amber-200">{breakEven > 0 ? detailMoney(breakEven, market, 3) : '—'}</strong></span>
+        {priceVsBreakEven && (
+          <>
+            <span className="hidden text-white/15 sm:inline">|</span>
+            <span
+              className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium ${
+                priceVsBreakEven.above
+                  ? 'bg-emerald-500/15 text-emerald-300'
+                  : 'bg-rose-500/15 text-rose-300'
+              }`}
+            >
+              <span>{priceVsBreakEven.arrow}</span>
+              <span>现价{priceVsBreakEven.label}</span>
+              <span>{priceVsBreakEven.pctText}</span>
+              <span className="text-white/50">({priceVsBreakEven.diffText})</span>
+            </span>
+          </>
+        )}
+        <span className="hidden text-white/15 sm:inline">|</span>
+        <span>
+          全仓净盈{' '}
+          <strong
+            className={
+              fullAtCurrent && fullAtCurrent.netProfit >= 0 ? 'text-emerald-300' : 'text-rose-300'
+            }
+          >
+            {fullAtCurrent
+              ? `${fullAtCurrent.netProfit >= 0 ? '+' : ''}${detailMoney(fullAtCurrent.netProfit, market, 2)}`
+              : '—'}
+          </strong>
+        </span>
+      </div>
+
+      <div className="grid items-stretch gap-3 lg:grid-cols-2">
+        <div className="flex h-[430px] flex-col overflow-hidden rounded-xl border border-white/12 bg-slate-950/22 p-3">
+          <h4 className="shrink-0 text-sm font-semibold text-amber-100">净盈利目标 → 卖出规模</h4>
+          <p className="mt-0.5 shrink-0 text-[10px] leading-snug text-slate-500">
+            盈利时算最少股数；达不到时反推全仓达标价。
+          </p>
+          <div className="mt-2 flex shrink-0 flex-wrap gap-1.5">
             {quickTargets.map((amount) => (
               <button
                 key={amount}
                 type="button"
                 onClick={() => setTargetProfit(String(amount))}
-                className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
-                  targetProfit === String(amount)
+                className={`rounded-md border px-2 py-1 text-xs font-medium transition-colors ${
+                  parsedTarget === amount
                     ? 'border-amber-300/70 bg-amber-400/24 text-amber-50'
                     : 'border-white/20 bg-white/[0.06] text-slate-200 hover:bg-white/[0.12]'
                 }`}
@@ -532,59 +745,159 @@ function DetailSellSimulator({ stock, stockAnalysis, market }) {
               </button>
             ))}
           </div>
+          <label className="mt-2 block shrink-0 text-[10px] text-slate-500">
+            自定义目标净盈利（{market === 'US' ? 'USD' : market === 'CN' ? 'CNY' : 'HKD'}）
+          </label>
           <input
             type="number"
-            step="100"
+            step="1"
+            min="0.01"
+            inputMode="decimal"
             value={targetProfit}
             onChange={(e) => setTargetProfit(e.target.value)}
-            className="w-full rounded-xl border border-white/20 bg-slate-950/40 px-3 py-2 text-sm text-slate-50 outline-none focus:border-blue-300/60"
-            placeholder="输入目标净盈利"
+            className="w-full shrink-0 rounded-lg border border-white/20 bg-slate-950/40 px-2.5 py-1.5 text-sm text-slate-50 outline-none focus:border-blue-300/60"
+            placeholder={`例如 ${quickTargets[0]}`}
           />
-          {targetPlan ? (
-            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-              <DetailMetric label="参考卖出价" value={detailMoney(targetPlan.sellPrice, market, 3)} valueClass="text-amber-200" />
-              <DetailMetric label="卖出股数" value={`${formatPrice(targetPlan.sellShares, 0)} 股`} />
-              <DetailMetric label="预计净盈利" value={`${targetPlan.netProfit >= 0 ? '+' : ''}${detailMoney(targetPlan.netProfit, market, 2)}`} valueClass={targetPlan.netProfit >= 0 ? 'text-emerald-300' : 'text-rose-300'} />
-              <DetailMetric label="剩余持仓" value={`${formatPrice(targetPlan.remainingShares, 0)} 股`} />
-            </div>
-          ) : targetProfit ? (
-            <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.06] p-3 text-xs text-slate-300">
-              暂无法按当前条件凑出该盈利目标，可调低目标或修改手动模拟。
-            </div>
-          ) : null}
+          <div className="mt-2 min-h-0 flex-1 overflow-y-auto border-t border-white/10 pt-2">
+            {targetPlan ? (
+              <div className="space-y-2">
+                {targetPlan.planHint && (
+                  <p className="text-[10px] leading-relaxed text-slate-400">{targetPlan.planHint}</p>
+                )}
+                <TargetPlanResultTable plan={targetPlan} market={market} targetAmount={parsedTarget} />
+              </div>
+            ) : Number.isFinite(parsedTarget) ? (
+              <p className="text-[11px] text-rose-300/90">无法测算该目标，请检查持仓与费率设置。</p>
+            ) : (
+              <p className="text-[11px] text-slate-500">点击快捷金额或输入任意目标净盈利</p>
+            )}
+          </div>
         </div>
 
-        <div className="rounded-2xl border border-white/12 bg-slate-950/22 p-4">
-          <h4 className="mb-2 text-sm font-semibold text-slate-100">手动卖出测算</h4>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-xs text-slate-400">
-              卖出价格
-              <input
-                type="number"
-                step="0.001"
-                value={manual.price}
-                onChange={(e) => setManual((prev) => ({ ...prev, price: e.target.value }))}
-                className="mt-1 w-full rounded-xl border border-white/20 bg-slate-950/40 px-3 py-2 text-sm text-slate-50 outline-none focus:border-blue-300/60"
-              />
-            </label>
-            <label className="text-xs text-slate-400">
-              卖出股数
-              <input
-                type="number"
-                value={manual.shares}
-                onChange={(e) => setManual((prev) => ({ ...prev, shares: e.target.value }))}
-                className="mt-1 w-full rounded-xl border border-white/20 bg-slate-950/40 px-3 py-2 text-sm text-slate-50 outline-none focus:border-blue-300/60"
-              />
-            </label>
-          </div>
-          {manualResult && (
-            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-              <DetailMetric label="成交金额" value={detailMoney(manualResult.grossAmount, market, 2)} />
-              <DetailMetric label="手续费" value={detailMoney(manualResult.totalFees, market, 2)} valueClass="text-amber-200" />
-              <DetailMetric label="实收净额" value={detailMoney(manualResult.netAmount, market, 2)} />
-              <DetailMetric label="净盈亏" value={`${manualResult.netProfit >= 0 ? '+' : ''}${detailMoney(manualResult.netProfit, market, 2)}`} valueClass={manualResult.netProfit >= 0 ? 'text-emerald-300' : 'text-rose-300'} hint={detailPercent(manualResult.profitPercent)} />
+        <div className="flex h-[430px] flex-col overflow-hidden rounded-xl border border-white/12 bg-slate-950/22 p-3">
+          <h4 className="shrink-0 text-sm font-semibold text-slate-100">手动卖出测算</h4>
+          <div className="mt-2 shrink-0">
+            <div className="mb-1 text-[10px] text-slate-500">卖出价格</div>
+            <div className="flex flex-wrap gap-1">
+              {priceModeOptions.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setManual((prev) => ({ ...prev, priceMode: opt.id }))}
+                  className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+                    manual.priceMode === opt.id
+                      ? 'border-cyan-400/60 bg-cyan-500/20 text-cyan-50'
+                      : 'border-white/15 bg-white/[0.05] text-slate-300 hover:bg-white/[0.1]'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
-          )}
+            {(manual.priceMode === 'custom' ||
+              manual.priceMode === 'offset_amount' ||
+              manual.priceMode === 'offset_percent') && (
+              <input
+                type="number"
+                step={manual.priceMode === 'offset_percent' ? '0.1' : '0.001'}
+                value={manual.priceValue}
+                onChange={(e) => setManual((prev) => ({ ...prev, priceValue: e.target.value }))}
+                className="mt-1.5 w-full rounded-lg border border-white/20 bg-slate-950/40 px-2.5 py-1.5 text-sm text-slate-50 outline-none focus:border-blue-300/60"
+                placeholder={
+                  manual.priceMode === 'custom'
+                    ? '卖出价格'
+                    : manual.priceMode === 'offset_amount'
+                      ? '相对现价±金额'
+                      : '相对现价±%'
+                }
+              />
+            )}
+          </div>
+
+          <div className="mt-2 shrink-0">
+            <div className="mb-1 text-[10px] text-slate-500">卖出股数（上限 {formatPrice(totalShares, 0)}）</div>
+            <div className="flex flex-wrap gap-1">
+              {sharesModeOptions.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setManual((prev) => ({ ...prev, sharesMode: opt.id }))}
+                  className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+                    manual.sharesMode === opt.id
+                      ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-50'
+                      : 'border-white/15 bg-white/[0.05] text-slate-300 hover:bg-white/[0.1]'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {(manual.sharesMode === 'custom') && (
+              <input
+                type="number"
+                min="0"
+                max={String(totalShares)}
+                value={manual.sharesValue}
+                onChange={(e) => setManual((prev) => ({ ...prev, sharesValue: e.target.value }))}
+                className="mt-1.5 w-full rounded-lg border border-white/20 bg-slate-950/40 px-2.5 py-1.5 text-sm text-slate-50 outline-none focus:border-blue-300/60"
+                placeholder="股数"
+              />
+            )}
+            {resolvedManual.sharesCapped && (
+              <p className="mt-1 text-[10px] text-amber-200">已限制为最大 {formatPrice(totalShares, 0)} 股</p>
+            )}
+          </div>
+
+          <div className="mt-2 min-h-0 flex-1 overflow-y-auto border-t border-white/10 pt-2">
+            <div className="mb-2 flex gap-4 text-[11px]">
+              <span className="text-slate-500">
+                测算价{' '}
+                <strong className="text-slate-100">
+                  {resolvedManual.price > 0 ? detailMoney(resolvedManual.price, market, 3) : '—'}
+                </strong>
+              </span>
+              <span className="text-slate-500">
+                股数{' '}
+                <strong className="text-slate-100">
+                  {resolvedManual.shares > 0 ? `${formatPrice(resolvedManual.shares, 0)}` : '—'}
+                </strong>
+              </span>
+              {sellPriceVsBreakEven && (
+                <span
+                  className={
+                    sellPriceVsBreakEven.above ? 'text-emerald-300' : 'text-rose-300'
+                  }
+                >
+                  {sellPriceVsBreakEven.arrow} 卖出价{sellPriceVsBreakEven.label}{' '}
+                  {sellPriceVsBreakEven.pctText}
+                </span>
+              )}
+            </div>
+            {manualResult ? (
+              <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-2">
+                <SellSimStat label="成交金额" value={detailMoney(manualResult.grossAmount, market, 2)} />
+                <SellSimStat label="手续费" value={detailMoney(manualResult.totalFees, market, 2)} valueClass="text-amber-200" />
+                <SellSimStat label="实收净额" value={detailMoney(manualResult.netAmount, market, 2)} />
+                <SellSimStat
+                  label="净盈亏"
+                  value={`${manualResult.netProfit >= 0 ? '+' : ''}${detailMoney(manualResult.netProfit, market, 2)}`}
+                  valueClass={manualResult.netProfit >= 0 ? 'text-emerald-300' : 'text-rose-300'}
+                  sub={detailPercent(manualResult.profitPercent)}
+                />
+                <SellSimStat label="剩余持仓" value={`${formatPrice(totalShares - resolvedManual.shares, 0)} 股`} />
+                {sellPriceVsBreakEven && (
+                  <SellSimStat
+                    label="卖出价 vs 回本线"
+                    value={`${sellPriceVsBreakEven.arrow} ${sellPriceVsBreakEven.label}`}
+                    valueClass={sellPriceVsBreakEven.above ? 'text-emerald-300' : 'text-rose-300'}
+                    sub={`${sellPriceVsBreakEven.pctText} · ${sellPriceVsBreakEven.diffText}`}
+                  />
+                )}
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-500">选择价格与股数后显示测算结果</p>
+            )}
+          </div>
         </div>
       </div>
     </section>
@@ -806,7 +1119,7 @@ function DetailNewsPanel({ stock, newsUrl, onSaveKeywords }) {
             type="button"
             onClick={generateKeywordsByModel}
             disabled={generating}
-            className="inline-flex h-8 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-400/10 px-3 text-xs font-bold text-cyan-100 transition-colors hover:bg-cyan-400/15 disabled:opacity-50"
+            className="btn btn-sm shrink-0 border border-cyan-300/20 bg-cyan-400/10 font-bold text-cyan-100 hover:bg-cyan-400/15 disabled:opacity-50"
           >
             {generating ? '生成中' : keywordChips.length > 0 ? '生成关键词' : 'AI 关键词'}
           </button>
@@ -814,13 +1127,13 @@ function DetailNewsPanel({ stock, newsUrl, onSaveKeywords }) {
             type="button"
             onClick={loadNews}
             disabled={loading}
-            className="inline-flex h-8 items-center justify-center rounded-xl border border-white/15 bg-white/[0.07] px-3 text-xs font-bold text-slate-100 transition-colors hover:bg-white/[0.12] disabled:opacity-50"
+            className="btn btn-secondary btn-sm shrink-0 font-bold disabled:opacity-50"
           >
             {loading ? '加载中' : '刷新'}
           </button>
           <a
             href={newsUrl}
-            className="inline-flex h-8 items-center justify-center rounded-xl border border-pink-300/20 bg-pink-400/12 px-3 text-xs font-bold text-pink-100 transition-colors hover:bg-pink-400/18"
+            className="btn btn-sm shrink-0 border border-pink-300/20 bg-pink-400/12 font-bold text-pink-100 hover:bg-pink-400/18"
           >
             更多
           </a>
@@ -999,12 +1312,12 @@ function DetailReportPanel({ stock, analysisUrl, refreshKey, onDiagnosis }) {
                     <button
                       type="button"
                       onClick={() => onDiagnosis && onDiagnosis(report)}
-                      className="btn btn-secondary btn-xs min-w-[3.4rem]"
+                      className="btn btn-secondary btn-sm min-w-[3.4rem]"
                       title="AI 诊断"
                     >
                       AI
                     </button>
-                    <a href={analysisUrl} className="btn btn-secondary btn-xs">查看</a>
+                    <a href={analysisUrl} className="btn btn-secondary btn-sm">查看</a>
                   </div>
                 </div>
                 {summary && (
@@ -1109,8 +1422,9 @@ function DetailInlineAnalysis({ stock, onReportDone, className }) {
 
   return (
     <>
-      <button type="button" onClick={run} disabled={running} className={`btn btn-accent-analysis btn-sm min-w-[4.5rem] disabled:opacity-50 ${className || ''}`}>
-        {running ? '分析中…' : '分析'}
+      <button type="button" onClick={run} disabled={running} className={`btn btn-secondary nav-chip gap-1 disabled:opacity-50 ${className || ''}`}>
+        <div className="icon-bar-chart-2"></div>
+        <span>{running ? '分析中…' : '分析'}</span>
       </button>
       {status && <div className="basis-full rounded-xl border border-cyan-300/20 bg-cyan-400/10 px-3 py-2 text-xs text-cyan-100">{status}</div>}
       {error && <div className="basis-full rounded-xl border border-lime-300/20 bg-lime-400/10 px-3 py-2 text-xs text-lime-100">{error}</div>}
@@ -1368,10 +1682,19 @@ function StockDetailApp() {
               <h1 className="truncate font-display text-base font-bold text-slate-50 md:text-lg">股票详情</h1>
             </div>
           </a>
-          <div className="ml-auto flex items-center gap-1.5 overflow-x-auto">
-            <a href="index.html" className="btn btn-secondary btn-sm shrink-0">首页</a>
-            <a href={paipanUrl} className="btn btn-accent-paipan btn-sm shrink-0">排盘</a>
-            <a href={newsUrl} className="btn btn-accent-news btn-sm shrink-0">新闻</a>
+          <div className="ml-auto flex items-center gap-1 overflow-x-auto">
+            <a href="index.html" className="btn btn-secondary nav-chip gap-1 shrink-0">
+              <div className="icon-layout-dashboard"></div>
+              <span>首页</span>
+            </a>
+            <a href={paipanUrl} className="btn btn-secondary nav-chip gap-1 shrink-0">
+              <div className="icon-sparkles"></div>
+              <span>排盘</span>
+            </a>
+            <a href={newsUrl} className="btn btn-secondary nav-chip gap-1 shrink-0">
+              <div className="icon-newspaper"></div>
+              <span>新闻</span>
+            </a>
           </div>
         </div>
       </header>
@@ -1412,17 +1735,21 @@ function StockDetailApp() {
                 <DetailHeaderMetric label="平均成本" value={hasHolding ? detailMoney(analysis.avgCost, market, market === 'US' ? 3 : 2) : '—'} hint={hasHolding ? `${formatPrice(analysis.totalShares, 0)} 股` : ''} />
                 <DetailHeaderMetric label="跟踪表现" value={isTracked ? `${watchGain >= 0 ? '+' : ''}${detailMoney(watchGain, market, 2)}` : '未跟踪'} valueClass={watchGain >= 0 ? 'text-emerald-300' : 'text-rose-300'} hint={isTracked ? detailPercent(watchGainPct) : ''} />
               </div>
-              <div className="flex min-w-[4.8rem] flex-row justify-start gap-2 lg:flex-col lg:justify-end">
-                <button type="button" onClick={() => setShowPositionModal(true)} className="btn btn-primary btn-sm justify-center lg:w-full">加仓</button>
+              <div className="flex min-w-[4.8rem] flex-row justify-start gap-1.5 lg:flex-col lg:justify-end">
+                <button type="button" onClick={() => setShowPositionModal(true)} className="btn btn-secondary nav-chip justify-center gap-1 lg:w-full">
+                  <div className="icon-plus"></div>
+                  <span>加仓</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => openDetailDiagnosis(null)}
-                  className="btn btn-secondary btn-sm justify-center min-w-[3.4rem] lg:w-full"
+                  className="btn btn-secondary nav-chip justify-center gap-1 lg:w-full"
                   title="AI 诊断"
                 >
-                  AI
+                  <div className="icon-sparkles"></div>
+                  <span>AI</span>
                 </button>
-                <DetailInlineAnalysis stock={stock} onReportDone={() => setReportRefreshKey((v) => v + 1)} className="justify-center lg:w-full" />
+                <DetailInlineAnalysis stock={stock} onReportDone={() => setReportRefreshKey((v) => v + 1)} className="justify-center gap-1 lg:w-full" />
               </div>
             </div>
           </div>
@@ -1438,11 +1765,11 @@ function StockDetailApp() {
                   type="button"
                   onClick={() => loadDetailHistory({ silent: false })}
                   disabled={historyRefreshing}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-white/[0.08] hover:text-slate-50 disabled:opacity-50"
+                  className="btn-icon-plain disabled:opacity-50"
                   aria-label="刷新价格趋势"
                   title="刷新价格趋势"
                 >
-                  <span className={`icon-refresh-cw text-sm ${historyRefreshing ? 'animate-spin' : ''}`}></span>
+                  <span className={`icon-refresh-cw ${historyRefreshing ? 'animate-spin' : ''}`}></span>
                 </button>
               </div>
             </div>

@@ -2183,7 +2183,10 @@ ${allStocksData}
                     ))}
                   </select>
                 </label>
-                <a href={withCurrentSource('analysis.html')} className="btn btn-secondary btn-sm shrink-0">分析</a>
+                <a href={withCurrentSource('analysis.html')} className="btn btn-secondary nav-chip gap-1 shrink-0">
+                  <div className="icon-bar-chart-2"></div>
+                  <span>分析</span>
+                </a>
                 <button
                   onClick={() => {
                     // Save current state before leaving
@@ -2194,9 +2197,10 @@ ${allStocksData}
                     }
                     goBackToSource();
                   }}
-                  className="btn btn-secondary btn-sm shrink-0"
+                  className="btn btn-secondary nav-chip gap-1 shrink-0"
                 >
-                  返回
+                  <div className="icon-arrow-left"></div>
+                  <span>返回</span>
                 </button>
               </div>
             </div>

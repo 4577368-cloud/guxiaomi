@@ -706,7 +706,7 @@ function HomeDashboard({
     return (
       <>
       <section className="mb-4 grid gap-4 xl:grid-cols-12" data-name="home-dashboard" data-file="components/HomeDashboard.js">
-        <div className="card overflow-hidden p-4 md:p-5 xl:col-span-7">
+        <div className="card overflow-hidden xl:col-span-7">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Investment Portal</p>
@@ -714,13 +714,13 @@ function HomeDashboard({
                 股小蜜投资工作台
               </h2>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={onAddStock} className="btn btn-primary btn-sm gap-1.5">
-                <div className="icon-plus text-sm"></div>
+            <div className="flex flex-wrap gap-1.5">
+              <button type="button" onClick={onAddStock} className="btn btn-secondary nav-chip gap-1">
+                <div className="icon-plus"></div>
                 <span>新增</span>
               </button>
-              <button type="button" onClick={onRefreshAll} disabled={!safePortfolio.length} className="btn btn-success btn-sm gap-1.5 disabled:opacity-50">
-                <div className="icon-refresh-cw text-sm"></div>
+              <button type="button" onClick={onRefreshAll} disabled={!safePortfolio.length} className="btn btn-secondary nav-chip gap-1 disabled:opacity-50">
+                <div className="icon-refresh-cw"></div>
                 <span>刷新</span>
               </button>
             </div>
@@ -847,11 +847,11 @@ function HomeDashboard({
                     });
                     setEditingCapital(false);
                   }}
-                  className="btn btn-secondary btn-sm"
+                  className="btn btn-secondary"
                 >
                   取消
                 </button>
-                <button type="button" onClick={saveCapitalDraft} className="btn btn-primary btn-sm">
+                <button type="button" onClick={saveCapitalDraft} className="btn btn-primary">
                   保存
                 </button>
               </div>
@@ -871,11 +871,11 @@ function HomeDashboard({
                   <button
                     type="button"
                     onClick={() => setExpandedCard('movers')}
-                    className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/[0.08] text-slate-300 transition-colors hover:bg-white/[0.14] hover:text-slate-100"
+                    className="btn-icon-plain"
                     title="展开查看全部"
                     aria-label="展开查看全部"
                   >
-                    <div className="icon-maximize-2 text-xs"></div>
+                    <div className="icon-maximize-2"></div>
                   </button>
                 )}
                 <span className="text-xs text-slate-500">{movers.length} 条</span>
@@ -916,11 +916,11 @@ function HomeDashboard({
                   <button
                     type="button"
                     onClick={() => setExpandedCard('tasks')}
-                    className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/[0.08] text-slate-300 transition-colors hover:bg-white/[0.14] hover:text-slate-100"
+                    className="btn-icon-plain"
                     title="展开查看全部"
                     aria-label="展开查看全部"
                   >
-                    <div className="icon-maximize-2 text-xs"></div>
+                    <div className="icon-maximize-2"></div>
                   </button>
                 )}
                 <span className="text-xs text-slate-500">{tasks.length} 项</span>
@@ -962,10 +962,10 @@ function HomeDashboard({
                 <button
                   type="button"
                   onClick={() => setExpandedCard(null)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/10 hover:text-slate-100"
+                  className="btn-icon-plain text-slate-400"
                   aria-label="关闭"
                 >
-                  <div className="icon-x text-lg"></div>
+                  <div className="icon-x"></div>
                 </button>
               </div>
               <div className="gx-soft-scrollbar max-h-[60vh] space-y-2 overflow-y-auto pr-1">
@@ -1024,7 +1024,7 @@ function HomeDashboard({
             type="button"
             onClick={runDailyReport}
             disabled={!safePortfolio.length || dailyRunning}
-            className="btn btn-secondary btn-sm gap-1.5 disabled:opacity-50"
+            className="btn btn-secondary gap-1.5 disabled:opacity-50"
           >
             <div className={`icon-clipboard-list text-sm ${dailyRunning ? 'animate-pulse' : ''}`}></div>
             <span>{dailyRunning ? '获取中' : '获取'}</span>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
-    <meta name="theme-color" content="#0b1120">
+    <meta name="theme-color" content="#1a2235">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="股小蜜">
@@ -49,27 +49,28 @@
     <style type="text/tailwindcss">
         /* 勿使用 @layer theme：部分 Tailwind CDN 版本不认该层，会导致整页样式编译失败 */
         :root {
-            --primary-color: #60a5fa;
-            --primary-hover: #93c5fd;
-            --secondary-color: #475569;
-            --success-color: #4ade80;
-            /* 盈亏/删除等原深红改亮绿（与 success 区分：亏损用 lime 更亮） */
-            --danger-color: #a3e635;
-            --warning-color: #fcd34d;
-            --text-primary: #f8fafc;
+            /* 方案 B：暮蓝灰 — 柔和、有层次、玻璃感 */
+            --primary-color: #38bdf8;
+            --primary-hover: #7dd3fc;
+            --secondary-color: #5eead4;
+            --success-color: #34d399;
+            --danger-color: #f87171;
+            --warning-color: #fbbf24;
+            --text-primary: #f1f5f9;
             --text-secondary: #cbd5e1;
             --text-muted: #94a3b8;
-            --border-color: rgba(255, 255, 255, 0.28);
-            --glass-bg: rgba(255, 255, 255, 0.12);
-            --glass-border: rgba(255, 255, 255, 0.28);
-            --accent-news: #f472b6;
-            --accent-news-hover: #ec4899;
+            --border-color: rgba(255, 255, 255, 0.12);
+            --glass-bg: rgba(255, 255, 255, 0.07);
+            --glass-border: rgba(255, 255, 255, 0.12);
+            --accent-news: #38bdf8;
+            --accent-news-hover: #7dd3fc;
             --accent-analysis: #5eead4;
             --accent-analysis-hover: #2dd4bf;
-            --accent-paipan: #a78bfa;
-            --accent-paipan-hover: #8b5cf6;
-            --page-bg-top: #0b1120;
-            --page-bg-bottom: #1e293b;
+            --accent-paipan: #38bdf8;
+            --accent-paipan-hover: #7dd3fc;
+            --page-bg-top: #1a2235;
+            --page-bg-bottom: #243048;
+            --page-bg-mid: #1e2a40;
         }
 
     @layer base {
@@ -93,9 +94,10 @@
             min-height: 100dvh;
             background-color: var(--page-bg-top);
             background-image:
-                radial-gradient(900px 480px at 15% -10%, rgba(59, 130, 246, 0.15), transparent 55%),
-                radial-gradient(700px 400px at 90% 10%, rgba(14, 165, 233, 0.12), transparent 50%),
-                linear-gradient(165deg, var(--page-bg-top) 0%, var(--page-bg-bottom) 45%, #1e293b 100%);
+                radial-gradient(900px 500px at 12% -8%, rgba(56, 189, 248, 0.06), transparent 55%),
+                radial-gradient(700px 400px at 88% 5%, rgba(94, 234, 212, 0.05), transparent 50%),
+                radial-gradient(600px 350px at 50% 100%, rgba(251, 191, 36, 0.03), transparent 45%),
+                linear-gradient(165deg, var(--page-bg-top) 0%, var(--page-bg-bottom) 55%, var(--page-bg-mid) 100%);
             background-attachment: fixed;
             overscroll-behavior-y: contain;
         }
@@ -194,10 +196,10 @@
 
     @keyframes gx-data-pulse {
         0%, 100% {
-            box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+            box-shadow: 0 0 0 0 rgba(56, 189, 248, 0);
         }
         40% {
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.45), 0 0 24px rgba(59, 130, 246, 0.2);
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.4), 0 0 24px rgba(56, 189, 248, 0.18);
         }
     }
 
@@ -214,17 +216,17 @@
 
         .glass-nav {
             @apply border-b shadow-lg;
-            -webkit-backdrop-filter: blur(18px) saturate(165%);
-            backdrop-filter: blur(18px) saturate(165%);
-            border-color: rgba(255, 255, 255, 0.26);
+            -webkit-backdrop-filter: blur(20px) saturate(140%);
+            backdrop-filter: blur(20px) saturate(140%);
+            border-color: rgba(255, 255, 255, 0.1);
             background: linear-gradient(
                 180deg,
-                rgba(255, 255, 255, 0.16) 0%,
-                rgba(15, 23, 42, 0.52) 100%
+                rgba(255, 255, 255, 0.1) 0%,
+                rgba(26, 34, 53, 0.45) 100%
             );
             box-shadow:
-                0 10px 40px -10px rgba(0, 0, 0, 0.48),
-                inset 0 1px 0 rgba(255, 255, 255, 0.14);
+                0 10px 40px -10px rgba(0, 0, 0, 0.35),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
         }
 
         .glass-quick-nav {
@@ -233,18 +235,18 @@
         }
         .glass-quick-nav-inner {
             @apply flex flex-wrap items-center gap-1.5 rounded-2xl px-2 py-1 md:gap-2 md:px-3 md:py-1.5;
-            -webkit-backdrop-filter: blur(22px) saturate(180%);
-            backdrop-filter: blur(22px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(140%);
+            backdrop-filter: blur(20px) saturate(140%);
             background: linear-gradient(
                 155deg,
-                rgba(255, 255, 255, 0.08) 0%,
-                rgba(255, 255, 255, 0.04) 38%,
-                rgba(15, 23, 42, 0.22) 100%
+                rgba(255, 255, 255, 0.07) 0%,
+                rgba(255, 255, 255, 0.03) 38%,
+                rgba(26, 34, 53, 0.2) 100%
             );
             border: 1px solid rgba(255, 255, 255, 0.08);
             box-shadow:
-                inset 0 1px 0 rgba(255, 255, 255, 0.08),
-                0 10px 26px -24px rgba(15, 23, 42, 0.82);
+                inset 0 1px 0 rgba(255, 255, 255, 0.06),
+                0 10px 26px -24px rgba(15, 23, 42, 0.65);
         }
 
         .modal-overlay {
@@ -252,18 +254,18 @@
         }
 
         .modal-panel {
-            @apply w-full max-w-md rounded-2xl p-6 shadow-2xl;
-            -webkit-backdrop-filter: blur(20px) saturate(160%);
-            backdrop-filter: blur(20px) saturate(160%);
+            @apply w-full max-w-md rounded-2xl p-5 shadow-2xl md:p-6;
+            -webkit-backdrop-filter: blur(20px) saturate(140%);
+            backdrop-filter: blur(20px) saturate(140%);
             background: linear-gradient(
                 165deg,
-                rgba(30, 41, 59, 0.94) 0%,
-                rgba(15, 23, 42, 0.92) 100%
+                rgba(36, 48, 72, 0.92) 0%,
+                rgba(26, 34, 53, 0.9) 100%
             );
-            border: 1px solid rgba(255, 255, 255, 0.32);
+            border: 1px solid rgba(255, 255, 255, 0.14);
             box-shadow:
-                0 25px 50px -12px rgba(0, 0, 0, 0.58),
-                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+                0 25px 50px -12px rgba(0, 0, 0, 0.45),
+                inset 0 1px 0 rgba(255, 255, 255, 0.08);
             color: var(--text-primary);
         }
 
@@ -272,46 +274,81 @@
             flex-wrap: wrap;
             align-items: center;
             justify-content: flex-end;
-            gap: 0.3rem;
+            gap: 0.25rem;
             overflow: visible;
         }
-        .top-action {
-            width: 4.6rem;
-            height: 2rem;
-            flex: 0 0 auto;
-            padding-left: 0;
-            padding-right: 0;
-            border-radius: 0.75rem;
-            font-size: 0.8125rem;
+
+        /* 顶栏 / 卡片右上角：统一紧凑玻璃按钮 */
+        .nav-chip,
+        .top-action-bar .btn {
+            height: 1.625rem;
+            min-height: 0;
+            padding-left: 0.45rem;
+            padding-right: 0.45rem;
+            border-radius: 0.5rem;
+            font-size: 0.6875rem;
             line-height: 1;
+            gap: 0.25rem;
             white-space: nowrap;
         }
-        .top-action .icon-plus,
-        .top-action .icon-bar-chart-2,
-        .top-action .icon-sparkles,
-        .top-action .icon-newspaper,
-        .top-action .icon-refresh-cw {
-            font-size: 0.9rem;
+        .nav-chip [class^="icon-"],
+        .nav-chip [class*=" icon-"],
+        .top-action-bar .btn [class^="icon-"],
+        .top-action-bar .btn [class*=" icon-"] {
+            font-size: 0.6875rem;
+            width: 0.75rem;
+            height: 0.75rem;
+        }
+        @media (min-width: 768px) {
+            .nav-chip,
+            .top-action-bar .btn {
+                height: 1.75rem;
+                padding-left: 0.55rem;
+                padding-right: 0.55rem;
+                font-size: 0.75rem;
+            }
         }
         @media (max-width: 640px) {
             .top-action-bar {
                 gap: 0.2rem;
             }
-            .top-action {
-                width: 2rem;
-                height: 1.95rem;
-                border-radius: 0.65rem;
-            }
-            .top-action span {
+            .top-action-bar .btn span {
                 display: none;
             }
+            .top-action-bar .btn {
+                width: 1.625rem;
+                padding-left: 0;
+                padding-right: 0;
+                justify-content: center;
+            }
+        }
+
+        /* 无边框小图标（展开、轻量刷新） */
+        .btn-icon-plain {
+            @apply inline-flex items-center justify-center h-6 w-6 min-w-0 shrink-0 rounded-md border-0 bg-transparent p-0 text-slate-400 transition-colors;
+        }
+        .btn-icon-plain:hover:not(:disabled) {
+            @apply bg-white/[0.08] text-slate-200;
+        }
+        .btn-icon-plain [class^="icon-"],
+        .btn-icon-plain [class*=" icon-"] {
+            font-size: 0.75rem;
+            width: 0.75rem;
+            height: 0.75rem;
         }
 
         .btn {
             position: relative;
             overflow: hidden;
-            @apply inline-flex items-center justify-center px-3 py-1.5 md:px-4 md:py-2 rounded-xl font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 text-sm md:text-base;
-            --tw-ring-offset-color: #1e293b;
+            @apply inline-flex items-center justify-center h-10 md:h-11 min-h-0 px-4 md:px-5 py-0 rounded-xl font-medium text-sm md:text-base transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+            --tw-ring-offset-color: #1a2235;
+        }
+        .btn [class^="icon-"],
+        .btn [class*=" icon-"] {
+            @apply shrink-0 leading-none;
+            font-size: 0.75rem;
+            width: 0.8125rem;
+            height: 0.8125rem;
         }
         .btn:hover:not(:disabled) {
             transform: scale(1.03);
@@ -336,107 +373,140 @@
             animation: gx-ripple 0.55s ease-out;
         }
 
-        .btn-sm {
-            @apply px-2 py-1 text-xs md:text-sm rounded-lg;
+        /* Compact：表格行内 / 标签旁 */
+        .btn-sm,
+        .btn-xs {
+            @apply h-6 md:h-7 min-h-0 px-2 md:px-2.5 py-0 text-[11px] md:text-xs rounded-lg;
+        }
+        .btn-sm [class^="icon-"],
+        .btn-sm [class*=" icon-"],
+        .btn-xs [class^="icon-"],
+        .btn-xs [class*=" icon-"] {
+            font-size: 0.6875rem;
+            width: 0.75rem;
+            height: 0.75rem;
+        }
+
+        /* Icon-only */
+        .btn-icon {
+            @apply h-7 w-7 md:h-8 md:w-8 min-w-0 shrink-0 px-0 py-0 rounded-lg;
+        }
+        .btn-icon [class^="icon-"],
+        .btn-icon [class*=" icon-"] {
+            font-size: 0.8125rem;
+            width: 0.8125rem;
+            height: 0.8125rem;
         }
 
         .btn-primary {
-            @apply bg-[var(--primary-color)] text-white shadow-md shadow-blue-600/25 hover:bg-[var(--primary-hover)] focus-visible:ring-blue-500;
+            @apply bg-[var(--primary-color)] text-slate-950 shadow-md shadow-sky-500/20 hover:bg-[var(--primary-hover)] focus-visible:ring-sky-400;
         }
 
         .btn-success {
-            @apply bg-[var(--success-color)] text-white shadow-md shadow-emerald-600/20 hover:bg-emerald-700 focus-visible:ring-emerald-500;
+            @apply bg-[var(--success-color)] text-slate-950 shadow-md shadow-emerald-600/20 hover:bg-emerald-400 focus-visible:ring-emerald-400;
         }
 
         .btn-danger {
-            @apply bg-[var(--danger-color)] text-slate-950 shadow-md shadow-lime-500/35 hover:brightness-110 focus-visible:ring-lime-400;
+            @apply bg-[var(--danger-color)] text-white shadow-md shadow-rose-600/25 hover:bg-rose-400 focus-visible:ring-rose-400;
         }
 
         /* 勿用 hover:bg-white/18：默认透明度档位无 18，Tailwind CDN 会整段编译失败 → 全页样式丢失 */
         .btn-secondary {
-            @apply border border-white/25 text-slate-100 shadow-sm hover:bg-white/20 focus-visible:ring-amber-400/60;
-            -webkit-backdrop-filter: blur(12px) saturate(150%);
-            backdrop-filter: blur(12px) saturate(150%);
+            @apply border border-white/15 text-slate-100 shadow-sm hover:bg-white/10 focus-visible:ring-sky-400/50;
+            -webkit-backdrop-filter: blur(12px) saturate(140%);
+            backdrop-filter: blur(12px) saturate(140%);
             background: linear-gradient(
                 165deg,
-                rgba(255, 255, 255, 0.14) 0%,
-                rgba(255, 255, 255, 0.06) 100%
+                rgba(255, 255, 255, 0.1) 0%,
+                rgba(255, 255, 255, 0.04) 100%
             );
-            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
         }
 
-        .btn-accent-news {
-            @apply text-white shadow-md shadow-pink-600/25 focus-visible:ring-pink-500;
-            background-color: var(--accent-news);
-        }
-        .btn-accent-news:hover {
-            background-color: var(--accent-news-hover);
-        }
-
-        .btn-accent-analysis {
-            @apply text-white shadow-md shadow-teal-600/25 focus-visible:ring-teal-500;
-            background-color: var(--accent-analysis);
-        }
-        .btn-accent-analysis:hover {
-            background-color: var(--accent-analysis-hover);
-        }
-
+        .btn-accent-news,
+        .btn-accent-analysis,
         .btn-accent-paipan {
-            @apply text-white shadow-md shadow-violet-600/25 focus-visible:ring-violet-500;
-            background-color: var(--accent-paipan);
+            @apply border border-white/15 text-slate-100 shadow-sm focus-visible:ring-sky-400/50;
+            -webkit-backdrop-filter: blur(12px) saturate(140%);
+            backdrop-filter: blur(12px) saturate(140%);
+            background: linear-gradient(
+                165deg,
+                rgba(255, 255, 255, 0.1) 0%,
+                rgba(255, 255, 255, 0.04) 100%
+            );
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
         }
+        .btn-accent-news:hover,
+        .btn-accent-analysis:hover,
         .btn-accent-paipan:hover {
-            background-color: var(--accent-paipan-hover);
+            border-color: rgba(56, 189, 248, 0.32);
+            background: linear-gradient(
+                165deg,
+                rgba(56, 189, 248, 0.14) 0%,
+                rgba(255, 255, 255, 0.05) 100%
+            );
         }
 
         .card {
-            @apply rounded-2xl p-3 shadow-xl transition-all duration-300 md:p-6;
-            -webkit-backdrop-filter: blur(18px) saturate(165%);
-            backdrop-filter: blur(18px) saturate(165%);
+            @apply rounded-2xl p-4 shadow-xl transition-all duration-300 md:p-6;
+            -webkit-backdrop-filter: blur(20px) saturate(140%);
+            backdrop-filter: blur(20px) saturate(140%);
             background: linear-gradient(
                 168deg,
-                rgba(255, 255, 255, 0.17) 0%,
-                rgba(255, 255, 255, 0.08) 48%,
-                rgba(15, 23, 42, 0.34) 100%
+                rgba(255, 255, 255, 0.09) 0%,
+                rgba(255, 255, 255, 0.04) 48%,
+                rgba(26, 34, 53, 0.28) 100%
             );
-            border: 1px solid rgba(255, 255, 255, 0.14);
+            border: 1px solid rgba(255, 255, 255, 0.1);
             box-shadow:
-                0 22px 44px -14px rgba(0, 0, 0, 0.46),
-                inset 0 1px 0 rgba(255, 255, 255, 0.08);
+                0 22px 44px -14px rgba(0, 0, 0, 0.38),
+                inset 0 1px 0 rgba(255, 255, 255, 0.06);
             color: var(--text-primary);
         }
         .card:hover {
-            border-color: rgba(255, 255, 255, 0.18);
-            -webkit-backdrop-filter: blur(20px) saturate(185%);
-            backdrop-filter: blur(20px) saturate(185%);
+            border-color: rgba(255, 255, 255, 0.14);
+            -webkit-backdrop-filter: blur(22px) saturate(150%);
+            backdrop-filter: blur(22px) saturate(150%);
             background: linear-gradient(
                 168deg,
-                rgba(255, 255, 255, 0.18) 0%,
-                rgba(255, 255, 255, 0.09) 48%,
-                rgba(15, 23, 42, 0.38) 100%
+                rgba(255, 255, 255, 0.11) 0%,
+                rgba(255, 255, 255, 0.05) 48%,
+                rgba(26, 34, 53, 0.32) 100%
             );
             transform: translateY(-2px);
             box-shadow:
-                0 28px 56px -14px rgba(0, 0, 0, 0.52),
-                inset 0 1px 0 rgba(255, 255, 255, 0.10);
+                0 28px 56px -14px rgba(0, 0, 0, 0.42),
+                inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        }
+
+        .card-row {
+            @apply rounded-xl p-3 md:p-4;
         }
 
         .input-field {
-            @apply w-full rounded-xl px-2 py-1.5 text-sm backdrop-blur-md transition-all duration-200 md:px-3 md:py-2 md:text-base;
-            background: rgba(15, 23, 42, 0.45);
-            border: 1px solid rgba(255, 255, 255, 0.26);
+            @apply w-full h-10 md:h-11 min-h-0 rounded-xl px-3 md:px-4 py-0 text-sm md:text-base backdrop-blur-md transition-all duration-200;
+            background: rgba(26, 34, 53, 0.42);
+            border: 1px solid rgba(255, 255, 255, 0.12);
             color: var(--text-primary);
-            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
         }
         .input-field:hover {
-            border-color: rgba(147, 197, 253, 0.4);
-            background: rgba(15, 23, 42, 0.55);
+            border-color: rgba(56, 189, 248, 0.28);
+            background: rgba(26, 34, 53, 0.52);
         }
         .input-field:focus {
             outline: none;
-            border-color: rgba(147, 197, 253, 0.85);
-            background: rgba(15, 23, 42, 0.65);
-            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.45);
+            border-color: rgba(56, 189, 248, 0.55);
+            background: rgba(26, 34, 53, 0.58);
+            box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.28);
+        }
+
+        .input-field-compact {
+            @apply h-9 md:h-10 min-h-0 rounded-lg px-2.5 md:px-3 py-0 text-sm;
+        }
+
+        textarea.input-field {
+            @apply h-auto min-h-[5.5rem] py-2;
         }
 
         .profit-text {
@@ -453,8 +523,8 @@
 
         .hint-glass {
             @apply rounded-xl border p-3 text-sm backdrop-blur-md;
-            border-color: rgba(96, 165, 250, 0.45);
-            background: rgba(59, 130, 246, 0.18);
+            border-color: rgba(56, 189, 248, 0.28);
+            background: rgba(56, 189, 248, 0.1);
             color: #e2e8f0;
         }
 
@@ -462,17 +532,22 @@
         .app-shell {
             display: flex;
             flex-direction: column;
-            gap: 1rem;
+            gap: 0.75rem;
         }
         @media (min-width: 768px) {
             .app-shell {
-                gap: 1.25rem;
+                gap: 1rem;
             }
         }
         .app-stock-grid {
             display: flex;
             flex-direction: column;
-            gap: 1.5rem;
+            gap: 0.75rem;
+        }
+        @media (min-width: 768px) {
+            .app-stock-grid {
+                gap: 1rem;
+            }
         }
         @media (min-width: 1280px) {
             .app-stock-grid {
@@ -525,14 +600,14 @@
             --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
         }
         #root .to-blue-50 {
-            --tw-gradient-to: rgba(59, 130, 246, 0.15) var(--tw-gradient-to-position);
+            --tw-gradient-to: rgba(56, 189, 248, 0.1) var(--tw-gradient-to-position);
         }
         #root .bg-blue-50 {
-            background-color: rgba(59, 130, 246, 0.12) !important;
+            background-color: rgba(56, 189, 248, 0.08) !important;
         }
         #root .border-blue-200,
         #root .border-blue-300 {
-            border-color: rgba(96, 165, 250, 0.38) !important;
+            border-color: rgba(56, 189, 248, 0.28) !important;
         }
         #root .bg-orange-50 {
             background-color: rgba(251, 146, 60, 0.12) !important;
@@ -581,7 +656,7 @@
         #root select.input-field,
         #root select {
             color: #f8fafc !important;
-            background-color: rgba(15, 23, 42, 0.82) !important;
+            background-color: rgba(26, 34, 53, 0.82) !important;
             border: 1px solid rgba(255, 255, 255, 0.28) !important;
             border-radius: 0.5rem;
             padding: 0.25rem 0.5rem;
@@ -600,7 +675,7 @@
             box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35);
         }
         #root select option {
-            background-color: #1e293b;
+            background-color: #243048;
             color: #f8fafc;
         }
     </style>
@@ -620,11 +695,11 @@
     <script type="text/babel" src="components/StockCardSections.js?v=20260630-rose-loss"></script>
     <script type="text/babel" src="components/PositionForm.js?v=20260630-position-flow"></script>
     <script type="text/babel" src="components/BuyFeesDetail.js"></script>
-    <script type="text/babel" src="components/StockCard.js?v=20260630-return-source"></script>
-    <script type="text/babel" src="components/WatchlistSection.js?v=20260630-return-source"></script>
+    <script type="text/babel" src="components/StockCard.js?v=20260701-nav-chip"></script>
+    <script type="text/babel" src="components/WatchlistSection.js?v=20260701-nav-chip"></script>
     <script type="text/babel" src="components/PortfolioSummary.js?v=20260630-rose-loss"></script>
-    <script type="text/babel" src="components/HomeDashboard.js?v=20260701-alerts-action"></script>
-    <script type="text/babel" src="components/PortfolioQueue.js?v=20260630-queue-spacing"></script>
+    <script type="text/babel" src="components/HomeDashboard.js?v=20260701-nav-chip"></script>
+    <script type="text/babel" src="components/PortfolioQueue.js?v=20260701-nav-chip"></script>
     <script type="text/babel" src="components/HoldingsSummaryTable.js?v=20260630-rose-loss"></script>
     <script type="text/babel" src="components/StockNavigation.js?v=20260630-rose-loss"></script>
     <script type="text/babel" src="utils/stockSearch.js?v=20260630-ui-fix"></script>
@@ -634,10 +709,10 @@
     <script type="text/babel" src="utils/stockAPI.js?v=20260701-real-quote"></script>
     <script type="text/babel" src="utils/storage.js?v=20260630-keyword-presets"></script>
     <script type="text/babel" src="utils/feeCalculations.js"></script>
-    <script type="text/babel" src="utils/calculations.js?v=20260630-ui-fix"></script>
+    <script type="text/babel" src="utils/calculations.js?v=20260701-sell-sim"></script>
     <script type="text/babel" src="utils/databaseSync.js"></script>
     <script type="text/babel" src="utils/priceAlerts.js"></script>
-    <script type="text/babel" src="app.js?v=20260630-return-source"></script>
+    <script type="text/babel" src="app.js?v=20260701-nav-chip"></script>
     <script src="analysis-notify.js"></script>
     <script type="text/babel" src="utils/chatContext.js?v=20260701-deep-diagnosis"></script>
     <script type="text/babel" src="utils/chatStorage.js?v=20260701-chat-threads"></script>
