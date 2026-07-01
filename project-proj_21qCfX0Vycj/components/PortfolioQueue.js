@@ -134,23 +134,25 @@ function PortfolioQueue({ portfolio, capitalPool, summary, isRefreshing, onAddSt
               摘要、明细和操作入口合并到这一张列表卡片；单只股票深度信息进入详情页。
             </p>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-1.5">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={onAddStock}
-              className="btn btn-secondary nav-chip gap-1"
+              className="icon-action icon-action-sky"
+              title="新增股票"
+              aria-label="新增股票"
             >
               <div className="icon-plus"></div>
-              新增
             </button>
             <button
               type="button"
               onClick={onRefreshAll}
               disabled={!safePortfolio.length || isRefreshing}
-              className="btn btn-secondary nav-chip gap-1 disabled:opacity-50"
+              className="icon-action icon-action-emerald"
+              title={isRefreshing ? '刷新中' : '刷新行情'}
+              aria-label={isRefreshing ? '刷新中' : '刷新行情'}
             >
               <div className={`icon-refresh-cw ${isRefreshing ? 'animate-spin' : ''}`}></div>
-              {isRefreshing ? '刷新中' : '刷新'}
             </button>
           </div>
         </div>

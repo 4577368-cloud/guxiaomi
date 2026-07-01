@@ -139,14 +139,17 @@ function WatchlistSection({ watchlist, onRemoveItem, onRefreshItem, onAddPositio
             关注股票的摘要、明细和操作入口，单只深度信息进入详情页。
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onRefreshAll}
-          className="btn btn-secondary nav-chip gap-1 disabled:opacity-50"
-        >
-          <div className="icon-refresh-cw"></div>
-          刷新
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onRefreshAll}
+            className="icon-action icon-action-emerald"
+            title="刷新关注列表"
+            aria-label="刷新关注列表"
+          >
+            <div className="icon-refresh-cw"></div>
+          </button>
+        </div>
       </div>
 
       <div className="rounded-xl">

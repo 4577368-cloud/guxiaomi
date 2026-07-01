@@ -337,6 +337,33 @@
             height: 0.75rem;
         }
 
+        /* 列表卡片右上角：纯图标、无背景、醒目色 */
+        .icon-action {
+            @apply inline-flex items-center justify-center h-7 w-7 min-w-0 shrink-0 border-0 bg-transparent p-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/40 focus-visible:ring-offset-2;
+            --tw-ring-offset-color: #1a2235;
+        }
+        .icon-action:disabled {
+            @apply opacity-40 cursor-not-allowed;
+        }
+        .icon-action [class^="icon-"],
+        .icon-action [class*=" icon-"] {
+            font-size: 1.0625rem;
+            width: 1.0625rem;
+            height: 1.0625rem;
+        }
+        .icon-action-sky {
+            @apply text-sky-400;
+        }
+        .icon-action-sky:hover:not(:disabled) {
+            @apply text-sky-300;
+        }
+        .icon-action-emerald {
+            @apply text-emerald-400;
+        }
+        .icon-action-emerald:hover:not(:disabled) {
+            @apply text-emerald-300;
+        }
+
         .btn {
             position: relative;
             overflow: hidden;
@@ -696,10 +723,10 @@
     <script type="text/babel" src="components/PositionForm.js?v=20260630-position-flow"></script>
     <script type="text/babel" src="components/BuyFeesDetail.js"></script>
     <script type="text/babel" src="components/StockCard.js?v=20260701-chart-icon"></script>
-    <script type="text/babel" src="components/WatchlistSection.js?v=20260701-nav-chip"></script>
+    <script type="text/babel" src="components/WatchlistSection.js?v=20260701-icon-action"></script>
     <script type="text/babel" src="components/PortfolioSummary.js?v=20260630-rose-loss"></script>
     <script type="text/babel" src="components/HomeDashboard.js?v=20260701-nav-chip"></script>
-    <script type="text/babel" src="components/PortfolioQueue.js?v=20260701-nav-chip"></script>
+    <script type="text/babel" src="components/PortfolioQueue.js?v=20260701-icon-action"></script>
     <script type="text/babel" src="components/HoldingsSummaryTable.js?v=20260630-rose-loss"></script>
     <script type="text/babel" src="components/StockNavigation.js?v=20260630-rose-loss"></script>
     <script type="text/babel" src="utils/stockSearch.js?v=20260630-ui-fix"></script>
