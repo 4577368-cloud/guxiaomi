@@ -1,11 +1,11 @@
-function AddStockModal({ onAdd, onClose, onAddToWatchlist }) {
+function AddStockModal({ onAdd, onClose, onAddToWatchlist, initialAddType = 'position' }) {
     const [symbol, setSymbol] = React.useState('');
     const [market, setMarket] = React.useState('US');
     const [brokerChannel, setBrokerChannel] = React.useState('futu');
     const [buyPrice, setBuyPrice] = React.useState('');
     const [buyShares, setBuyShares] = React.useState('');
     const [buyDate, setBuyDate] = React.useState(new Date().toISOString().split('T')[0]);
-    const [addType, setAddType] = React.useState('position'); // 'position' | 'watch'
+    const [addType, setAddType] = React.useState(initialAddType === 'watch' ? 'watch' : 'position'); // 'position' | 'watch'
     const [isLoading, setIsLoading] = React.useState(false);
     const [searchQuery, setSearchQuery] = React.useState('');
     const [searchResults, setSearchResults] = React.useState([]);

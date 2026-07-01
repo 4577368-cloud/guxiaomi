@@ -136,11 +136,17 @@ function App() {
     const [watchlist, setWatchlist] = React.useState([]);
     const [capitalPool, setCapitalPool] = React.useState({ usd: 0, hkd: 0, cny: 0 });
     const [showAddModal, setShowAddModal] = React.useState(false);
+    const [addModalInitialType, setAddModalInitialType] = React.useState('position');
     const [isRefreshing, setIsRefreshing] = React.useState(false);
     const [isLoading, setIsLoading] = React.useState(true);
     const [collapsedStocks, setCollapsedStocks] = React.useState({});
     const [focusedStockId, setFocusedStockId] = React.useState(null);
     const [quickPositionStock, setQuickPositionStock] = React.useState(null);
+
+    const openAddModal = React.useCallback((addType = 'position') => {
+      setAddModalInitialType(addType === 'watch' ? 'watch' : 'position');
+      setShowAddModal(true);
+    }, []);
 
     React.useEffect(() => {
       loadInitialData();
@@ -668,7 +674,7 @@ function App() {
                 <div className="top-action-bar">
                   <button
                     type="button"
-                    onClick={() => setShowAddModal(true)}
+                    onClick={() => openAddModal('position')}
                     className="btn btn-secondary nav-chip gap-1"
                   >
                     <div className="icon-plus"></div>
@@ -728,7 +734,7 @@ function App() {
               summary={portfolioSummary}
               capitalPool={capitalPool}
               onUpdateCapitalPool={handleUpdateCapitalPool}
-              onAddStock={() => setShowAddModal(true)}
+              onAddStock={() => openAddModal('position')}
               onRefreshAll={handleRefreshAll}
               onFocusPortfolioStock={handleSelectStockDetail}
               onQuickAddStock={handleOpenQuickPositionForStock}
@@ -755,7 +761,7 @@ function App() {
               capitalPool={capitalPool}
               summary={portfolioSummary}
               isRefreshing={isRefreshing}
-              onAddStock={() => setShowAddModal(true)}
+              onAddStock={() => openAddModal('position')}
               onRefreshAll={handleRefreshAll}
               onQuickAddStock={handleOpenQuickPositionForStock}
               onDeleteStock={handleDeleteStock}
@@ -770,6 +776,7 @@ function App() {
             onRefreshItem={handleRefreshWatchlistItem}
             onAddPosition={handleAddPositionFromWatchlist}
             onRefreshAll={handleRefreshAllWatchlist}
+            onAddStock={() => openAddModal('watch')}
           />
 
           {!isLoading && portfolio.length === 0 && (
@@ -783,7 +790,7 @@ function App() {
                   点击「新增股票」开始管理您的投资组合
                 </p>
                 <button
-                  onClick={() => setShowAddModal(true)}
+                  onClick={() => openAddModal('position')}
                   className="btn btn-primary"
                 >
                   新增第一只股票
@@ -795,6 +802,7 @@ function App() {
           {/* Add Stock Modal */}
           {showAddModal && (
             <AddStockModal
+              initialAddType={addModalInitialType}
               onAdd={handleAddStock}
               onClose={() => setShowAddModal(false)}
               onAddToWatchlist={handleAddToWatchlist}

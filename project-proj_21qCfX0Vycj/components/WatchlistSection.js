@@ -8,7 +8,7 @@ function WatchlistMetric({ label, value, valueClass, hint }) {
   );
 }
 
-function WatchlistSection({ watchlist, onRemoveItem, onRefreshItem, onAddPosition, onRefreshAll }) {
+function WatchlistSection({ watchlist, onRemoveItem, onRefreshItem, onAddPosition, onRefreshAll, onAddStock }) {
   const [openMenuId, setOpenMenuId] = React.useState(null);
   const [refreshingId, setRefreshingId] = React.useState(null);
   const menuRootRef = React.useRef(null);
@@ -140,6 +140,17 @@ function WatchlistSection({ watchlist, onRemoveItem, onRefreshItem, onAddPositio
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {onAddStock && (
+            <button
+              type="button"
+              onClick={onAddStock}
+              className="icon-action icon-action-sky"
+              title="新增关注"
+              aria-label="新增关注"
+            >
+              <div className="icon-plus"></div>
+            </button>
+          )}
           <button
             type="button"
             onClick={onRefreshAll}

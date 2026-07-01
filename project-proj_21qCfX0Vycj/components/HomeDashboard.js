@@ -714,14 +714,25 @@ function HomeDashboard({
                 股小蜜投资工作台
               </h2>
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              <button type="button" onClick={onAddStock} className="btn btn-secondary nav-chip gap-1">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onAddStock}
+                className="icon-action icon-action-sky"
+                title="新增股票"
+                aria-label="新增股票"
+              >
                 <div className="icon-plus"></div>
-                <span>新增</span>
               </button>
-              <button type="button" onClick={onRefreshAll} disabled={!safePortfolio.length} className="btn btn-secondary nav-chip gap-1 disabled:opacity-50">
+              <button
+                type="button"
+                onClick={onRefreshAll}
+                disabled={!safePortfolio.length}
+                className="icon-action icon-action-emerald"
+                title="刷新行情"
+                aria-label="刷新行情"
+              >
                 <div className="icon-refresh-cw"></div>
-                <span>刷新</span>
               </button>
             </div>
           </div>
