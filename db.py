@@ -75,6 +75,25 @@ def _execute(
         pool.putconn(conn)
 
 
+def _execute_many(
+    sql: str,
+    params_list: List[tuple],
+    commit: bool = False,
+) -> None:
+    """批量执行 SQL，减少连接池往返。"""
+    if not params_list:
+        return
+    pool = _get_pool()
+    conn = pool.getconn()
+    try:
+        with conn.cursor() as cur:
+            cur.executemany(sql, params_list)
+        if commit:
+            conn.commit()
+    finally:
+        pool.putconn(conn)
+
+
 def init_db() -> None:
     """自动建表（幂等）。"""
     if not is_db_enabled():
@@ -136,6 +155,52 @@ def init_db() -> None:
         """
         CREATE INDEX IF NOT EXISTS idx_screener_dims
             ON screener_snapshots(period_type, trend_type, symbol_type, saved_at DESC);
+        """,
+        commit=True,
+    )
+    _execute(
+        """
+        CREATE TABLE IF NOT EXISTS screener_symbols (
+            id SERIAL PRIMARY KEY,
+            base_name VARCHAR(255) NOT NULL REFERENCES screener_snapshots(base_name) ON DELETE CASCADE,
+            symbol VARCHAR(32) NOT NULL,
+            market VARCHAR(32),
+            name VARCHAR(128),
+            symbol_type SMALLINT DEFAULT 0,
+            pre_close NUMERIC(18,4),
+            current_price NUMERIC(18,4),
+            change_ratio NUMERIC(18,4),
+            probability NUMERIC(5,2),
+            profit NUMERIC(18,4),
+            logo TEXT,
+            item_timestamp TIMESTAMP,
+            klines JSONB,
+            raw_item JSONB,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW(),
+            UNIQUE(base_name, symbol)
+        );
+        """,
+        commit=True,
+    )
+    _execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_screener_symbols_base
+            ON screener_symbols(base_name);
+        """,
+        commit=True,
+    )
+    _execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_screener_symbols_symbol
+            ON screener_symbols(symbol, market);
+        """,
+        commit=True,
+    )
+    _execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_screener_symbols_saved
+            ON screener_symbols(item_timestamp DESC NULLS LAST);
         """,
         commit=True,
     )
@@ -450,6 +515,150 @@ def screener_save(payload: Dict[str, Any]) -> None:
         ),
         commit=True,
     )
+    _screener_symbols_upsert_from_payload(payload)
+
+
+def _screener_symbols_upsert_from_payload(payload: Dict[str, Any]) -> None:
+    """把快照 data.list 中的股票逐条落库到 screener_symbols。"""
+    if not is_db_enabled():
+        return
+    base_name = payload.get("base_name")
+    if not base_name:
+        return
+    saved_at = _parse_dt(payload.get("saved_at")) or datetime.now()
+    period_type = int(payload.get("period_type", 0))
+    trend_type = int(payload.get("trend_type", 0))
+    symbol_type = int(payload.get("symbol_type", 0))
+    data = payload.get("data") or {}
+    items = data.get("list") if isinstance(data, dict) else []
+    if not isinstance(items, list) or not items:
+        return
+
+    params_list = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        code = str(item.get("code") or item.get("symbol") or "").strip().upper()
+        symbol = str(item.get("symbol") or "").strip().upper()
+        if not symbol:
+            symbol = code.split(".")[0]
+        market = _infer_market_from_code(code)
+        ts_raw = item.get("timestamp")
+        item_ts = _parse_dt(ts_raw) if isinstance(ts_raw, str) else None
+        if item_ts is None and ts_raw:
+            try:
+                item_ts = datetime.fromtimestamp(int(ts_raw))
+            except Exception:
+                item_ts = None
+
+        params_list.append((
+            base_name,
+            symbol,
+            market,
+            str(item.get("name") or "").strip() or symbol,
+            int(item.get("symbol_type", symbol_type)),
+            _num_or_none(item.get("pre_close")),
+            _num_or_none(item.get("price")),
+            _num_or_none(item.get("change_ratio")),
+            _num_or_none(item.get("probability")),
+            _num_or_none(item.get("profit")),
+            str(item.get("logo") or "").strip() or None,
+            item_ts or saved_at,
+            json.dumps(item.get("klines") or [], ensure_ascii=False),
+            json.dumps(item, ensure_ascii=False),
+        ))
+
+    if params_list:
+        _execute_many(
+            """
+            INSERT INTO screener_symbols (
+                base_name, symbol, market, name, symbol_type, pre_close,
+                current_price, change_ratio, probability, profit, logo,
+                item_timestamp, klines, raw_item
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (base_name, symbol) DO UPDATE SET
+                market = EXCLUDED.market,
+                name = EXCLUDED.name,
+                symbol_type = EXCLUDED.symbol_type,
+                pre_close = EXCLUDED.pre_close,
+                current_price = EXCLUDED.current_price,
+                change_ratio = EXCLUDED.change_ratio,
+                probability = EXCLUDED.probability,
+                profit = EXCLUDED.profit,
+                logo = EXCLUDED.logo,
+                item_timestamp = EXCLUDED.item_timestamp,
+                klines = EXCLUDED.klines,
+                raw_item = EXCLUDED.raw_item,
+                updated_at = NOW();
+            """,
+            params_list,
+            commit=True,
+        )
+
+
+def screener_symbols_list(
+    base_name: Optional[str] = None,
+    symbol: Optional[str] = None,
+    market: Optional[str] = None,
+    limit: int = 200,
+) -> List[Dict[str, Any]]:
+    """查询预测股票明细；可指定快照、股票代码或市场。"""
+    if not is_db_enabled():
+        return []
+    conditions = ["1=1"]
+    params: List[Any] = []
+    if base_name:
+        conditions.append("base_name = %s")
+        params.append(base_name)
+    if symbol:
+        conditions.append("symbol = %s")
+        params.append(symbol.upper().strip())
+    if market:
+        conditions.append("market = %s")
+        params.append(market.upper().strip())
+    sql = f"""
+        SELECT id, base_name, symbol, market, name, symbol_type, pre_close,
+               current_price, change_ratio, probability, profit, logo,
+               item_timestamp, klines, raw_item
+        FROM screener_symbols
+        WHERE {" AND ".join(conditions)}
+        ORDER BY item_timestamp DESC NULLS LAST, probability DESC NULLS LAST
+        LIMIT %s
+    """
+    params.append(limit)
+    rows = _execute(sql, tuple(params), fetch=True)
+    items = []
+    for row in rows or []:
+        item_ts = row["item_timestamp"]
+        items.append({
+            "id": str(row["id"]),
+            "base_name": row["base_name"],
+            "symbol": row["symbol"],
+            "market": row["market"] or "",
+            "name": row["name"] or row["symbol"],
+            "symbol_type": int(row["symbol_type"]) if row["symbol_type"] is not None else 0,
+            "pre_close": float(row["pre_close"]) if row["pre_close"] is not None else None,
+            "current_price": float(row["current_price"]) if row["current_price"] is not None else None,
+            "change_ratio": float(row["change_ratio"]) if row["change_ratio"] is not None else None,
+            "probability": float(row["probability"]) if row["probability"] is not None else None,
+            "profit": float(row["profit"]) if row["profit"] is not None else None,
+            "logo": row["logo"] or "",
+            "item_timestamp": item_ts.isoformat() if item_ts else "",
+            "klines": row["klines"] or [],
+            "raw_item": row["raw_item"] or {},
+        })
+    return items
+
+
+def screener_symbols_delete_by_snapshot(base_name: str) -> bool:
+    if not is_db_enabled():
+        return False
+    _execute(
+        "DELETE FROM screener_symbols WHERE base_name = %s",
+        (base_name,),
+        commit=True,
+    )
+    return True
 
 
 def screener_delete(base_name: str) -> bool:
@@ -466,6 +675,20 @@ def screener_delete(base_name: str) -> bool:
 # ---------------------------------------------------------------------------
 # Watchlist
 # ---------------------------------------------------------------------------
+
+def _infer_market_from_code(code: str) -> str:
+    """根据 Intellectia code 后缀推断市场。"""
+    c = (code or "").strip().upper()
+    if c.endswith(".HK"):
+        return "HK"
+    if c.endswith(".SS") or c.endswith(".SZ") or c.endswith(".BJ"):
+        return "CN"
+    if c.endswith(".N") or c.endswith(".O") or c.endswith(".A"):
+        return "US"
+    if c and c.isalpha():
+        return "US"
+    return ""
+
 
 def _num_or_none(value: Any) -> Optional[float]:
     if value is None:

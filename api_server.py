@@ -1228,6 +1228,38 @@ def api_screener_delete_post(req: DeleteScreenerRequest):
     return _screener_delete_impl(req.name)
 
 
+@app.get("/api/screener/symbols")
+def api_screener_symbols(name: str, limit: int = 200):
+    """获取某条预测快照里的股票明细；数据库优先，本地文件兜底解析。"""
+    if not _safe_prediction_name(name):
+        raise HTTPException(status_code=400, detail="无效的快照名")
+    if db.is_db_enabled():
+        items = db.screener_symbols_list(base_name=name, limit=limit)
+        if items:
+            return {"ok": True, "items": items}
+    path = PREDICTIONS_DIR / f"{name}.json"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="快照不存在")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        inner = (data.get("data") or {}).get("list") or []
+        return {"ok": True, "items": inner[:max(limit, 1)]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/screener/symbol-history")
+def api_screener_symbol_history(symbol: str, market: Optional[str] = None, limit: int = 200):
+    """获取某只股票的历史预测记录（跨快照聚合）。"""
+    symbol = (symbol or "").strip().upper()
+    if not symbol:
+        raise HTTPException(status_code=400, detail="symbol 不能为空")
+    if not db.is_db_enabled():
+        return {"ok": True, "items": []}
+    items = db.screener_symbols_list(symbol=symbol, market=market, limit=limit)
+    return {"ok": True, "items": items}
+
+
 # ---------------------------------------------------------------------------
 # User data: watchlist, portfolio, capital pool, settings
 # ---------------------------------------------------------------------------
