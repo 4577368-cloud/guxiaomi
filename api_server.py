@@ -50,7 +50,14 @@ from typing import Optional, List, Dict, Any
 
 import requests
 
+import db
+
 app = FastAPI(title="股票分析 API", version="1.0")
+
+# 启动时初始化数据库（有 POSTGRES_URL 则建表；无则静默跳过）
+@app.on_event("startup")
+def _startup():
+    db.init_db()
 
 # 浏览器跨域：与 Vercel 等静态域配合时，可设 ALLOWED_ORIGINS=https://a.vercel.app,https://b.com
 # allow_origins=["*"] 时 allow_credentials 须为 False（规范要求）
@@ -790,6 +797,11 @@ def _run_analyze_task(job_id: str, req: AnalyzeRequest):
         else:
             payload["stock_name"] = ""
         json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        if db.is_db_enabled():
+            try:
+                db.report_save(base_name, payload, md_content, html_content)
+            except Exception as db_err:
+                print(f"[db] 报告保存失败（仍保留文件）: {db_err}")
         with _jobs_lock:
             _jobs[job_id]["status"] = "done"
             _jobs[job_id]["result"] = payload
@@ -866,12 +878,17 @@ def api_analyze_status(job_id: str):
 
 @app.get("/api/reports/list")
 def api_reports_list():
-    """历史报告列表，按生成时间倒序。"""
+    """历史报告列表，按生成时间倒序；数据库与本地文件合并，数据库优先。"""
+    db_items = db.reports_list() if db.is_db_enabled() else []
+    db_map = {it["base_name"]: it for it in db_items}
+
     items = []
     for f in REPORTS_DIR.glob("*.json"):
         try:
             mtime = f.stat().st_mtime
             base_name = f.stem
+            if base_name in db_map:
+                continue
             stock_code = ''
             market = ''
             data: Dict[str, Any] = {}
@@ -896,17 +913,23 @@ def api_reports_list():
             })
         except OSError:
             continue
-    items.sort(key=lambda x: x.get("_mtime") or 0, reverse=True)
-    for it in items:
+
+    combined = list(db_map.values()) + items
+    combined.sort(key=lambda x: x.get("_mtime") or 0, reverse=True)
+    for it in combined:
         it.pop("_mtime", None)
-    return {"ok": True, "items": items}
+    return {"ok": True, "items": combined}
 
 
 @app.get("/api/reports/get")
 def api_reports_get(name: str):
-    """根据 base_name 获取已保存的报告内容。"""
+    """根据 base_name 获取已保存的报告内容；数据库优先，本地文件兜底。"""
     if not name or ".." in name or "/" in name or "\\" in name:
         raise HTTPException(status_code=400, detail="无效的报告名")
+    if db.is_db_enabled():
+        data = db.report_get(name)
+        if data is not None:
+            return data
     path = REPORTS_DIR / f"{name}.json"
     if not path.is_file():
         raise HTTPException(status_code=404, detail="报告不存在")
@@ -918,13 +941,19 @@ def api_reports_get(name: str):
 
 
 def _reports_delete_impl(name: str) -> dict:
-    """删除指定 base_name 的报告文件（.json / .md / .html）；幂等。"""
+    """删除指定 base_name 的报告（数据库 + 本地文件）；幂等。"""
     name = (name or "").strip()
     if not name or ".." in name or "/" in name or "\\" in name:
         raise HTTPException(status_code=400, detail="无效的报告名")
     if Path(name).name != name:
         raise HTTPException(status_code=400, detail="无效的报告名")
     deleted_any = False
+    if db.is_db_enabled():
+        try:
+            db.report_delete(name)
+            deleted_any = True
+        except Exception:
+            pass
     for ext in (".json", ".md", ".html"):
         path = REPORTS_DIR / f"{name}{ext}"
         try:
@@ -1033,6 +1062,11 @@ def api_screener_fetch(req: ScreenerFetchRequest):
     }
     out_path = PREDICTIONS_DIR / f"{base_name}.json"
     out_path.write_text(json.dumps(saved_doc, ensure_ascii=False, indent=2), encoding="utf-8")
+    if db.is_db_enabled():
+        try:
+            db.screener_save(saved_doc)
+        except Exception as db_err:
+            print(f"[db] 预测快照保存失败（仍保留文件）: {db_err}")
 
     lst = (inner or {}).get("list") or []
     return {
@@ -1049,16 +1083,22 @@ def api_screener_fetch(req: ScreenerFetchRequest):
 
 @app.get("/api/screener/list")
 def api_screener_list():
-    """已保存的预测快照列表（按保存时间倒序）。"""
+    """已保存的预测快照列表（按保存时间倒序）；数据库与本地文件合并，数据库优先。"""
+    db_items = db.screener_list() if db.is_db_enabled() else []
+    db_map = {it["base_name"]: it for it in db_items}
+
     items: List[Dict[str, Any]] = []
     for f in PREDICTIONS_DIR.glob("*.json"):
         try:
             mtime = f.stat().st_mtime
             d = json.loads(f.read_text(encoding="utf-8"))
+            base_name = d.get("base_name") or f.stem
+            if base_name in db_map:
+                continue
             data_inner = d.get("data") if isinstance(d.get("data"), dict) else {}
             row_list = data_inner.get("list") or []
             items.append({
-                "base_name": d.get("base_name") or f.stem,
+                "base_name": base_name,
                 "saved_at": d.get("saved_at") or datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S"),
                 "period_label": d.get("period_label"),
                 "trend_label": d.get("trend_label"),
@@ -1067,18 +1107,28 @@ def api_screener_list():
                 "page_size": d.get("page_size"),
                 "total": data_inner.get("total"),
                 "list_count": len(row_list) if isinstance(row_list, list) else 0,
+                "_sort": mtime,
             })
         except (OSError, json.JSONDecodeError, TypeError):
             continue
-    items.sort(key=lambda x: x.get("saved_at") or "", reverse=True)
-    return {"ok": True, "items": items}
+
+    combined = list(db_map.values()) + items
+    # db.screener_list 已按 saved_at 倒序，这里简单合并再按 saved_at 字符串排序
+    combined.sort(key=lambda x: x.get("saved_at") or "", reverse=True)
+    for it in combined:
+        it.pop("_sort", None)
+    return {"ok": True, "items": combined}
 
 
 @app.get("/api/screener/get")
 def api_screener_get(name: str):
-    """读取单条预测快照完整内容。"""
+    """读取单条预测快照完整内容；数据库优先，本地文件兜底。"""
     if not _safe_prediction_name(name):
         raise HTTPException(status_code=400, detail="无效的快照名")
+    if db.is_db_enabled():
+        data = db.screener_get(name)
+        if data is not None:
+            return data
     path = PREDICTIONS_DIR / f"{name}.json"
     if not path.is_file():
         raise HTTPException(status_code=404, detail="快照不存在")
@@ -1092,8 +1142,14 @@ def _screener_delete_impl(name: str) -> dict:
     name = (name or "").strip()
     if not _safe_prediction_name(name):
         raise HTTPException(status_code=400, detail="无效的快照名")
-    path = PREDICTIONS_DIR / f"{name}.json"
     deleted = False
+    if db.is_db_enabled():
+        try:
+            db.screener_delete(name)
+            deleted = True
+        except Exception:
+            pass
+    path = PREDICTIONS_DIR / f"{name}.json"
     try:
         if path.is_file():
             path.unlink()
@@ -1553,20 +1609,25 @@ def api_analyze_chat(req: ChatRequest):
     if req.report_text:
         report_text = req.report_text
     elif req.report_base_name:
-        report_path = REPORTS_DIR / f"{req.report_base_name}.json"
-        if report_path.is_file():
-            try:
-                report_json = json.loads(report_path.read_text(encoding='utf-8'))
-                parts = []
-                if report_json.get('markdown'):
-                    parts.append(report_json.get('markdown'))
-                if report_json.get('分析主题'):
-                    parts.append('分析主题：' + str(report_json.get('分析主题')))
-                if report_json.get('融合摘要'):
-                    parts.append('融合摘要：' + str(report_json.get('融合摘要')))
-                report_text = '\n\n'.join(parts)
-            except Exception as e:
-                raise HTTPException(status_code=500, detail='读取报告失败: ' + str(e))
+        report_json = None
+        if db.is_db_enabled():
+            report_json = db.report_get(req.report_base_name)
+        if report_json is None:
+            report_path = REPORTS_DIR / f"{req.report_base_name}.json"
+            if report_path.is_file():
+                try:
+                    report_json = json.loads(report_path.read_text(encoding='utf-8'))
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail='读取报告失败: ' + str(e))
+        if report_json:
+            parts = []
+            if report_json.get('markdown'):
+                parts.append(report_json.get('markdown'))
+            if report_json.get('分析主题'):
+                parts.append('分析主题：' + str(report_json.get('分析主题')))
+            if report_json.get('融合摘要'):
+                parts.append('融合摘要：' + str(report_json.get('融合摘要')))
+            report_text = '\n\n'.join(parts)
 
     if not report_text:
         report_text = '（当前未附带完整报告正文，仅代码与市场信息可用。）'
