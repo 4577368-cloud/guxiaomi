@@ -678,7 +678,7 @@ function App() {
                     href="analysis.html?from=index.html"
                     className="btn btn-secondary nav-chip gap-1"
                   >
-                    <div className="icon-bar-chart-2"></div>
+                    <div className="icon-chart-bar"></div>
                     <span>分析</span>
                   </a>
                   <a

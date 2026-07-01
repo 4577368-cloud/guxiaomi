@@ -1423,7 +1423,7 @@ function DetailInlineAnalysis({ stock, onReportDone, className }) {
   return (
     <>
       <button type="button" onClick={run} disabled={running} className={`btn btn-secondary nav-chip gap-1 disabled:opacity-50 ${className || ''}`}>
-        <div className="icon-bar-chart-2"></div>
+        <div className="icon-chart-bar"></div>
         <span>{running ? '分析中…' : '分析'}</span>
       </button>
       {status && <div className="basis-full rounded-xl border border-cyan-300/20 bg-cyan-400/10 px-3 py-2 text-xs text-cyan-100">{status}</div>}

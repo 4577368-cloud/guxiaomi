@@ -55,7 +55,7 @@ function PortfolioSummary({ summary, capitalPool, onUpdateCapitalPool }) {
       <div className="card mb-4 p-4" data-name="portfolio-summary" data-file="components/PortfolioSummary.js">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display flex items-center gap-2 text-base font-bold text-slate-100 md:text-lg">
-            <div className="icon-bar-chart-2 text-cyan-400"></div>
+            <div className="icon-chart-bar text-cyan-400"></div>
             投资组合总览
           </h2>
           <div className="flex items-center gap-3 text-xs text-slate-400">

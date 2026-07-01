@@ -336,7 +336,7 @@ var ZIWEI_TAB_THEME = {
     loader: 'text-cyan-500',
   },
   stock: {
-    icon: 'icon-bar-chart',
+    icon: 'icon-chart-bar',
     emptyIcon: 'text-emerald-500/55',
     loader: 'text-emerald-500',
     btnGradient: 'linear-gradient(180deg, #059669 0%, #047857 100%)',
@@ -2184,7 +2184,7 @@ ${allStocksData}
                   </select>
                 </label>
                 <a href={withCurrentSource('analysis.html')} className="btn btn-secondary nav-chip gap-1 shrink-0">
-                  <div className="icon-bar-chart-2"></div>
+                  <div className="icon-chart-bar"></div>
                   <span>分析</span>
                 </a>
                 <button
@@ -2577,7 +2577,7 @@ ${allStocksData}
                                 className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.08] px-2 py-1 text-xs font-semibold text-emerald-100 transition-colors hover:bg-white/[0.14] disabled:opacity-50"
                                 title="重新生成技术分析"
                               >
-                                <div className="icon-bar-chart text-sm"></div>
+                                <div className="icon-chart-bar text-sm"></div>
                                 <span>重新分析</span>
                               </button>
                               <button

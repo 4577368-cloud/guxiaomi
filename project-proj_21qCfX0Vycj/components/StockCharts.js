@@ -531,7 +531,7 @@ function StockCharts({ stock }) {
   if (!effectiveHistory || effectiveHistory.length === 0) {
     return (
       <div className="card mb-6 p-4 text-center">
-        <div className="icon-bar-chart mb-2 flex justify-center text-4xl text-slate-500" />
+        <div className="icon-chart-bar mb-2 flex justify-center text-4xl text-slate-500" />
         <p className="text-sm text-slate-300">
           暂无历史数据，请刷新后获取价格。若已获取请稍等数秒。
         </p>
@@ -546,7 +546,7 @@ function StockCharts({ stock }) {
       <div className="card p-4">
         <div className="mb-2 flex items-center justify-between">
           <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-100">
-            <div className="icon-bar-chart text-sm text-emerald-400" />
+            <div className="icon-chart-bar text-sm text-emerald-400" />
             每日盈亏（按持仓推算）
           </h4>
           {hasMoreData && (

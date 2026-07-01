@@ -489,7 +489,7 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
                 <span>详情</span>
               </a>
               <a href={analysisUrl} className="btn btn-secondary nav-chip gap-1">
-                <div className="icon-bar-chart-2"></div>
+                <div className="icon-chart-bar"></div>
                 <span>分析</span>
               </a>
               <a href={paipanUrl} className="btn btn-secondary nav-chip gap-1">
