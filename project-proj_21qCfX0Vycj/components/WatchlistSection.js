@@ -104,7 +104,7 @@ function WatchlistSection({ watchlist, onRemoveItem, onRefreshItem, onAddPositio
 
   if (safeWatchlist.length === 0) {
     return (
-      <section className="card mb-4 p-4" data-name="watchlist-section" data-file="components/WatchlistSection.js">
+      <section className="card mb-4 p-4" id="watchlist-section" data-name="watchlist-section" data-file="components/WatchlistSection.js">
         <div className="mb-3 flex flex-wrap items-start justify-between gap-3 px-1">
           <div>
             <h2 className="font-display flex items-center gap-2 text-sm font-bold text-slate-100 md:text-base">
@@ -127,7 +127,7 @@ function WatchlistSection({ watchlist, onRemoveItem, onRefreshItem, onAddPositio
   }
 
   return (
-    <section className="card mb-4 p-4" data-name="watchlist-section" data-file="components/WatchlistSection.js">
+    <section className="card mb-4 p-4" id="watchlist-section" data-name="watchlist-section" data-file="components/WatchlistSection.js">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3 px-1">
         <div>
           <h2 className="font-display flex items-center gap-2 text-sm font-bold text-slate-100 md:text-base">
@@ -145,7 +145,7 @@ function WatchlistSection({ watchlist, onRemoveItem, onRefreshItem, onAddPositio
           className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-white/12 bg-white/[0.09] px-3 text-sm font-bold text-slate-100 shadow-sm shadow-slate-950/20 transition-colors hover:bg-white/[0.14] disabled:opacity-50"
         >
           <div className="icon-refresh-cw text-sm"></div>
-          刷新全部
+          刷新
         </button>
       </div>
 

@@ -122,7 +122,7 @@ function PortfolioQueue({ portfolio, capitalPool, summary, isRefreshing, onAddSt
     const totalDailyProfit = todayProfitForRows(sortedRows);
 
     return (
-      <section className="card mb-4 p-4" data-name="portfolio-queue" data-file="components/PortfolioQueue.js">
+      <section className="card mb-4 p-4" id="portfolio-queue" data-name="portfolio-queue" data-file="components/PortfolioQueue.js">
         <div className="mb-3 flex flex-wrap items-start justify-between gap-3 px-1">
           <div>
             <h2 className="font-display flex items-center gap-2 text-sm font-bold text-slate-100 md:text-base">
@@ -189,6 +189,7 @@ function PortfolioQueue({ portfolio, capitalPool, summary, isRefreshing, onAddSt
             return (
               <div
                 key={row.stock.id || `${row.stock.market}_${row.stock.symbol}`}
+                id={row.stock.id ? `portfolio-row-${row.stock.id}` : undefined}
                 className={`relative grid gap-x-4 gap-y-2 border-t border-white/[0.07] px-2 py-2.5 transition-colors first:border-t-0 hover:bg-white/[0.055] md:px-3 lg:grid-cols-12 lg:items-center xl:gap-x-5 ${
                   openMenuId === row.stock.id ? 'z-30' : 'z-0'
                 }`}

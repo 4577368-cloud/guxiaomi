@@ -1465,6 +1465,21 @@ function AnalysisApp() {
   React.useEffect(function () {
     function applyWorkbenchContext() {
       if (!window.GuxiaomiChat) return false;
+      if (report && window.GuxiaomiChatDiagnosis) {
+        var ctx = window.GuxiaomiChatDiagnosis.buildDiagnosisContext({
+          page: "analysis",
+          source: "analysis-report",
+          diagnosisMode: "report",
+          sourceLabel: "当前报告",
+          scopeSuffix: report.base_name || "current",
+          code: report.stock_code,
+          market: report.market,
+          report: report,
+          notes: form.user_data_notes || "",
+        });
+        window.GuxiaomiChat.setContext(ctx);
+        return true;
+      }
       window.GuxiaomiChat.setContext({
         page: "analysis",
         scopeKey: "analysis|workbench",
@@ -1485,7 +1500,7 @@ function AnalysisApp() {
         window.clearInterval(timer);
       };
     }
-  }, []);
+  }, [report, form.user_data_notes]);
 
   const openCurrentReportDiagnosis = React.useCallback(function () {
     if (!report || !window.GuxiaomiChatDiagnosis) return;
@@ -2979,7 +2994,7 @@ function AnalysisApp() {
                     </button>
                     <button
                       type="button"
-                      className="shrink-0 self-center min-w-[3.4rem] px-2 py-1 text-xs rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/[0.10] transition-colors"
+                      className="shrink-0 self-center min-w-[3.4rem] rounded-lg border border-cyan-400/35 bg-cyan-400/15 px-2 py-1 text-xs font-bold text-cyan-100 transition-colors hover:bg-cyan-400/25 hover:text-white"
                       title="载入该报告并打开 AI 诊断"
                       onClick={(e) => openHistoryReportDiagnosis(item, e)}
                     >
@@ -3266,20 +3281,11 @@ function AnalysisApp() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  className="inline-flex h-8 min-w-[3.4rem] items-center justify-center rounded-xl border border-white/10 bg-white/[0.08] px-3 text-xs font-bold text-slate-100 transition-colors hover:bg-white/[0.14]"
+                  className="inline-flex h-8 min-w-[3.4rem] items-center justify-center rounded-xl border border-cyan-400/35 bg-cyan-400/15 px-3 text-xs font-bold text-cyan-100 transition-colors hover:bg-cyan-400/25 hover:text-white"
                   title="AI 诊断"
                   onClick={openCurrentReportDiagnosis}
                 >
                   AI
-                </button>
-                <button
-                  type="button"
-                  aria-label="回到上方分析区"
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/[0.08] text-base font-bold leading-none text-slate-200 shadow-sm transition-colors hover:bg-white/[0.14] sm:self-auto"
-                  onClick={scrollToAnalysisWorkbench}
-                  title="回到分析表单、历史报告与股票预测"
-                >
-                  ↑
                 </button>
               </div>
             </div>

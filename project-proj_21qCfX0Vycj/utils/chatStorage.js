@@ -49,15 +49,75 @@
       : [];
   }
 
-  function saveBucketMessages(bucketKey, messages) {
+  function saveBucketMessages(bucketKey, messages, meta) {
+    meta = meta || {};
     var store = readStore();
     var prev = store.buckets[bucketKey] || {};
+    var normalized = normalizeMessages(messages);
+    var preview = "";
+    for (var i = normalized.length - 1; i >= 0; i--) {
+      if (normalized[i].role === "user") {
+        preview = String(normalized[i].content).slice(0, 48);
+        break;
+      }
+    }
     store.buckets[bucketKey] = {
-      messages: normalizeMessages(messages),
+      messages: normalized,
       updatedAt: new Date().toISOString(),
       readUpTo: typeof prev.readUpTo === "number" ? prev.readUpTo : 0,
+      title: meta.title || prev.title || "",
+      contextSnapshot: meta.contextSnapshot || prev.contextSnapshot || null,
+      preview: preview || prev.preview || "",
     };
     writeStore(store);
+  }
+
+  function deriveThreadTitle(scopeKey) {
+    if (!scopeKey) return "对话";
+    if (scopeKey.indexOf("workbench") >= 0) return "工作台";
+    var parts = String(scopeKey).split("|");
+    if (scopeKey.indexOf("diagnosis") >= 0) {
+      var code = parts[0] || "";
+      if (parts.indexOf("thread") >= 0) {
+        return (code || "标的") + " · 新会话";
+      }
+      if (parts.length >= 4) {
+        var rn = parts.slice(3).join("|");
+        if (rn.length > 22) rn = rn.slice(0, 20) + "…";
+        return code ? code + " · " + rn : rn;
+      }
+      return (code || "诊断") + " · 对话";
+    }
+    return scopeKey.length > 28 ? scopeKey.slice(0, 26) + "…" : scopeKey;
+  }
+
+  function listThreadsForPage(page) {
+    var store = readStore();
+    var prefix = String(page || "global") + "::";
+    return Object.keys(store.buckets)
+      .filter(function (k) {
+        return k.indexOf(prefix) === 0;
+      })
+      .map(function (k) {
+        var b = store.buckets[k] || {};
+        var scopeKey = k.slice(prefix.length);
+        var msgs = Array.isArray(b.messages) ? b.messages : [];
+        return {
+          bucketKey: k,
+          scopeKey: scopeKey,
+          title: b.title || deriveThreadTitle(scopeKey),
+          preview: b.preview || "",
+          updatedAt: b.updatedAt || "",
+          messageCount: msgs.length,
+          contextSnapshot: b.contextSnapshot || null,
+        };
+      })
+      .filter(function (t) {
+        return t.messageCount > 0 || t.contextSnapshot;
+      })
+      .sort(function (a, b) {
+        return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
+      });
   }
 
   function getBucketReadUpTo(bucketKey) {
@@ -176,6 +236,8 @@
     getBucketReadUpTo: getBucketReadUpTo,
     setBucketReadUpTo: setBucketReadUpTo,
     clearBucketMessages: clearBucketMessages,
+    deriveThreadTitle: deriveThreadTitle,
+    listThreadsForPage: listThreadsForPage,
     getModelKey: getModelKey,
     setModelKey: setModelKey,
     runLegacyMigration: runLegacyMigration,

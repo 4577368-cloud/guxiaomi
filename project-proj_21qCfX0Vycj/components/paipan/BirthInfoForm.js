@@ -1,95 +1,140 @@
-function BirthInfoForm({ birthInfo, setBirthInfo, onSubmit, loading }) {
-    const handleChange = (field, value) => {
-        setBirthInfo(prev => ({ ...prev, [field]: value }));
-    };
+function BirthInfoForm({
+  birthInfo,
+  setBirthInfo,
+  onSubmit,
+  loading,
+  compact,
+  collapsed,
+  onToggleCollapse,
+  summaryLabel,
+}) {
+  var handleChange = function (field, value) {
+    setBirthInfo(function (prev) {
+      var next = Object.assign({}, prev);
+      next[field] = value;
+      return next;
+    });
+  };
 
-    return (
-        <div className="bg-white rounded-xl shadow-md p-6">
-            <h2 className="text-xl font-semibold mb-4">出生信息</h2>
-            
-            <form onSubmit={onSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm font-medium mb-1">出生年份</label>
-                        <input
-                            type="number"
-                            value={birthInfo.year}
-                            onChange={(e) => handleChange('year', e.target.value)}
-                            className="w-full px-3 py-2 border rounded-lg"
-                            placeholder="例如: 1990"
-                            required
-                        />
-                    </div>
-                    
-                    <div>
-                        <label className="block text-sm font-medium mb-1">出生月份</label>
-                        <input
-                            type="number"
-                            value={birthInfo.month}
-                            onChange={(e) => handleChange('month', e.target.value)}
-                            className="w-full px-3 py-2 border rounded-lg"
-                            placeholder="1-12"
-                            min="1"
-                            max="12"
-                            required
-                        />
-                    </div>
-                    
-                    <div>
-                        <label className="block text-sm font-medium mb-1">出生日期</label>
-                        <input
-                            type="number"
-                            value={birthInfo.day}
-                            onChange={(e) => handleChange('day', e.target.value)}
-                            className="w-full px-3 py-2 border rounded-lg"
-                            placeholder="1-31"
-                            min="1"
-                            max="31"
-                            required
-                        />
-                    </div>
-                    
-                    <div>
-                        <label className="block text-sm font-medium mb-1">出生时辰</label>
-                        <select
-                            value={birthInfo.hour}
-                            onChange={(e) => handleChange('hour', e.target.value)}
-                            className="w-full px-3 py-2 border rounded-lg"
-                            required
-                        >
-                            <option value="">请选择</option>
-                            {getHourOptions().map(opt => (
-                                <option key={opt.value} value={opt.value}>{opt.label}</option>
-                            ))}
-                        </select>
-                    </div>
-                </div>
+  var showForm = !collapsed || !compact;
 
-                <div className="flex items-center gap-6">
-                    <label className="flex items-center">
-                        <input
-                            type="radio"
-                            checked={birthInfo.gender === 'male'}
-                            onChange={() => handleChange('gender', 'male')}
-                            className="mr-2"
-                        />
-                        男
-                    </label>
-                    <label className="flex items-center">
-                        <input
-                            type="radio"
-                            checked={birthInfo.gender === 'female'}
-                            onChange={() => handleChange('gender', 'female')}
-                            className="mr-2"
-                        />
-                        女
-                    </label>
-                </div>
-
-                <button type="submit" className="btn btn-primary w-full" disabled={loading}>
-                    {loading ? '计算中...' : '开始排盘'}
-                </button>
-            </form>
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="icon-calendar text-sm text-indigo-600" aria-hidden />
+          <span className="text-sm font-bold text-slate-800">生辰信息</span>
+          {compact && collapsed && summaryLabel && (
+            <span className="truncate text-xs text-slate-500">{summaryLabel}</span>
+          )}
         </div>
-    );
+        {compact && (
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            className="shrink-0 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+          >
+            {collapsed ? '修改' : '收起'}
+          </button>
+        )}
+      </div>
+
+      {showForm && (
+        <form onSubmit={onSubmit} className="p-3">
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="flex flex-col gap-0.5">
+              <span className="text-[10px] font-medium text-slate-500">年</span>
+              <input
+                type="number"
+                value={birthInfo.year}
+                onChange={function (e) {
+                  handleChange('year', e.target.value);
+                }}
+                className="w-[4.5rem] rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                placeholder="1990"
+                required
+              />
+            </label>
+            <label className="flex flex-col gap-0.5">
+              <span className="text-[10px] font-medium text-slate-500">月</span>
+              <input
+                type="number"
+                value={birthInfo.month}
+                onChange={function (e) {
+                  handleChange('month', e.target.value);
+                }}
+                className="w-[3rem] rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                min="1"
+                max="12"
+                required
+              />
+            </label>
+            <label className="flex flex-col gap-0.5">
+              <span className="text-[10px] font-medium text-slate-500">日</span>
+              <input
+                type="number"
+                value={birthInfo.day}
+                onChange={function (e) {
+                  handleChange('day', e.target.value);
+                }}
+                className="w-[3rem] rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                min="1"
+                max="31"
+                required
+              />
+            </label>
+            <label className="flex min-w-[7.5rem] flex-1 flex-col gap-0.5">
+              <span className="text-[10px] font-medium text-slate-500">时辰</span>
+              <select
+                value={birthInfo.hour}
+                onChange={function (e) {
+                  handleChange('hour', e.target.value);
+                }}
+                className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                required
+              >
+                <option value="">选择</option>
+                {getHourOptions().map(function (opt) {
+                  return (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
+            <div className="flex items-center gap-2 pb-0.5">
+              <label className="flex cursor-pointer items-center gap-1 text-xs">
+                <input
+                  type="radio"
+                  checked={birthInfo.gender === 'male'}
+                  onChange={function () {
+                    handleChange('gender', 'male');
+                  }}
+                />
+                男
+              </label>
+              <label className="flex cursor-pointer items-center gap-1 text-xs">
+                <input
+                  type="radio"
+                  checked={birthInfo.gender === 'female'}
+                  onChange={function () {
+                    handleChange('gender', 'female');
+                  }}
+                />
+                女
+              </label>
+            </div>
+            <button
+              type="submit"
+              className="btn btn-primary shrink-0 px-4 py-1.5"
+              disabled={loading}
+            >
+              {loading ? '计算中…' : '排盘'}
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
 }

@@ -1,5 +1,5 @@
 // 股小蜜 Service Worker
-const CACHE_NAME = 'guxiaomi-v5.5-real-quote';
+const CACHE_NAME = 'guxiaomi-v5.7-scroll-stick';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

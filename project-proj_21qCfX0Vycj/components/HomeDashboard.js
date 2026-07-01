@@ -142,7 +142,88 @@ function getDownStreakFromHistory(history) {
   return streak;
 }
 
-function HomeDashboard({ portfolio, watchlist, summary, capitalPool, onUpdateCapitalPool, onAddStock, onRefreshAll }) {
+function dashboardMarketLabel(market) {
+  return market === 'US' ? '美股' : market === 'HK' ? '港股' : 'A股';
+}
+
+function buildDashboardDetailUrl(entry) {
+  if (!entry || !entry.symbol) return '';
+  const marketName = dashboardMarketLabel(entry.market);
+  return (
+    'stock-detail.html?code=' +
+    encodeURIComponent(entry.symbol) +
+    '&market=' +
+    encodeURIComponent(marketName) +
+    (entry.name ? '&name=' + encodeURIComponent(entry.name) : '')
+  );
+}
+
+function DashboardAlertRow({ task, compact, onAction }) {
+  const hasAction = task && task.action && task.action.label;
+  const toneClass =
+    task.tone === 'red'
+      ? 'border-rose-300/20 bg-rose-400/10'
+      : task.tone === 'amber'
+        ? 'border-amber-300/20 bg-amber-400/10'
+        : task.tone === 'green'
+          ? 'border-emerald-300/20 bg-emerald-400/10'
+          : 'border-white/10 bg-white/[0.06]';
+  const inner = (
+  <>
+      <div className="min-w-0 flex-1">
+        <div className={'font-semibold text-slate-100 ' + (compact ? 'truncate text-sm' : 'text-sm')}>
+          {task.title}
+        </div>
+        {!compact && task.desc && (
+          <div className="mt-1 text-xs leading-relaxed text-slate-400">{task.desc}</div>
+        )}
+      </div>
+      {hasAction && (
+        <span className="ml-2 flex shrink-0 items-center gap-0.5 text-xs font-semibold text-cyan-300">
+          {task.action.label}
+          <div className="icon-chevron-right text-[11px]" aria-hidden />
+        </span>
+      )}
+    </>
+  );
+
+  if (!hasAction) {
+    return (
+      <div className={'flex items-center rounded-xl border px-3 py-2 ' + toneClass + (compact ? ' h-11' : ' px-4 py-3')}>
+        {inner}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={function (e) {
+        onAction(task, e);
+      }}
+      className={
+        'flex w-full items-center rounded-xl border text-left transition-colors hover:border-cyan-300/35 hover:bg-white/[0.1] ' +
+        toneClass +
+        (compact ? ' h-11 px-3 py-2' : ' px-4 py-3')
+      }
+    >
+      {inner}
+    </button>
+  );
+}
+
+function HomeDashboard({
+  portfolio,
+  watchlist,
+  summary,
+  capitalPool,
+  onUpdateCapitalPool,
+  onAddStock,
+  onRefreshAll,
+  onFocusPortfolioStock,
+  onQuickAddStock,
+  onRefreshWatchlist,
+}) {
   try {
     const [dailyReports, setDailyReports] = React.useState(() => loadInvestmentDailyReports());
     const [dailyRunning, setDailyRunning] = React.useState(false);
@@ -258,6 +339,66 @@ function HomeDashboard({ portfolio, watchlist, summary, capitalPool, onUpdateCap
     const staleStocks = safePortfolio.filter((stock) => !stock.marketData || !Number(stock.currentPrice));
     const tasks = [];
 
+    const holdingDetailAction = (stock, label) => ({
+      type: 'detail',
+      href: buildDashboardDetailUrl(stock),
+      label: label || '查看详情',
+      stockId: stock.id,
+      symbol: stock.symbol,
+      market: stock.market,
+    });
+
+    const watchDetailAction = (item, label) => ({
+      type: 'detail',
+      href: buildDashboardDetailUrl(item),
+      label: label || '查看详情',
+      symbol: item.symbol,
+      market: item.market,
+    });
+
+    const handleAlertAction = React.useCallback(
+      function (task) {
+        var action = task && task.action;
+        if (!action || !action.label) return;
+        setExpandedCard(null);
+        if ((action.type === 'detail' || action.type === 'analysis') && action.href) {
+          window.location.href = action.href;
+          return;
+        }
+        if (action.type === 'portfolio' && action.stockId && onFocusPortfolioStock) {
+          onFocusPortfolioStock(action.stockId);
+          return;
+        }
+        if (action.type === 'portfolio_section') {
+          var portfolioEl = document.getElementById('portfolio-queue');
+          if (portfolioEl) portfolioEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          return;
+        }
+        if (action.type === 'watchlist_section') {
+          var watchEl = document.getElementById('watchlist-section');
+          if (watchEl) watchEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          return;
+        }
+        if (action.type === 'refresh' && onRefreshAll) {
+          onRefreshAll();
+          var refreshAnchor = document.getElementById('portfolio-queue');
+          if (refreshAnchor) refreshAnchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          return;
+        }
+        if (action.type === 'watchlist_refresh' && onRefreshWatchlist) {
+          onRefreshWatchlist();
+          var watchAnchor = document.getElementById('watchlist-section');
+          if (watchAnchor) watchAnchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          return;
+        }
+        if (action.type === 'quick_add' && action.stockId && onQuickAddStock) {
+          onQuickAddStock(action.stockId);
+          return;
+        }
+      },
+      [onFocusPortfolioStock, onQuickAddStock, onRefreshAll, onRefreshWatchlist],
+    );
+
     const holdingAlerts = safePortfolio.map((stock) => {
       const analysis = calculateStockAnalysis(stock, stock.brokerChannel || 'futu');
       const currentPrice = Number(stock.currentPrice) || Number(stock.marketData?.price) || 0;
@@ -282,7 +423,8 @@ function HomeDashboard({ portfolio, watchlist, summary, capitalPool, onUpdateCap
         tasks.push({
           title: `${item.stock.symbol} 今日快速下跌 ${item.dailyPct.toFixed(2)}%`,
           desc: '单日跌幅超过 5%，建议查看详情页新闻、技术面和持仓成本。',
-          tone: 'red'
+          tone: 'red',
+          action: holdingDetailAction(item.stock, '查看详情'),
         });
       });
 
@@ -293,7 +435,8 @@ function HomeDashboard({ portfolio, watchlist, summary, capitalPool, onUpdateCap
         tasks.push({
           title: `${item.stock.symbol} 已连续 ${item.downStreak} 个价格点走弱`,
           desc: '连续下跌可能意味着趋势转弱，建议复核止损线和仓位。',
-          tone: 'amber'
+          tone: 'amber',
+          action: holdingDetailAction(item.stock, '查看技术面'),
         });
       });
 
@@ -304,7 +447,15 @@ function HomeDashboard({ portfolio, watchlist, summary, capitalPool, onUpdateCap
         tasks.push({
           title: `${item.stock.symbol} 持仓累计亏损 ${item.profitPct.toFixed(2)}%`,
           desc: '累计亏损超过 10%，需要判断是补仓、持有还是止损。',
-          tone: 'red'
+          tone: 'red',
+          action: {
+            type: 'detail',
+            href: buildDashboardDetailUrl(item.stock),
+            label: '复盘持仓',
+            stockId: item.stock.id,
+            symbol: item.stock.symbol,
+            market: item.stock.market,
+          },
         });
       });
 
@@ -315,7 +466,8 @@ function HomeDashboard({ portfolio, watchlist, summary, capitalPool, onUpdateCap
         tasks.push({
           title: `${item.stock.symbol} 表现强势`,
           desc: `持仓收益 ${item.profitPct.toFixed(2)}%，今日 ${item.dailyPct >= 0 ? '+' : ''}${item.dailyPct.toFixed(2)}%，可考虑复盘是否需要止盈或提高跟踪级别。`,
-          tone: 'green'
+          tone: 'green',
+          action: holdingDetailAction(item.stock, '查看详情'),
         });
       });
 
@@ -334,49 +486,81 @@ function HomeDashboard({ portfolio, watchlist, summary, capitalPool, onUpdateCap
         tasks.push({
           title: `${item.symbol} 关注后下跌 ${watchPct.toFixed(2)}%`,
           desc: '关注后累计跌幅超过 8%，建议确认是否仍符合观察逻辑。',
-          tone: 'amber'
+          tone: 'amber',
+          action: watchDetailAction(item, '查看详情'),
         });
       } else if (watchPct >= 8) {
         tasks.push({
           title: `${item.symbol} 关注后上涨 ${watchPct.toFixed(2)}%`,
           desc: '关注后涨幅超过 8%，可考虑进入详情页复盘催化因素。',
-          tone: 'green'
+          tone: 'green',
+          action: watchDetailAction(item, '查看详情'),
         });
       } else if (downStreak >= 3) {
         tasks.push({
           title: `${item.symbol} 关注股连续走弱`,
           desc: `最近连续 ${downStreak} 个价格点下跌，建议重新评估关注价值。`,
-          tone: 'amber'
+          tone: 'amber',
+          action: watchDetailAction(item, '查看详情'),
         });
       }
     });
 
-    if (emptyPositionStocks.length) {
+    if (emptyPositionStocks.length === 1) {
+      tasks.push({
+        title: `${emptyPositionStocks[0].symbol} 缺少持仓记录`,
+        desc: '补充买入价和股数后，盈亏与仓位才会准确。',
+        tone: 'amber',
+        action: {
+          type: 'quick_add',
+          stockId: emptyPositionStocks[0].id,
+          label: '补充持仓',
+          symbol: emptyPositionStocks[0].symbol,
+          market: emptyPositionStocks[0].market,
+        },
+      });
+    } else if (emptyPositionStocks.length > 1) {
       tasks.push({
         title: `${emptyPositionStocks.length} 只股票缺少持仓记录`,
         desc: '补充买入价和股数后，盈亏与仓位才会准确。',
-        tone: 'amber'
+        tone: 'amber',
+        action: { type: 'portfolio_section', label: '去持仓列表' },
       });
     }
-    if (staleStocks.length) {
+    if (staleStocks.length === 1) {
+      tasks.push({
+        title: `${staleStocks[0].symbol} 需要刷新行情`,
+        desc: '刷新后今日异动和详情页价格走势更准确。',
+        tone: 'blue',
+        action: {
+          type: 'refresh',
+          label: '刷新行情',
+          stockId: staleStocks[0].id,
+          symbol: staleStocks[0].symbol,
+          market: staleStocks[0].market,
+        },
+      });
+    } else if (staleStocks.length > 1) {
       tasks.push({
         title: `${staleStocks.length} 只股票需要刷新行情`,
         desc: '刷新后今日异动和详情页价格走势更准确。',
-        tone: 'blue'
+        tone: 'blue',
+        action: { type: 'refresh', label: '刷新' },
       });
     }
     if (safeWatchlist.length && safeWatchlist.filter((x) => !Number(x.currentPrice)).length) {
       tasks.push({
         title: '部分关注股票缺少价格',
         desc: '可以刷新关注列表，完善关注后涨跌表现。',
-        tone: 'pink'
+        tone: 'pink',
+        action: { type: 'watchlist_refresh', label: '刷新关注' },
       });
     }
     if (!tasks.length) {
       tasks.push({
-        title: '今日暂无待处理事项',
-        desc: '组合数据状态良好，可以查看异动或进入详情页复盘。',
-        tone: 'green'
+        title: '暂无需要关注的提醒',
+        desc: '组合数据状态良好，可查看今日异动或进入详情页复盘。',
+        tone: 'green',
       });
     }
 
@@ -725,7 +909,7 @@ function HomeDashboard({ portfolio, watchlist, summary, capitalPool, onUpdateCap
             <div className="mb-3 flex items-center justify-between">
               <h3 className="flex items-center gap-2 text-base font-bold text-slate-50">
                 <div className="icon-list-checks text-sky-300"></div>
-                待处理事项
+                关注提醒
               </h3>
               <div className="flex items-center gap-2">
                 {tasks.length > 0 && (
@@ -744,20 +928,12 @@ function HomeDashboard({ portfolio, watchlist, summary, capitalPool, onUpdateCap
             </div>
             <div className="gx-soft-scrollbar max-h-[7.5rem] space-y-2 overflow-y-auto pr-1">
               {tasks.map((task, idx) => (
-                <div
-                  key={idx}
-                  className={`flex h-11 items-center rounded-xl border px-3 py-2 ${
-                    task.tone === 'red'
-                      ? 'border-rose-300/20 bg-rose-400/10'
-                      : task.tone === 'amber'
-                        ? 'border-amber-300/20 bg-amber-400/10'
-                        : task.tone === 'green'
-                          ? 'border-emerald-300/20 bg-emerald-400/10'
-                          : 'border-white/10 bg-white/[0.06]'
-                  }`}
-                >
-                  <div className="truncate text-sm font-semibold text-slate-100">{task.title}</div>
-                </div>
+                <DashboardAlertRow
+                  key={(task.action && task.action.symbol ? task.action.symbol + '-' : '') + idx}
+                  task={task}
+                  compact
+                  onAction={handleAlertAction}
+                />
               ))}
             </div>
           </div>
@@ -779,7 +955,7 @@ function HomeDashboard({ portfolio, watchlist, summary, capitalPool, onUpdateCap
                   ) : (
                     <>
                       <div className="icon-list-checks text-sky-300"></div>
-                      待处理事项 ({tasks.length} 项)
+                      关注提醒 ({tasks.length} 项)
                     </>
                   )}
                 </h3>
@@ -822,21 +998,11 @@ function HomeDashboard({ portfolio, watchlist, summary, capitalPool, onUpdateCap
                   )
                 ) : (
                   tasks.map((task, idx) => (
-                    <div
-                      key={`modal-task-${idx}`}
-                      className={`rounded-xl border px-4 py-3 ${
-                        task.tone === 'red'
-                          ? 'border-rose-300/20 bg-rose-400/10'
-                          : task.tone === 'amber'
-                            ? 'border-amber-300/20 bg-amber-400/10'
-                            : task.tone === 'green'
-                              ? 'border-emerald-300/20 bg-emerald-400/10'
-                              : 'border-white/10 bg-white/[0.06]'
-                      }`}
-                    >
-                      <div className="text-sm font-semibold text-slate-100">{task.title}</div>
-                      {task.desc && <div className="mt-1 text-xs text-slate-400">{task.desc}</div>}
-                    </div>
+                    <DashboardAlertRow
+                      key={'modal-' + (task.action && task.action.symbol ? task.action.symbol + '-' : '') + idx}
+                      task={task}
+                      onAction={handleAlertAction}
+                    />
                   ))
                 )}
               </div>

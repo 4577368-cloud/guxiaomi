@@ -76,10 +76,6 @@ function GlobalChat() {
   var modelKey = _model[0];
   var setModelKey = _model[1];
 
-  var _userScroll = React.useState(false);
-  var isUserScrolling = _userScroll[0];
-  var setIsUserScrolling = _userScroll[1];
-
   var _readUpTo = React.useState(0);
   var readUpTo = _readUpTo[0];
   var setReadUpTo = _readUpTo[1];
@@ -87,6 +83,18 @@ function GlobalChat() {
   var _activeRole = React.useState(null);
   var activeRole = _activeRole[0];
   var setActiveRole = _activeRole[1];
+
+  var _showThreads = React.useState(true);
+  var showThreads = _showThreads[0];
+  var setShowThreads = _showThreads[1];
+
+  var _threads = React.useState([]);
+  var threads = _threads[0];
+  var setThreads = _threads[1];
+
+  var _activeBucketKey = React.useState("");
+  var activeBucketKey = _activeBucketKey[0];
+  var setActiveBucketKey = _activeBucketKey[1];
 
   var _panelWidth = React.useState(readPanelWidth);
   var panelWidth = _panelWidth[0];
@@ -100,6 +108,46 @@ function GlobalChat() {
   var listRef = React.useRef(null);
   var endRef = React.useRef(null);
   var inputRef = React.useRef(null);
+  var stickToBottomRef = React.useRef(true);
+
+  var SCROLL_BOTTOM_THRESHOLD = 56;
+
+  function isChatNearBottom(el) {
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_BOTTOM_THRESHOLD;
+  }
+
+  function scrollChatToBottom(instant) {
+    var el = listRef.current;
+    if (!el) return;
+    if (instant) {
+      el.scrollTop = el.scrollHeight;
+      return;
+    }
+    if (endRef.current && endRef.current.scrollIntoView) {
+      endRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
+  }
+
+  var INPUT_MIN_PX = 40;
+  var INPUT_MAX_PX = 132;
+
+  function adjustChatInputHeight() {
+    var el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    var scrollH = el.scrollHeight;
+    var next = Math.min(Math.max(scrollH, INPUT_MIN_PX), INPUT_MAX_PX);
+    el.style.height = next + "px";
+    el.style.overflowY = scrollH > INPUT_MAX_PX ? "auto" : "hidden";
+  }
+
+  React.useEffect(function () {
+    if (!open) return;
+    adjustChatInputHeight();
+  }, [input, open]);
 
   var apiBase =
     window.GUXIAOMI_CHAT_API_BASE ||
@@ -112,11 +160,12 @@ function GlobalChat() {
         : "";
     })();
 
-  var loadBucket = React.useCallback(function (snap) {
+  var loadBucket = React.useCallback(function (snap, force) {
     if (!window.GuxiaomiChat || !window.GuxiaomiChatStorage) return;
     var key = window.GuxiaomiChat.getBucketKey(snap);
-    if (bucketRef.current === key) return;
+    if (!force && bucketRef.current === key) return;
     bucketRef.current = key;
+    setActiveBucketKey(key);
     var stored = window.GuxiaomiChatStorage.getBucketMessages(key);
     if (!stored.length) {
       stored = window.GuxiaomiChatStorage.runLegacyMigration(key, snap);
@@ -130,6 +179,18 @@ function GlobalChat() {
         : 0;
     setReadUpTo(read);
   }, []);
+
+  var refreshThreads = React.useCallback(function () {
+    if (!window.GuxiaomiChatStorage || !context || !context.page) {
+      setThreads([]);
+      return;
+    }
+    setThreads(window.GuxiaomiChatStorage.listThreadsForPage(context.page));
+  }, [context]);
+
+  React.useEffect(function () {
+    if (open) refreshThreads();
+  }, [open, messages, context.page, refreshThreads]);
 
   React.useEffect(function () {
     if (!window.GuxiaomiChat) return;
@@ -146,9 +207,13 @@ function GlobalChat() {
         window.GuxiaomiChat.setContext(detail.context);
       }
       setOpen(true);
+      stickToBottomRef.current = true;
       if (detail.message) setInput(detail.message);
       window.setTimeout(function () {
-        if (inputRef.current) inputRef.current.focus();
+        if (inputRef.current) {
+          inputRef.current.focus();
+          adjustChatInputHeight();
+        }
       }, 120);
     }
     window.addEventListener("guxiaomi-chat-open", onOpenChat);
@@ -183,39 +248,91 @@ function GlobalChat() {
   }, [open]);
 
   React.useEffect(function () {
-    if (!open || isUserScrolling) return;
-    if (endRef.current) {
-      endRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages, streaming, open, isUserScrolling]);
+    if (!open || !stickToBottomRef.current) return;
+    var instant = !!streaming;
+    var id = window.requestAnimationFrame(function () {
+      if (!open || !stickToBottomRef.current) return;
+      scrollChatToBottom(instant);
+    });
+    return function () {
+      window.cancelAnimationFrame(id);
+    };
+  }, [messages, streaming, open]);
 
   React.useEffect(function () {
     var el = listRef.current;
-    if (!el) return;
-    var scrollTimeout;
+    if (!el || !open) return;
     function onScroll() {
-      var atBottom =
-        el.scrollHeight - el.scrollTop - el.clientHeight < 48;
-      if (!atBottom) {
-        setIsUserScrolling(true);
-        clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(function () {
-          setIsUserScrolling(false);
-        }, 2000);
-      } else {
-        setIsUserScrolling(false);
-      }
+      stickToBottomRef.current = isChatNearBottom(el);
     }
-    el.addEventListener("scroll", onScroll);
+    el.addEventListener("scroll", onScroll, { passive: true });
     return function () {
       el.removeEventListener("scroll", onScroll);
-      clearTimeout(scrollTimeout);
     };
   }, [open]);
 
   function persistMessages(next) {
     if (!window.GuxiaomiChatStorage || !bucketRef.current) return;
-    window.GuxiaomiChatStorage.saveBucketMessages(bucketRef.current, next);
+    var snap = window.GuxiaomiChat
+      ? window.GuxiaomiChat.getSnapshot()
+      : context;
+    window.GuxiaomiChatStorage.saveBucketMessages(bucketRef.current, next, {
+      title: (snap && snap.title) || (context && context.title) || "",
+      contextSnapshot: snap,
+    });
+    refreshThreads();
+  }
+
+  function switchToThread(thread) {
+    if (!thread || !window.GuxiaomiChat) return;
+    if (thread.contextSnapshot) {
+      window.GuxiaomiChat.setContext(thread.contextSnapshot);
+    } else {
+      window.GuxiaomiChat.setContext({
+        page: context.page || "global",
+        scopeKey: thread.scopeKey,
+        title: thread.title || thread.scopeKey,
+      });
+    }
+    bucketRef.current = "";
+    loadBucket(window.GuxiaomiChat.getSnapshot(), true);
+    stickToBottomRef.current = true;
+  }
+
+  function handleNewThread() {
+    if (!window.GuxiaomiChat || !window.GuxiaomiChatStorage) return;
+    var snap = window.GuxiaomiChat.getSnapshot();
+    var newScope;
+    if (snap.focus === "diagnosis" && snap.stock && snap.stock.code) {
+      newScope =
+        snap.stock.code +
+        "|" +
+        (snap.stock.market || "") +
+        "|diagnosis|thread|" +
+        Date.now();
+    } else if (snap.scopeKey && snap.scopeKey.indexOf("workbench") < 0) {
+      newScope = snap.scopeKey + "|thread|" + Date.now();
+    } else {
+      newScope = (snap.scopeKey || "global") + "|thread|" + Date.now();
+    }
+    var baseTitle =
+      snap.title && snap.title !== "股小蜜" ? snap.title : "对话";
+    var newCtx = Object.assign({}, snap, {
+      scopeKey: newScope,
+      title: baseTitle + " · 新会话",
+    });
+    window.GuxiaomiChat.setContext(newCtx);
+    var key = window.GuxiaomiChat.getBucketKey(newCtx);
+    window.GuxiaomiChatStorage.saveBucketMessages(key, [], {
+      title: newCtx.title,
+      contextSnapshot: newCtx,
+    });
+    bucketRef.current = "";
+    loadBucket(newCtx, true);
+    setStreaming("");
+    setSuggestions([]);
+    refreshThreads();
+    stickToBottomRef.current = true;
   }
 
   function handleClear() {
@@ -226,6 +343,7 @@ function GlobalChat() {
     if (window.GuxiaomiChatStorage && bucketRef.current) {
       window.GuxiaomiChatStorage.clearBucketMessages(bucketRef.current);
       setReadUpTo(0);
+      refreshThreads();
     }
   }
 
@@ -239,7 +357,7 @@ function GlobalChat() {
 
     setInput("");
     setSuggestions([]);
-    setIsUserScrolling(false);
+    stickToBottomRef.current = true;
 
     var userMsg = {
       role: "user",
@@ -399,8 +517,10 @@ function GlobalChat() {
         <button
           type="button"
           onClick={function () {
+            stickToBottomRef.current = true;
             setOpen(true);
-            loadBucket(context);
+            loadBucket(context, true);
+            refreshThreads();
           }}
           className="fixed bottom-5 right-4 z-[100] flex h-12 w-12 items-center justify-center rounded-full bg-[#0e9aa7] text-white shadow-[0_4px_24px_rgba(14,154,167,0.45)] transition hover:bg-[#10b3c2] hover:shadow-[0_6px_28px_rgba(14,154,167,0.55)] focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 md:bottom-6 md:right-6"
           title="打开股小蜜 AI 对话"
@@ -470,6 +590,31 @@ function GlobalChat() {
                 </select>
                 <button
                   type="button"
+                  className={
+                    "rounded-lg p-2 transition " +
+                    (showThreads
+                      ? "bg-cyan-50 text-cyan-700"
+                      : "text-slate-400 hover:bg-slate-100 hover:text-slate-700")
+                  }
+                  onClick={function () {
+                    setShowThreads(!showThreads);
+                  }}
+                  title="会话列表"
+                  aria-label="会话列表"
+                >
+                  <div className="icon-panel-left text-[15px]" aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-teal-700"
+                  onClick={handleNewThread}
+                  title="新会话"
+                  aria-label="新会话"
+                >
+                  <div className="icon-plus text-[15px]" aria-hidden />
+                </button>
+                <button
+                  type="button"
                   className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
                   onClick={handleClear}
                   title="清空对话"
@@ -491,6 +636,48 @@ function GlobalChat() {
               </div>
             </header>
 
+            <div className="flex min-h-0 flex-1">
+              {showThreads && threads.length > 0 && (
+                <div className="flex w-[9.5rem] shrink-0 flex-col border-r border-slate-200 bg-slate-100/80 md:w-[10.5rem]">
+                  <div className="border-b border-slate-200 px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                    会话
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+                    {threads.map(function (thread) {
+                      var isActive = thread.bucketKey === activeBucketKey;
+                      return (
+                        <button
+                          key={thread.bucketKey}
+                          type="button"
+                          onClick={function () {
+                            switchToThread(thread);
+                          }}
+                          className={
+                            "mb-1 w-full rounded-lg px-2 py-2 text-left transition " +
+                            (isActive
+                              ? "bg-white shadow-sm ring-1 ring-cyan-300/80"
+                              : "hover:bg-white/70")
+                          }
+                        >
+                          <div className="truncate text-[11px] font-semibold text-slate-800">
+                            {thread.title}
+                          </div>
+                          {thread.preview && (
+                            <div className="mt-0.5 truncate text-[10px] text-slate-500">
+                              {thread.preview}
+                            </div>
+                          )}
+                          <div className="mt-0.5 text-[10px] tabular-nums text-slate-400">
+                            {thread.messageCount} 条
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex min-w-0 flex-1 flex-col">
             <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-4 py-5">
               <div className="space-y-4">
                 {messages.map(function (msg, i) {
@@ -564,7 +751,7 @@ function GlobalChat() {
               <div className="flex items-end gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2 shadow-inner">
                 <textarea
                   ref={inputRef}
-                  className="min-h-[2.5rem] max-h-28 flex-1 resize-none bg-transparent px-2 py-2 text-[15px] leading-snug text-slate-800 placeholder:text-slate-400 focus:outline-none"
+                  className="min-h-[2.5rem] max-h-[8.25rem] flex-1 resize-none overflow-hidden bg-transparent px-2 py-2 text-[15px] leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none"
                   rows={1}
                   placeholder="输入问题…"
                   value={input}
@@ -588,6 +775,8 @@ function GlobalChat() {
                 </button>
               </div>
             </footer>
+              </div>
+            </div>
           </aside>
         </div>
       )}

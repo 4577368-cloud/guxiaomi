@@ -624,7 +624,10 @@ function App() {
       }));
       setFocusedStockId(stockId);
       window.setTimeout(() => {
-        const el = document.getElementById(`stock-card-${stockId}`);
+        const el =
+          document.getElementById(`portfolio-row-${stockId}`) ||
+          document.getElementById(`stock-card-${stockId}`) ||
+          document.getElementById(`stock-${stockId}`);
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
@@ -690,7 +693,7 @@ function App() {
                     onClick={handleRefreshAll}
                     disabled={isRefreshing || portfolio.length === 0}
                     className="btn btn-success top-action gap-1.5 disabled:opacity-50"
-                    title={portfolio.length === 0 ? '添加股票后可刷新行情' : '刷新全部行情'}
+                    title={portfolio.length === 0 ? '添加股票后可刷新行情' : '刷新行情'}
                   >
                     <div className={`icon-refresh-cw text-sm ${isRefreshing ? 'animate-spin' : ''}`}></div>
                     <span>刷新</span>
@@ -727,6 +730,9 @@ function App() {
               onUpdateCapitalPool={handleUpdateCapitalPool}
               onAddStock={() => setShowAddModal(true)}
               onRefreshAll={handleRefreshAll}
+              onFocusPortfolioStock={handleSelectStockDetail}
+              onQuickAddStock={handleOpenQuickPositionForStock}
+              onRefreshWatchlist={handleRefreshAllWatchlist}
             />
           )}
 

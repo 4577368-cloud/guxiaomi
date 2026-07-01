@@ -177,6 +177,16 @@
       return false;
     }
     var ctx = buildDiagnosisContext(payload);
+    if (window.GuxiaomiChatStorage && window.GuxiaomiChat) {
+      var key = window.GuxiaomiChat.getBucketKey(ctx);
+      var existing = window.GuxiaomiChatStorage.getBucketMessages(key);
+      if (!existing.length) {
+        window.GuxiaomiChatStorage.saveBucketMessages(key, [], {
+          title: ctx.title,
+          contextSnapshot: ctx,
+        });
+      }
+    }
     var initialMessage = payload.initialMessage;
     if (
       !initialMessage &&
