@@ -203,6 +203,16 @@ function WatchlistSection({ watchlist, onRemoveItem, onRefreshItem, onAddPositio
                 className="relative flex justify-start gap-1 lg:col-span-2 lg:justify-end"
               >
                 <a href={row.detailUrl} className="inline-flex h-8 min-w-[3.4rem] items-center justify-center rounded-xl border border-white/10 bg-white/[0.08] px-3 text-xs font-bold text-slate-100 transition-colors hover:bg-white/[0.14]">详情</a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.GuxiaomiChatDiagnosis) window.GuxiaomiChatDiagnosis.openFromWatchlistRow(row);
+                  }}
+                  title="AI 诊断"
+                  className="inline-flex h-8 min-w-[3.4rem] items-center justify-center rounded-xl border border-white/10 bg-white/[0.08] px-3 text-xs font-bold text-slate-100 transition-colors hover:bg-white/[0.14]"
+                >
+                  AI
+                </button>
                 <a href={row.analysisUrl} className="inline-flex h-8 min-w-[3.4rem] items-center justify-center rounded-xl border border-white/10 bg-white/[0.08] px-3 text-xs font-bold text-cyan-100 transition-colors hover:bg-white/[0.14]">分析</a>
                 <button
                   type="button"

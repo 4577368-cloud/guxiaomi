@@ -162,6 +162,28 @@ function NewsApp() {
     }
   }, []);
 
+  React.useEffect(function () {
+    if (!window.GuxiaomiChat) return;
+    var query = [urlParams.name, urlParams.code]
+      .concat(urlParams.keywords || [])
+      .filter(Boolean)
+      .join(' ');
+    window.GuxiaomiChat.setContext({
+      page: 'news',
+      scopeKey: (urlParams.code || 'all') + '|news',
+      title: urlParams.code
+        ? (urlParams.name || urlParams.code) + ' · 新闻'
+        : '新闻订阅',
+      news: {
+        query: query,
+        stockCode: urlParams.code || '',
+        headlines: (newsList || []).slice(0, 8).map(function (n) {
+          return n && n.title;
+        }).filter(Boolean),
+      },
+    });
+  }, [urlParams, newsList]);
+
   const copyNews = async () => {
     if (newsList.length === 0) {
       alert('没有新闻可以复制');

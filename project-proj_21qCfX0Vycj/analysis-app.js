@@ -26,7 +26,7 @@ const FRONTEND_VERSION =
 const JOB_STORAGE_VERSION_KEY =
   "analysis_job_id_frontend_version";
 const POLL_INTERVAL_MS = 3000;
-/** 历史报告每页条数，与预测表「每页 10 条」一致；列表区最大高度对齐右侧表体 */
+/** 历史报告每页条数；预测列表 API 每页条数见 PRED_TABLE_VISIBLE_ROWS */
 const HISTORY_PAGE_SIZE = 10;
 const MODEL_STORAGE_KEY = "analysis_selected_model_key";
 const DEFAULT_MODEL_KEY = "model2";
@@ -78,6 +78,160 @@ const FALLBACK_MODEL_OPTIONS = [
 function normalizeModelKey(key) {
   var k = String(key || "").trim().toLowerCase();
   return ["model1", "model2", "model3"].includes(k) ? k : DEFAULT_MODEL_KEY;
+}
+
+/** 预测表默认可见行数（超出在表内滚动；列表翻页仍走 API page/size） */
+const PRED_TABLE_VISIBLE_ROWS = 7;
+const PRED_TABLE_BODY_MIN_HEIGHT = "calc(2.25rem * " + PRED_TABLE_VISIBLE_ROWS + " + 0.25rem)";
+
+function formatAnalysisNoteNumber(value, digits) {
+  var n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return n.toFixed(digits != null ? digits : 2);
+}
+
+function formatAnalysisSignedNumber(value, digits) {
+  var n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return (n >= 0 ? "+" : "") + n.toFixed(digits != null ? digits : 2);
+}
+
+/** 从行情 + 技术指标 + 预测行拼备注，供分析模型参考 */
+function buildStockAnalysisNotes(opts) {
+  var lines = [];
+  var symbol = String((opts && opts.symbol) || "").trim().toUpperCase();
+  var name = String((opts && opts.name) || "").trim();
+  var market = String((opts && opts.market) || "").trim();
+  var quote = opts && opts.quote;
+  var indicators = opts && opts.indicators;
+  var predRow = opts && opts.predRow;
+  var priceDigits = market === "美股" ? 3 : 2;
+
+  if (name && name !== symbol) {
+    lines.push("【标的】" + symbol + " · " + name + (market ? "（" + market + "）" : ""));
+  } else {
+    lines.push("【标的】" + symbol + (market ? "（" + market + "）" : ""));
+  }
+
+  if (quote && Number(quote.price) > 0) {
+    lines.push("【实时行情】" + (quote.isMock ? "（接口不可用，模拟数据）" : ""));
+    var changePct =
+      quote.changePercent != null && !Number.isNaN(Number(quote.changePercent))
+        ? formatAnalysisSignedNumber(quote.changePercent, 2) + "%"
+        : "";
+    lines.push(
+      "现价 " +
+        formatAnalysisNoteNumber(quote.price, priceDigits) +
+        (changePct ? "（" + changePct + "）" : ""),
+    );
+    if (quote.open || quote.high || quote.low) {
+      lines.push(
+        "今开 " +
+          formatAnalysisNoteNumber(quote.open, priceDigits) +
+          " · 最高 " +
+          formatAnalysisNoteNumber(quote.high, priceDigits) +
+          " · 最低 " +
+          formatAnalysisNoteNumber(quote.low, priceDigits),
+      );
+    }
+    if (quote.previousClose) {
+      lines.push("昨收 " + formatAnalysisNoteNumber(quote.previousClose, priceDigits));
+    }
+    if (quote.change != null && !Number.isNaN(Number(quote.change))) {
+      lines.push("涨跌额 " + formatAnalysisSignedNumber(quote.change, priceDigits));
+    }
+    if (quote.volume != null && Number(quote.volume) > 0) {
+      lines.push(
+        "成交量 " +
+          (typeof formatVolume === "function"
+            ? formatVolume(quote.volume)
+            : String(quote.volume)),
+      );
+    }
+  }
+
+  if (indicators) {
+    if (indicators.ma5 || indicators.ma10 || indicators.rsi) {
+      lines.push(
+        "【技术指标】MA5 " +
+          formatAnalysisNoteNumber(indicators.ma5, priceDigits) +
+          " · MA10 " +
+          formatAnalysisNoteNumber(indicators.ma10, priceDigits) +
+          " · RSI(14) " +
+          formatAnalysisNoteNumber(indicators.rsi, 2),
+      );
+    }
+    var history = Array.isArray(indicators.history) ? indicators.history : [];
+    if (history.length > 0) {
+      lines.push("【近5日收盘】");
+      history
+        .slice(-5)
+        .reverse()
+        .forEach(function (item) {
+          if (!item) return;
+          lines.push(
+            String(item.date || "—") +
+              " 收 " +
+              formatAnalysisNoteNumber(item.close != null ? item.close : item.price, priceDigits),
+          );
+        });
+    }
+  }
+
+  if (predRow) {
+    var predParts = [];
+    if (predRow.probability != null && predRow.probability !== "") {
+      predParts.push("预测概率 " + predRow.probability);
+    }
+    if (predRow.profit != null && predRow.profit !== "") {
+      predParts.push("profit " + predRow.profit);
+    }
+    if (predRow.change_ratio != null && predRow.change_ratio !== "") {
+      predParts.push("涨跌% " + predRow.change_ratio);
+    }
+    if (predRow.price != null && predRow.price !== "") {
+      predParts.push("快照价 " + predRow.price);
+    }
+    if (predParts.length) {
+      lines.push("【预测快照】" + predParts.join(" · "));
+    }
+  }
+
+  lines.push(
+    "【摘录时间】" +
+      new Date().toLocaleString("zh-CN", { hour12: false }) +
+      " · 浏览器行情接口",
+  );
+  return lines.join("\n");
+}
+
+/** 预测列表行 → 市场/代码（与 analyze 逻辑一致） */
+function resolvePredRowMarket(row) {
+  var symbol = String((row && row.symbol) || "").trim().toUpperCase();
+  var code = String((row && row.code) || "").trim();
+  var market = "US";
+  if (/^\d{6}$/.test(symbol) || /^\d{6}$/.test(code) || /^(0|3|6)\d{5}$/.test(code)) {
+    market = "CN";
+  } else if (/^\d{5}$/.test(symbol) || /^\d{5}$/.test(code) || /^HK/i.test(code)) {
+    market = "HK";
+  }
+  if (market === "HK" && /^\d+$/.test(symbol)) {
+    symbol = String(parseInt(symbol, 10)).padStart(5, "0");
+  } else if (market === "CN" && /^\d+$/.test(symbol)) {
+    symbol = String(parseInt(symbol, 10)).padStart(6, "0");
+  }
+  return { symbol: symbol, market: market };
+}
+
+function predWatchlistKey(symbol, market) {
+  var m = String(market || "US").toUpperCase();
+  var s = String(symbol || "").trim().toUpperCase();
+  if (m === "HK" && /^\d+$/.test(s)) {
+    s = String(parseInt(s, 10)).padStart(5, "0");
+  } else if (m === "CN" && /^\d+$/.test(s)) {
+    s = String(parseInt(s, 10)).padStart(6, "0");
+  }
+  return m + "_" + s;
 }
 
 /** 浏览器端历史列表缓存（Vercel 无持久盘时服务端列表常为空；且勿在 report 变化时整表重拉以免被空结果覆盖） */
@@ -1258,13 +1412,8 @@ function AnalysisApp() {
   const [historyList, setHistoryList] = React.useState([]);
   const [historyLoading, setHistoryLoading] = React.useState(true);
   const [selectedStockCode, setSelectedStockCode] = React.useState("");
-  /** 历史报告分页（与预测表 10 条视觉高度对齐，多出的条目翻页查看） */
+  /** 历史报告分页（多出的条目翻页查看） */
   const [historyPage, setHistoryPage] = React.useState(1);
-  const [chatOpen, setChatOpen] = React.useState(false);
-  const [chatMinimized, setChatMinimized] = React.useState(false);
-  const [chatMessages, setChatMessages] = React.useState([]);
-  const [chatInput, setChatInput] = React.useState("");
-  const [chatLoading, setChatLoading] = React.useState(false);
   const [showUsageModal, setShowUsageModal] = React.useState(false);
   const [apiUsage, setApiUsage] = React.useState({ apis: [], loading: false });
 
@@ -1275,12 +1424,19 @@ function AnalysisApp() {
   const [predBearDetail, setPredBearDetail] = React.useState(null);
   const [predFetchLoading, setPredFetchLoading] = React.useState(false);
   const [predError, setPredError] = React.useState("");
+  const [predWatchlist, setPredWatchlist] = React.useState(function () {
+    try {
+      return window.loadWatchlist ? window.loadWatchlist() : [];
+    } catch (_) {
+      return [];
+    }
+  });
   const [predParams, setPredParams] = React.useState({
     period_type: 0,
     trend_type: 0,
     symbol_type: 0,
     page: 1,
-    size: 10,
+    size: PRED_TABLE_VISIBLE_ROWS,
   });
   /** 最近一次拉取或当前快照对应的接口 total，用于禁用「下一页」 */
   const [predRemoteTotal, setPredRemoteTotal] = React.useState(null);
@@ -1292,6 +1448,85 @@ function AnalysisApp() {
   React.useEffect(() => {
     predPeriodTabRef.current = predPeriodTab;
   }, [predPeriodTab]);
+
+  const isPredRowWatched = React.useCallback(
+    function (row) {
+      if (!row || !row.symbol) return false;
+      var resolved = resolvePredRowMarket(row);
+      var key = predWatchlistKey(resolved.symbol, resolved.market);
+      return (predWatchlist || []).some(function (w) {
+        if (!w || !w.symbol) return false;
+        return predWatchlistKey(w.symbol, w.market) === key;
+      });
+    },
+    [predWatchlist],
+  );
+
+  React.useEffect(function () {
+    function applyWorkbenchContext() {
+      if (!window.GuxiaomiChat) return false;
+      window.GuxiaomiChat.setContext({
+        page: "analysis",
+        scopeKey: "analysis|workbench",
+        title: "股票分析工作台",
+        stock: null,
+        report: null,
+        focus: null,
+      });
+      return true;
+    }
+    if (!applyWorkbenchContext()) {
+      var tries = 0;
+      var timer = window.setInterval(function () {
+        tries += 1;
+        if (applyWorkbenchContext() || tries > 60) window.clearInterval(timer);
+      }, 50);
+      return function () {
+        window.clearInterval(timer);
+      };
+    }
+  }, []);
+
+  const openCurrentReportDiagnosis = React.useCallback(function () {
+    if (!report || !window.GuxiaomiChatDiagnosis) return;
+    window.GuxiaomiChatDiagnosis.openFromAnalysisReport(report, {
+      sourceLabel: "当前报告",
+      scopeSuffix: report.base_name || "current",
+      notes: form.user_data_notes || "",
+    });
+  }, [report, form.user_data_notes]);
+
+  const openHistoryReportDiagnosis = React.useCallback(
+    async function (item, ev) {
+      if (ev) ev.stopPropagation();
+      if (!item || !window.GuxiaomiChatDiagnosis) return;
+      var body = getCachedReportBody(item.base_name);
+      if (!body) {
+        try {
+          const res = await fetchWithTimeout(
+            `${apiBase}/api/reports/get?name=${encodeURIComponent(item.base_name)}`,
+            {},
+            REPORT_FETCH_TIMEOUT_MS,
+          );
+          if (res.ok) {
+            body = await res.json();
+            try {
+              cacheReportBody(body.base_name || item.base_name, body);
+            } catch (_) {}
+          }
+        } catch (_) {}
+      }
+      if (!body) {
+        alert("请先点击报告标题加载完整内容，再使用 AI 诊断。");
+        return;
+      }
+      window.GuxiaomiChatDiagnosis.openFromAnalysisReport(body, {
+        sourceLabel: "历史报告",
+        scopeSuffix: item.base_name,
+      });
+    },
+    [apiBase],
+  );
 
   const getStockTagClass = (code) => {
     const palette = [
@@ -1504,7 +1739,7 @@ function AnalysisApp() {
       if (j.page_size != null && !Number.isNaN(Number(j.page_size))) {
         next.size = Math.min(
           10,
-          Math.max(1, parseInt(String(j.page_size), 10) || 10),
+          Math.max(1, parseInt(String(j.page_size), 10) || PRED_TABLE_VISIBLE_ROWS),
         );
       }
       return next;
@@ -1796,33 +2031,6 @@ function AnalysisApp() {
     [filteredHistoryList, historyPage, historyTotalPages],
   );
 
-  const getChatStorageKey = (stockCode, market) => {
-    const code = (stockCode || "").toUpperCase().trim();
-    const m = (market || "").replace(/\s+/g, "").toUpperCase().trim();
-    return `analysis_chat_history_${code}_${m}`;
-  };
-
-  const loadChatHistoryFromStorage = (stockCode, market) => {
-    try {
-      const key = getChatStorageKey(stockCode, market);
-      const saved = localStorage.getItem(key);
-      if (!saved) return [];
-      return JSON.parse(saved) || [];
-    } catch (e) {
-      console.error("读取深度诊断聊天历史失败", e);
-      return [];
-    }
-  };
-
-  const saveChatHistoryToStorage = (stockCode, market, messages) => {
-    try {
-      const key = getChatStorageKey(stockCode, market);
-      localStorage.setItem(key, JSON.stringify(messages || []));
-    } catch (e) {
-      console.error("保存深度诊断聊天历史失败", e);
-    }
-  };
-
   const runAnalysis = async (opts) => {
     const f = (opts && opts.overrideForm) || formRef.current || form;
     if (!f.stock_code.trim()) {
@@ -1998,12 +2206,6 @@ function AnalysisApp() {
                 fromCache.market,
               ) || "",
             );
-            setChatMessages(
-              loadChatHistoryFromStorage(
-                fromCache.stock_code || "",
-                fromCache.market || "",
-              ),
-            );
             window.setTimeout(function () {
               var el = document.getElementById("report-reading-panel");
               if (el)
@@ -2031,9 +2233,6 @@ function AnalysisApp() {
           }).stock_code,
           data.market,
         ) || "",
-      );
-      setChatMessages(
-        loadChatHistoryFromStorage(data.stock_code || "", data.market || ""),
       );
       window.setTimeout(function () {
         var el = document.getElementById("report-reading-panel");
@@ -2095,7 +2294,6 @@ function AnalysisApp() {
       });
       if (report && (report.base_name || "") === baseName) {
         setReport(null);
-        setChatOpen(false);
       }
     } catch (e) {
       setError(e.message || "删除失败");
@@ -2136,90 +2334,9 @@ function AnalysisApp() {
       );
       if (report) {
         setReport(null);
-        setChatOpen(false);
       }
     } catch (e) {
       setError(e.message || "删除全部报告失败");
-    }
-  };
-
-  const openDeepDiagnosis = () => {
-    if (!report) return;
-    if (chatOpen) {
-      closeDeepDiagnosis();
-      return;
-    }
-    const stockCode = report.stock_code || form.stock_code || "";
-    const marketVal = report.market || form.market || "";
-    const persisted = loadChatHistoryFromStorage(stockCode, marketVal);
-    setChatMessages(persisted);
-    setChatOpen(true);
-  };
-
-  const closeDeepDiagnosis = () => {
-    setChatOpen(false);
-    setChatInput("");
-  };
-
-  const sendDeepDiagnosis = async () => {
-    if (!report || !chatInput.trim()) return;
-
-    const question = chatInput.trim();
-    const nextMessages = [
-      ...chatMessages,
-      { role: "user", content: question, time: new Date().toISOString() },
-    ];
-    setChatMessages(nextMessages);
-    setChatLoading(true);
-    setChatInput("");
-
-    try {
-      const res = await fetch(`${apiBase}/api/analyze/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          stock_code: report.stock_code || form.stock_code,
-          market: report.market || form.market,
-          report_base_name: report.base_name || "",
-          report_text:
-            report.markdown || report.分析主题 || report.融合摘要 || "",
-          message: question,
-          use_mock: form.use_mock,
-          model_key: selectedModelKey,
-          history: (chatMessages || []).map(function (m) {
-            return { role: m.role, content: m.content || "" };
-          }),
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        const detail = (err && err.detail) || `状态 ${res.status}`;
-        if (res.status === 404) {
-          throw new Error(
-            `接口未找到，请确认后端服务已启动且 ${apiBase}/api/analyze/chat 可用（${detail}）`,
-          );
-        }
-        throw new Error(detail);
-      }
-      const data = await res.json();
-      var answer = sanitizeDiagnosisReply(
-        data.answer || "未返回回答，请重试",
-      );
-
-      const saved = [
-        ...nextMessages,
-        { role: "assistant", content: answer, time: new Date().toISOString() },
-      ];
-      setChatMessages(saved);
-
-      const stockCode = report.stock_code || form.stock_code || "";
-      const marketVal = report.market || form.market || "";
-      saveChatHistoryToStorage(stockCode, marketVal, saved);
-    } catch (e) {
-      console.error("深度诊断 API 失败", e);
-      setError("深度诊断失败：" + (e.message || "请稍后重试"));
-    } finally {
-      setChatLoading(false);
     }
   };
 
@@ -2273,10 +2390,6 @@ function AnalysisApp() {
     },
   ];
 
-  const deepTabOff =
-    "bg-white/10 text-slate-200 border-white/20 hover:bg-white/16";
-  const deepTabOn =
-    "bg-cyan-400/18 text-slate-50 border-cyan-300/45 shadow-[inset_0_-2px_0_rgba(34,211,238,0.85),0_0_28px_rgba(34,211,238,0.22)] ring-2 ring-cyan-300/25 animate-pulse";
   const exportTabMd =
     "bg-white/10 text-slate-200 border-white/20 hover:bg-white/16";
   const exportTabHtml =
@@ -2309,34 +2422,33 @@ function AnalysisApp() {
   /** 加入关注列表 */
   const handleAddToWatchlistFromPred = function (row) {
     if (!row || !row.symbol) {
-      alert('股票代码无效');
+      alert("股票代码无效");
       return;
     }
-    // 根据代码判断市场
-    var market = 'US';
-    var symbol = String(row.symbol || '').trim().toUpperCase();
-    if (/^\d{5}$/.test(symbol)) {
-      market = 'HK';
-    } else if (/^\d{6}$/.test(symbol)) {
-      market = 'CN';
-    }
+    if (isPredRowWatched(row)) return;
+
+    var resolved = resolvePredRowMarket(row);
     var stockData = {
-      symbol: symbol,
-      market: market,
-      name: row.name || symbol,
+      symbol: resolved.symbol,
+      market: resolved.market,
+      name: row.name || resolved.symbol,
       currentPrice: row.price != null ? Number(row.price) : 0,
       change: row.change_ratio != null ? Number(row.change_ratio) : 0,
-      changePercent: row.change_ratio != null ? Number(row.change_ratio) : 0
+      changePercent: row.change_ratio != null ? Number(row.change_ratio) : 0,
     };
     if (window.addToWatchlist) {
       var result = window.addToWatchlist(stockData);
       if (result.success) {
-        alert('已添加到关注列表');
+        setPredWatchlist(
+          result.watchlist ||
+            (window.loadWatchlist ? window.loadWatchlist() : []),
+        );
       } else {
-        alert(result.message || '该股票已在关注列表中');
+        if (result.watchlist) setPredWatchlist(result.watchlist);
+        alert(result.message || "该股票已在关注列表中");
       }
     } else {
-      alert('关注功能不可用，请确保已正确加载');
+      alert("关注功能不可用，请确保已正确加载");
     }
   };
 
@@ -2362,34 +2474,55 @@ function AnalysisApp() {
 
     // 回到分析工作台并预填表单
     scrollToAnalysisWorkbench();
-    var baseNotes = name || '';
     var nextForm = {
       ...form,
       stock_code: symbol,
       market: market,
-      user_data_notes: baseNotes,
+      user_data_notes: name || "",
     };
     setForm(nextForm);
 
-    // 先获取实时行情，再自动触发分析
+    // 拉取行情 + 技术指标，拼入备注后再自动分析
     setPredFetchLoading(true);
     try {
-      var stockApiMkt = market === '港股' ? 'HK' : market === '美股' ? 'US' : 'CN';
-      var priceData = await getStockPrice(symbol, stockApiMkt);
-      if (priceData && Number(priceData.price) > 0) {
-        var priceNote = '当前价 ' + priceData.price;
-        if (priceData.changePercent != null && !Number.isNaN(Number(priceData.changePercent))) {
-          priceNote += ' (' + (Number(priceData.changePercent) >= 0 ? '+' : '') + priceData.changePercent + '%)';
-        }
-        nextForm = {
-          ...nextForm,
-          user_data_notes: baseNotes ? baseNotes + ' · ' + priceNote : priceNote,
-        };
-        setForm(nextForm);
+      var stockApiMkt = market === "港股" ? "HK" : market === "美股" ? "US" : "CN";
+      var priceData = null;
+      var indicators = null;
+      if (typeof getStockPrice === "function") {
+        priceData = await getStockPrice(symbol, stockApiMkt);
       }
+      if (typeof getHistoricalDataAndIndicators === "function") {
+        try {
+          indicators = await getHistoricalDataAndIndicators(symbol, stockApiMkt);
+        } catch (indErr) {
+          console.warn("预测列表分析前技术指标失败:", indErr);
+        }
+      }
+      nextForm = {
+        ...nextForm,
+        user_data_notes: buildStockAnalysisNotes({
+          symbol: symbol,
+          name: name,
+          market: market,
+          predRow: row,
+          quote: priceData,
+          indicators: indicators,
+        }),
+      };
+      setForm(nextForm);
     } catch (err) {
-      console.warn('预测列表分析前询价失败:', err);
-      alert('未能获取实时行情，将使用服务端数据继续分析');
+      console.warn("预测列表分析前询价失败:", err);
+      nextForm = {
+        ...nextForm,
+        user_data_notes: buildStockAnalysisNotes({
+          symbol: symbol,
+          name: name,
+          market: market,
+          predRow: row,
+        }),
+      };
+      setForm(nextForm);
+      alert("未能获取完整行情，将使用已有信息与服务器数据继续分析");
     } finally {
       setPredFetchLoading(false);
     }
@@ -2417,11 +2550,14 @@ function AnalysisApp() {
     }
     var rows = (detail.data && detail.data.list) || [];
     return (
-      <div className="shrink-0 overflow-hidden rounded-xl border border-white/12 bg-slate-950/22">
-        <div className={`px-2.5 py-1.5 text-xs font-semibold border-b border-white/8 ${titleClass}`}>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-white/12 bg-slate-950/22">
+        <div className={`shrink-0 px-2.5 py-1.5 text-xs font-semibold border-b border-white/8 ${titleClass}`}>
           {title}
         </div>
-        <div className="max-h-[min(28vh,280px)] min-h-[100px] flex-1 overflow-y-auto overflow-x-auto">
+        <div
+          className="min-h-0 flex-1 overflow-y-auto overflow-x-auto"
+          style={{ minHeight: PRED_TABLE_BODY_MIN_HEIGHT }}
+        >
           <table className="w-full text-xs md:text-sm">
             <thead className="sticky top-0 bg-slate-950/95 text-left text-slate-300 backdrop-blur-md">
               <tr>
@@ -2460,14 +2596,23 @@ function AnalysisApp() {
                     {row.profit != null ? row.profit : "—"}
                   </td>
                   <td className="p-1.5">
-                    <button
-                      type="button"
-                      onClick={() => handleAddToWatchlistFromPred(row)}
-                      className="btn btn-xs bg-cyan-500 text-white hover:bg-cyan-600 border-0 shrink-0 min-w-[3.5rem]"
-                      title="加入关注列表"
-                    >
-                      +关注
-                    </button>
+                    {isPredRowWatched(row) ? (
+                      <span
+                        className="inline-flex h-7 min-w-[3.5rem] items-center justify-center rounded-lg border border-emerald-400/30 bg-emerald-500/15 px-2 text-[11px] font-semibold text-emerald-200"
+                        title="已在关注列表"
+                      >
+                        已关注
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleAddToWatchlistFromPred(row)}
+                        className="btn btn-xs bg-cyan-500 text-white hover:bg-cyan-600 border-0 shrink-0 min-w-[3.5rem]"
+                        title="加入关注列表"
+                      >
+                        +关注
+                      </button>
+                    )}
                   </td>
                   <td className="p-1.5">
                     <button
@@ -2749,11 +2894,12 @@ function AnalysisApp() {
           {!historyLoading && historyList.length > 0 && (
             <button
               type="button"
-              className="btn btn-xs bg-rose-500 text-white hover:bg-rose-600 border-0 shrink-0"
+              className="btn btn-xs bg-rose-500 text-white hover:bg-rose-600 border-0 shrink-0 !min-w-8 !px-2"
               onClick={deleteAllHistoryReports}
               title="删除全部历史报告"
+              aria-label="删除全部历史报告"
             >
-              全部删除
+              <div className="icon-trash-2 text-sm" aria-hidden />
             </button>
           )}
         </div>
@@ -2830,6 +2976,14 @@ function AnalysisApp() {
                       <span className="text-slate-400 text-xs mt-0.5 block tabular-nums">
                         {item.generated_at}
                       </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="shrink-0 self-center min-w-[3.4rem] px-2 py-1 text-xs rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/[0.10] transition-colors"
+                      title="载入该报告并打开 AI 诊断"
+                      onClick={(e) => openHistoryReportDiagnosis(item, e)}
+                    >
+                      AI
                     </button>
                     <button
                       type="button"
@@ -3012,7 +3166,7 @@ function AnalysisApp() {
             ))}
           </div>
 
-        <div className="space-y-3 min-h-0">
+        <div className="flex min-h-0 flex-1 flex-col gap-6">
           {renderPredictionTable(predBullDetail, "看涨股票", "text-emerald-200 bg-emerald-500/10")}
           {renderPredictionTable(predBearDetail, "看跌股票", "text-rose-200 bg-rose-500/10")}
         </div>
@@ -3109,15 +3263,25 @@ function AnalysisApp() {
               <h2 className="text-base md:text-lg font-semibold text-slate-50 tracking-tight">
                 当前报告
               </h2>
-              <button
-                type="button"
-                aria-label="回到上方分析区"
-                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/[0.08] text-base font-bold leading-none text-slate-200 shadow-sm transition-colors hover:bg-white/[0.14] sm:self-auto"
-                onClick={scrollToAnalysisWorkbench}
-                title="回到分析表单、历史报告与股票预测"
-              >
-                ↑
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="inline-flex h-8 min-w-[3.4rem] items-center justify-center rounded-xl border border-white/10 bg-white/[0.08] px-3 text-xs font-bold text-slate-100 transition-colors hover:bg-white/[0.14]"
+                  title="AI 诊断"
+                  onClick={openCurrentReportDiagnosis}
+                >
+                  AI
+                </button>
+                <button
+                  type="button"
+                  aria-label="回到上方分析区"
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/[0.08] text-base font-bold leading-none text-slate-200 shadow-sm transition-colors hover:bg-white/[0.14] sm:self-auto"
+                  onClick={scrollToAnalysisWorkbench}
+                  title="回到分析表单、历史报告与股票预测"
+                >
+                  ↑
+                </button>
+              </div>
             </div>
             <div className="sticky top-14 z-30 -mx-2 mb-3 flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-slate-950/82 px-2 py-2 shadow-lg shadow-slate-950/20 backdrop-blur-xl md:top-16">
               {reportTabs.map((t) => (
@@ -3130,14 +3294,6 @@ function AnalysisApp() {
                   {t.label}
                 </button>
               ))}
-              <button
-                type="button"
-                style={{ minWidth: "130px" }}
-                className={`${reportTabBase} ${chatOpen ? deepTabOn : deepTabOff}`}
-                onClick={openDeepDiagnosis}
-              >
-                {chatOpen ? "关闭深度诊断" : "深度诊断"}
-              </button>
               <button
                 type="button"
                 className={`${reportTabBase} ${exportTabMd}`}
@@ -3327,78 +3483,10 @@ function AnalysisApp() {
             </div>
           </div>
 
-          {chatOpen && (
-            <div className="fixed top-10 left-4 right-4 bottom-10 md:left-auto md:right-4 mx-auto max-w-[calc(100vw-2rem)] md:max-w-[820px] w-full bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] z-50 flex flex-col border border-gray-300 h-[75vh] max-h-[82vh]">
-              <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-                <div className="text-base font-bold">深度诊断</div>
-                <button
-                  type="button"
-                  className="text-gray-500 hover:text-gray-700 text-xl leading-none"
-                  onClick={() => setChatOpen(false)}
-                >
-                  ×
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                {(chatMessages || []).length === 0 ? (
-                  <p className="text-xs text-gray-500">
-                    直接输入问题即可；首轮会附带报告摘录，从第二轮起为省 token 不再重复附全文，依赖上文衔接。
-                  </p>
-                ) : (
-                  (chatMessages || []).map((msg, i) => (
-                    <div
-                      key={i}
-                      className={`text-xs p-2 rounded-lg ${
-                        msg.role === "user"
-                          ? "bg-blue-100 text-blue-900 ml-6 text-right"
-                          : "bg-gray-100 text-gray-800 mr-6"
-                      }`}
-                    >
-                      <div className="font-semibold text-sm mb-1">
-                        {msg.role === "user" ? "我" : "助手"}
-                      </div>
-                      <div className="text-sm leading-relaxed report-markdown-block">
-                        {renderMarkdown(
-                          msg.role === "assistant"
-                            ? sanitizeDiagnosisReply(msg.content)
-                            : msg.content,
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-              <div className="border-t p-2 flex items-center gap-1">
-                <input
-                  type="text"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="输入问题..."
-                  className="input-field flex-1 text-sm py-1"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      sendDeepDiagnosis();
-                    }
-                  }}
-                  disabled={chatLoading}
-                />
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  onClick={sendDeepDiagnosis}
-                  disabled={chatLoading || !chatInput.trim()}
-                >
-                  {chatLoading ? "…" : "发"}
-                </button>
-              </div>
-            </div>
-          )}
-          {/* 长报告滚动后仍可一键回到分析 / 历史 / 预测区（低于深度诊断 z-50） */}
           <button
             type="button"
             aria-label="回到上方分析区"
-            className="fixed bottom-6 right-6 z-40 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-white/[0.12] text-xl font-bold leading-none text-slate-100 shadow-lg shadow-slate-950/30 backdrop-blur-xl transition-colors hover:bg-white/[0.18] md:bottom-8 md:right-8"
+            className="fixed bottom-24 right-6 z-40 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-white/[0.12] text-xl font-bold leading-none text-slate-100 shadow-lg shadow-slate-950/30 backdrop-blur-xl transition-colors hover:bg-white/[0.18] md:bottom-28 md:right-8"
             onClick={scrollToAnalysisWorkbench}
             title="回到分析表单、历史报告与股票预测"
           >

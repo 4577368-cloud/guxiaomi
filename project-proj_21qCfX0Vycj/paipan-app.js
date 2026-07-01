@@ -19,6 +19,23 @@ function PaipanApp() {
     const [aiAnalysis, setAiAnalysis] = useState(null);
     const [apiKey, setApiKey] = useState('');
 
+    React.useEffect(function () {
+        if (!window.GuxiaomiChat) return;
+        var virtualAge = birthInfo.year
+            ? new Date().getFullYear() - parseInt(birthInfo.year, 10) + 1
+            : 0;
+        var extras = [];
+        if (chartData && activePalaceName) extras.push('当前宫位：' + activePalaceName);
+        if (virtualAge) extras.push('虚岁约：' + virtualAge);
+        if (aiAnalysis) extras.push('AI 分析摘录：' + String(aiAnalysis).slice(0, 1500));
+        window.GuxiaomiChat.setContext({
+            page: 'paipan',
+            scopeKey: 'paipan|' + (birthInfo.year || 'session'),
+            title: chartData ? '紫微排盘 · ' + activePalaceName : '紫微排盘',
+            extras: extras.length ? extras.join('\n') : '尚未完成排盘，可先输入生辰并排盘。',
+        });
+    }, [chartData, activePalaceName, birthInfo.year, aiAnalysis]);
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);

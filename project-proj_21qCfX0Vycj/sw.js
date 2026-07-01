@@ -1,5 +1,5 @@
 // 股小蜜 Service Worker
-const CACHE_NAME = 'guxiaomi-v5.0-compact-top-actions';
+const CACHE_NAME = 'guxiaomi-v5.4-deep-diagnosis';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -8,7 +8,17 @@ const STATIC_ASSETS = [
   '/news.html',
   '/analysis.html',
   '/stock-detail.html',
-  '/manifest.json'
+  '/manifest.json',
+  '/chat-bootstrap.js',
+  '/components/GlobalChat.js',
+  '/utils/chatContext.js',
+  '/utils/chatStorage.js',
+  '/utils/chatService.js',
+  '/utils/chatDiagnosisPrompts.js',
+  '/utils/chatDiagnosis.js',
+  '/utils/chatStockCache.js',
+  '/utils/chatRoles.js',
+  '/utils/chatRichText.js'
 ];
 
 // CDN资源缓存配置

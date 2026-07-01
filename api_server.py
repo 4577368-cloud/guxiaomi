@@ -399,6 +399,7 @@ class ChatRequest(BaseModel):
     report_text: Optional[str] = None
     use_mock: bool = False
     model_key: Optional[str] = "model2"
+    stream: bool = False
     # 当前问题之前的对话轮次（不含本条 message），用于多轮延展
     history: List[ChatTurn] = Field(default_factory=list)
 
@@ -1357,7 +1358,14 @@ def api_analyze_chat(req: ChatRequest):
         )
 
     if req.use_mock:
-        # 模拟返回（用于测试）
+        if req.stream:
+            def _mock_stream():
+                yield (
+                    'data: {"choices":[{"delta":{"content":"[模拟] 深度诊断：请在真实模式下使用。"}}]}\n\n'
+                ).encode("utf-8")
+                yield b"data: [DONE]\n\n"
+
+            return StreamingResponse(_mock_stream(), media_type="text/event-stream")
         return JSONResponse({"ok": True, "answer": "[模拟] 深度诊断：请在真实模式下使用。"})
 
     system_prompt = f"""你在和用户聊「{req.stock_code}」（{req.market}）。**本条消息只解决用户当前这一句问题**：答到点上即可，口语自然，不要复述上一轮已经说过的总结，不要每轮用相同开头/结尾模板。
@@ -1375,6 +1383,50 @@ def api_analyze_chat(req: ChatRequest):
     messages.append({"role": "user", "content": req.message.strip()[:8000]})
 
     try:
+        if req.stream:
+            vllm_base, vllm_key, vllm_model, _ = _vllm_env(req.model_key)
+            payload = {
+                "model": vllm_model,
+                "messages": messages,
+                "temperature": 0.7,
+                "max_tokens": 3072,
+                "stream": True,
+            }
+
+            def _byte_iter():
+                try:
+                    r = requests.post(
+                        f"{vllm_base}/chat/completions",
+                        headers={
+                            "Content-Type": "application/json",
+                            "Authorization": f"Bearer {vllm_key}",
+                        },
+                        json=payload,
+                        stream=True,
+                        timeout=300,
+                    )
+                    if r.status_code != 200:
+                        err = (r.text or str(r.status_code))[:2000]
+                        yield (
+                            'data: {"error":{"message":'
+                            + json.dumps(err, ensure_ascii=False)
+                            + "}}\n\n"
+                        ).encode("utf-8")
+                        yield b"data: [DONE]\n\n"
+                        return
+                    for chunk in r.iter_lines(decode_unicode=False):
+                        if chunk:
+                            yield chunk + b"\n"
+                except Exception as e:
+                    yield (
+                        'data: {"error":{"message":'
+                        + json.dumps(str(e), ensure_ascii=False)
+                        + "}}\n\n"
+                    ).encode("utf-8")
+                    yield b"data: [DONE]\n\n"
+
+            return StreamingResponse(_byte_iter(), media_type="text/event-stream")
+
         data = _vllm_chat_complete_json(
             messages, max_tokens=3072, temperature=0.7, model_key=req.model_key
         )

@@ -136,18 +136,7 @@ function ZiweiApp() {
   const [newHistoryName, setNewHistoryName] = React.useState('');
   const [showSaveDialog, setShowSaveDialog] = React.useState(false);
   const [saveDialogName, setSaveDialogName] = React.useState('');
-  const [chatMessages, setChatMessages] = React.useState([]);
-  const [chatInput, setChatInput] = React.useState('');
-  const [isChatting, setIsChatting] = React.useState(false);
-  const [showChat, setShowChat] = React.useState(false);
   const [showInputText, setShowInputText] = React.useState(true);
-  const [suggestedQuestions, setSuggestedQuestions] = React.useState([]);
-  const [streamingMessage, setStreamingMessage] = React.useState('');
-  const [isChatExpanded, setIsChatExpanded] = React.useState(false);
-  const [isUserScrolling, setIsUserScrolling] = React.useState(false);
-  const chatEndRef = React.useRef(null);
-  const chatSectionRef = React.useRef(null);
-  const chatContainerRef = React.useRef(null);
   const MAX_HISTORY = 10;
   const [modelOptions, setModelOptions] = React.useState(ZIWEI_FALLBACK_MODEL_OPTIONS);
   const [selectedModelKey, setSelectedModelKey] = React.useState(() => {
@@ -208,7 +197,6 @@ function ZiweiApp() {
           if (reports.stockAnalysisReport) setStockAnalysisReport(reports.stockAnalysisReport);
           if (reports.flowReport) setFlowReport(reports.flowReport);
           if (reports.inputText) setInputText(reports.inputText);
-          if (reports.chatMessages) setChatMessages(reports.chatMessages);
         } catch (e) {
           console.error('Failed to load saved reports:', e);
         }
@@ -245,7 +233,6 @@ function ZiweiApp() {
         stockAnalysisReport,
         flowReport,
         inputText,
-        chatMessages
       };
       localStorage.setItem('ziwei_current_reports', JSON.stringify(reportsToSave));
     };
@@ -256,6 +243,43 @@ function ZiweiApp() {
         saveCurrentReports();
       }
     }, [basicReport, wealthReport, portfolioAnalysisReport, stockAnalysisReport, flowReport, inputText]);
+
+    React.useEffect(function () {
+      if (!window.GuxiaomiChat) return;
+      var hasReports =
+        basicReport ||
+        wealthReport ||
+        portfolioAnalysisReport ||
+        stockAnalysisReport ||
+        flowReport;
+      var title = hasReports ? '紫微排盘 · 已生成报告' : '紫微排盘';
+      window.GuxiaomiChat.setContext({
+        page: 'ziwei',
+        scopeKey: 'ziwei|session',
+        title: title,
+        ziwei: {
+          inputText: inputText || '',
+          reports: {
+            basic: basicReport ? { content: basicReport.content || '' } : null,
+            wealth: wealthReport ? { content: wealthReport.content || '' } : null,
+            portfolio: portfolioAnalysisReport
+              ? { content: portfolioAnalysisReport.content || '' }
+              : null,
+            stock: stockAnalysisReport
+              ? { content: stockAnalysisReport.content || '' }
+              : null,
+            flow: flowReport ? { content: flowReport.content || '' } : null,
+          },
+        },
+      });
+    }, [
+      inputText,
+      basicReport,
+      wealthReport,
+      portfolioAnalysisReport,
+      stockAnalysisReport,
+      flowReport,
+    ]);
 
     // Extract time from input text (format: 1986-8-27 12:0)
     const extractTimeFromInput = (text) => {
@@ -1332,10 +1356,6 @@ ${allStocksData}
         });
       }
       
-      if (item.chatHistory && Array.isArray(item.chatHistory)) {
-        setChatMessages(item.chatHistory);
-      }
-      
       setShowHistory(false);
       setActiveReportTab('basic');
       alert('已加载历史命盘和所有关联报告');
@@ -1410,7 +1430,7 @@ ${allStocksData}
       portfolioReport: portfolioAnalysisReport?.content || '',
       stockReport: stockAnalysisReport?.content || '',
       flowReport: flowReport?.content || '',
-      chatHistory: chatMessages,
+      chatHistory: [],
       model: model
     };
 
@@ -1563,137 +1583,6 @@ ${allStocksData}
     
     copyReport(allContent);
   };
-
-    const handleChatSubmit = async () => {
-      if (!chatInput.trim() || isChatting) return;
-      
-      const userMessage = chatInput.trim();
-      setChatInput('');
-      setIsChatting(true);
-      setSuggestedQuestions([]);
-      setIsUserScrolling(false); // Reset scrolling state for new message
-      
-      // Add user message
-      const newMessages = [...chatMessages, { role: 'user', content: userMessage }];
-      setChatMessages(newMessages);
-      setStreamingMessage('');
-      
-      try {
-        // Build context from reports
-        let context = '你是一位资深的紫微斗数命理专家和金融投资顾问。以下是用户的命盘信息和已生成的分析报告：\n\n';
-        
-        if (inputText) {
-          context += `## 命盘信息\n${inputText}\n\n`;
-        }
-        
-        if (basicReport) {
-          context += `## 命盘全析\n${basicReport.content.substring(0, 2000)}\n\n`;
-        }
-        
-        if (wealthReport) {
-          context += `## 财富密码\n${wealthReport.content.substring(0, 2000)}\n\n`;
-        }
-        
-        if (portfolioAnalysisReport) {
-          context += `## 持仓排盘\n${portfolioAnalysisReport.content.substring(0, 2000)}\n\n`;
-        }
-        
-        if (stockAnalysisReport) {
-          context += `## 技术分析\n${stockAnalysisReport.content.substring(0, 2000)}\n\n`;
-        }
-        
-        context += '请基于以上信息，只回答与金融股票投资和紫微斗数命理相关的问题。如果用户问题与这些主题无关，请礼貌地告知用户你只能回答相关问题。\n\n';
-        context += '用户的历史对话：\n';
-        chatMessages.forEach(msg => {
-          context += `${msg.role === 'user' ? '用户' : 'AI'}：${msg.content}\n`;
-        });
-        
-        const systemPrompt = context;
-        
-        // Stream response
-        let fullResponse = '';
-        const response = await callAnalysisLlmAPI(systemPrompt, userMessage, true, (chunk) => {
-          fullResponse += chunk;
-          setStreamingMessage(fullResponse);
-        });
-        
-        setChatMessages([...newMessages, { role: 'assistant', content: response }]);
-        setStreamingMessage('');
-        
-        // Generate suggested questions based on the response
-        const suggestionPrompt = `基于以下对话内容，生成3个用户可能感兴趣的后续问题。问题要简短、具体，与金融投资和紫微斗数命理相关。\n\n用户问题：${userMessage}\n\nAI回复：${response.substring(0, 500)}\n\n请只返回3个问题，每个问题一行，不要编号，不要其他说明文字。`;
-        
-        try {
-          const suggestions = await callAnalysisLlmAPI('你是一个智能助手，擅长生成相关的后续问题。', suggestionPrompt, false);
-          const questions = suggestions.split('\n').filter(q => q.trim()).slice(0, 3);
-          setSuggestedQuestions(questions);
-        } catch (e) {
-          console.error('生成建议问题失败:', e);
-        }
-        
-      } catch (error) {
-        console.error('对话失败:', error);
-        setChatMessages([...newMessages, { 
-          role: 'assistant', 
-          content: '抱歉，对话出现错误，请稍后重试。' 
-        }]);
-        setStreamingMessage('');
-      } finally {
-        setIsChatting(false);
-      }
-    };
-
-    React.useEffect(() => {
-      if (chatEndRef.current && isChatExpanded && !isUserScrolling) {
-        chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
-      }
-    }, [chatMessages, streamingMessage, isUserScrolling]);
-    
-    React.useEffect(() => {
-      const chatContainer = chatContainerRef.current;
-      if (!chatContainer) return;
-      
-      let scrollTimeout;
-      
-      const handleScroll = () => {
-        // Check if user is scrolling up (not at bottom)
-        const isAtBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < 50;
-        
-        if (!isAtBottom) {
-          setIsUserScrolling(true);
-          
-          // Reset scrolling state after 2 seconds of no scrolling
-          clearTimeout(scrollTimeout);
-          scrollTimeout = setTimeout(() => {
-            setIsUserScrolling(false);
-          }, 2000);
-        } else {
-          setIsUserScrolling(false);
-        }
-      };
-      
-      chatContainer.addEventListener('scroll', handleScroll);
-      
-      return () => {
-        chatContainer.removeEventListener('scroll', handleScroll);
-        clearTimeout(scrollTimeout);
-      };
-    }, [isChatExpanded]);
-
-    React.useEffect(() => {
-      const handleScroll = () => {
-        if (!chatSectionRef.current || !isChatExpanded) return;
-        
-        const rect = chatSectionRef.current.getBoundingClientRect();
-        // If chat section scrolled out of view, collapse it
-        if (rect.bottom < 0) {
-          setIsChatExpanded(false);
-        }
-      };
-
-      window.addEventListener('scroll', handleScroll);
-      return () => window.removeEventListener('scroll', handleScroll);
-    }, [isChatExpanded]);
 
     const ReportContent = ({ content }) => {
       const formatted = formatReportContent(content);
@@ -2462,153 +2351,6 @@ ${allStocksData}
             
 
           </div>
-
-        {/* Fixed Bottom Chat Bar - Only show when reports exist */}
-        {(basicReport || wealthReport || portfolioAnalysisReport || stockAnalysisReport || flowReport) && (
-          <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-cyan-500/30 bg-slate-950/92 backdrop-blur-xl shadow-[0_-8px_40px_rgba(0,0,0,0.55)]">
-            {!isChatExpanded ? (
-              /* Collapsed State */
-              <div 
-                onClick={() => setIsChatExpanded(true)}
-                className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-white/5 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="icon-message-circle text-xl text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.4)]"></div>
-                  <span className="font-semibold text-slate-100 zi-mono-label text-xs tracking-wider">AI 助理</span>
-                  <span className="text-sm text-slate-400 hidden sm:inline">智能对话</span>
-                  {chatMessages.length > 0 && (
-                    <span className="text-xs bg-cyan-500/15 text-cyan-300 px-2 py-1 rounded border border-cyan-400/25">
-                      {Math.floor(chatMessages.length / 2)} 轮
-                    </span>
-                  )}
-                </div>
-                <div className="icon-chevron-up text-xl text-slate-500"></div>
-              </div>
-            ) : (
-              /* Expanded State */
-              <div ref={chatSectionRef} className="max-h-[600px] flex flex-col">
-                <div className="text-white p-3 flex items-center justify-between border-b border-cyan-500/20 bg-gradient-to-r from-slate-900 via-cyan-950/80 to-slate-900">
-                  <div className="flex items-center gap-2">
-                    <div className="icon-message-circle text-lg text-cyan-300"></div>
-                    <h3 className="font-bold text-slate-50">AI 智能对话</h3>
-                    {chatMessages.length > 0 && (
-                      <span className="text-xs bg-cyan-400/15 text-cyan-200 px-2 py-1 rounded border border-cyan-400/25">
-                        {Math.floor(chatMessages.length / 2)} 轮
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        setChatMessages([]);
-                        setSuggestedQuestions([]);
-                      }}
-                      className="text-slate-300 hover:text-white transition-colors p-1"
-                      title="清空对话"
-                    >
-                      <div className="icon-trash-2 text-lg"></div>
-                    </button>
-                    <button
-                      onClick={() => setIsChatExpanded(false)}
-                      className="text-slate-300 hover:text-white transition-colors p-1"
-                      title="收起"
-                    >
-                      <div className="icon-chevron-down text-lg"></div>
-                    </button>
-                  </div>
-                </div>
-                
-                <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 bg-slate-950/80" style={{maxHeight: '400px'}}>
-                  {chatMessages.length === 0 && !streamingMessage ? (
-                    <div className="flex flex-col items-center justify-center h-full text-slate-500">
-                      <div className="icon-message-square text-4xl mb-2 text-cyan-500/40"></div>
-                      <p className="text-sm text-center max-w-xs">与 AI 对话，讨论投资策略与命盘解读</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {chatMessages.map((msg, index) => (
-                        <div
-                          key={index}
-                          className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                        >
-                          <div
-                            className={`max-w-[80%] rounded-xl p-3 ${
-                              msg.role === 'user'
-                                ? 'bg-gradient-to-br from-cyan-600 to-teal-700 text-white shadow-lg shadow-cyan-500/15'
-                                : 'bg-slate-900/90 border border-white/10 text-slate-200'
-                            }`}
-                          >
-                            <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
-                          </div>
-                        </div>
-                      ))}
-                      {streamingMessage && (
-                        <div className="flex justify-start">
-                          <div className="max-w-[80%] bg-slate-900/90 border border-cyan-500/20 rounded-xl p-3">
-                            <div className="text-sm whitespace-pre-wrap text-slate-200">{streamingMessage}</div>
-                            <div className="flex gap-1 mt-2">
-                              <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-pulse"></div>
-                              <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
-                              <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                      <div ref={chatEndRef} />
-                    </div>
-                  )}
-                </div>
-                
-                <div className="p-3 bg-slate-900/90 border-t border-white/10">
-                  {suggestedQuestions.length > 0 && (
-                    <div className="mb-2">
-                      <p className="text-xs text-slate-500 mb-1">建议追问</p>
-                      <div className="flex flex-wrap gap-1">
-                        {suggestedQuestions.map((question, index) => (
-                          <button
-                            key={index}
-                            onClick={() => {
-                              setChatInput(question);
-                              setSuggestedQuestions([]);
-                            }}
-                            className="text-xs bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-200 px-2 py-1 rounded-lg border border-cyan-500/25 transition-colors"
-                          >
-                            {question}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={chatInput}
-                      onChange={(e) => setChatInput(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleChatSubmit()}
-                      placeholder="输入您的问题..."
-                      className="flex-1 px-3 py-2 text-sm rounded-xl border border-white/10 bg-slate-950 text-slate-100 placeholder:text-slate-500 focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500/30"
-                      disabled={isChatting}
-                    />
-                    <button
-                      onClick={handleChatSubmit}
-                      disabled={!chatInput.trim() || isChatting}
-                      className="btn btn-primary disabled:opacity-50 px-4"
-                    >
-                      {isChatting ? (
-                        <div className="icon-loader text-base animate-spin"></div>
-                      ) : (
-                        <div className="icon-send text-base"></div>
-                      )}
-                    </button>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-1">
-                    AI 仅回答金融投资与紫微斗数命理相关问题
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
 
         {showSaveDialog && (
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[60] p-4">

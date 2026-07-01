@@ -897,7 +897,7 @@ function DetailNewsPanel({ stock, newsUrl, onSaveKeywords }) {
   );
 }
 
-function DetailReportPanel({ stock, analysisUrl, refreshKey }) {
+function DetailReportPanel({ stock, analysisUrl, refreshKey, onDiagnosis }) {
   const [reports, setReports] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
 
@@ -995,7 +995,17 @@ function DetailReportPanel({ stock, analysisUrl, refreshKey }) {
                     <h4 className="line-clamp-2 text-sm font-bold leading-snug text-slate-50 group-hover:text-cyan-100">{report.title}</h4>
                     <p className="mt-1 text-xs text-slate-400">{report.generated_at || '时间未知'}</p>
                   </div>
-                  <a href={analysisUrl} className="btn btn-secondary btn-xs shrink-0">查看</a>
+                  <div className="flex shrink-0 flex-col gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onDiagnosis && onDiagnosis(report)}
+                      className="btn btn-secondary btn-xs min-w-[3.4rem]"
+                      title="AI 诊断"
+                    >
+                      AI
+                    </button>
+                    <a href={analysisUrl} className="btn btn-secondary btn-xs">查看</a>
+                  </div>
                 </div>
                 {summary && (
                   <p className="mt-3 line-clamp-4 border-t border-white/10 pt-3 text-xs leading-relaxed text-slate-300">
@@ -1135,6 +1145,17 @@ function StockDetailApp() {
     return null;
   }, [portfolio, watchlist, querySymbol, queryMarket]);
 
+  React.useEffect(function () {
+    if (!window.GuxiaomiChat) return;
+    window.GuxiaomiChat.setContext({
+      page: 'stock-detail',
+      scopeKey: (querySymbol || 'unknown') + '|workbench',
+      title: querySymbol ? querySymbol + ' · 详情' : '股票详情',
+      stock: null,
+      focus: null,
+    });
+  }, [querySymbol]);
+
   const loadDetailHistory = React.useCallback(async (options = {}) => {
     if (!stock) return;
     const silent = Boolean(options.silent);
@@ -1251,6 +1272,21 @@ function StockDetailApp() {
   const newsUrl = buildDetailUrl('news.html', stock);
   const analysisUrl = buildDetailUrl('analysis.html', stock);
   const paipanUrl = buildDetailUrl('ziwei.html', stock);
+
+  const openDetailDiagnosis = React.useCallback(function (report) {
+    if (!stock || !window.GuxiaomiChatDiagnosis) return;
+    window.GuxiaomiChatDiagnosis.openFromStockDetail(stock, {
+      currentPrice: current,
+      changePercent: effectiveChangePct,
+      analysis: analysis,
+      hasHolding: hasHolding,
+      watchItem: watchItem,
+      watchDays: watchItem ? daysSinceDetail(watchItem.addedAt) : 0,
+      priceHistory: history,
+      report: report && report.body ? report.body : null,
+      reportBaseName: report && report.base_name,
+    });
+  }, [stock, current, effectiveChangePct, analysis, hasHolding, watchItem, history]);
 
   const sameStock = (item) => {
     if (!item) return false;
@@ -1378,6 +1414,14 @@ function StockDetailApp() {
               </div>
               <div className="flex min-w-[4.8rem] flex-row justify-start gap-2 lg:flex-col lg:justify-end">
                 <button type="button" onClick={() => setShowPositionModal(true)} className="btn btn-primary btn-sm justify-center lg:w-full">加仓</button>
+                <button
+                  type="button"
+                  onClick={() => openDetailDiagnosis(null)}
+                  className="btn btn-secondary btn-sm justify-center min-w-[3.4rem] lg:w-full"
+                  title="AI 诊断"
+                >
+                  AI
+                </button>
                 <DetailInlineAnalysis stock={stock} onReportDone={() => setReportRefreshKey((v) => v + 1)} className="justify-center lg:w-full" />
               </div>
             </div>
@@ -1472,7 +1516,7 @@ function StockDetailApp() {
 
         <DetailNewsPanel stock={stock} newsUrl={newsUrl} onSaveKeywords={updateKeywords} />
         <DetailSellSimulator stock={stock} stockAnalysis={analysis} market={market} />
-        <DetailReportPanel stock={stock} analysisUrl={analysisUrl} refreshKey={reportRefreshKey} />
+        <DetailReportPanel stock={stock} analysisUrl={analysisUrl} refreshKey={reportRefreshKey} onDiagnosis={openDetailDiagnosis} />
       </main>
       {showPositionModal && (
         <DetailPositionModal

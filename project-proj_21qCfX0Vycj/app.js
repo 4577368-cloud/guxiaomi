@@ -596,6 +596,18 @@ function App() {
       }
     }, [portfolio]);
 
+    React.useEffect(function () {
+      if (!window.GuxiaomiChat) return;
+      window.GuxiaomiChat.setContext({
+        page: "home",
+        scopeKey: "home|workbench",
+        title: "投资工作台",
+        portfolio: null,
+        stock: null,
+        focus: null,
+      });
+    }, []);
+
     const handleSelectStockDetail = (stockId) => {
       if (!stockId) return;
       setCollapsedStocks(prev => ({
