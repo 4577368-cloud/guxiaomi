@@ -93,157 +93,357 @@ function formatNewsTime(pubDate) {
   }
 }
 
+function initStockKeywords(urlParams) {
+  var fromUrl = (urlParams.keywords || []).slice();
+  if (fromUrl.length) return fromUrl;
+  if (urlParams.code && typeof window.loadStockKeywordsFromStorage === 'function') {
+    return window.loadStockKeywordsFromStorage(urlParams.code, urlParams.market) || [];
+  }
+  return [];
+}
+
+function buildSelectableKeywords(stockKeywords, pinnedKeywords, urlParams, excludedAuto) {
+  var list = (stockKeywords || []).slice();
+  var excluded = {};
+  (excludedAuto || []).forEach(function (k) {
+    excluded[String(k).toLowerCase()] = true;
+  });
+  if (urlParams && urlParams.name && !excluded[urlParams.name.toLowerCase()]) {
+    list.unshift(urlParams.name);
+  }
+  if (
+    urlParams &&
+    urlParams.code &&
+    !excluded[urlParams.code.toLowerCase()] &&
+    urlParams.code !== urlParams.name
+  ) {
+    list.push(urlParams.code);
+  }
+  list = list.concat(pinnedKeywords || []);
+  return typeof window.dedupeKeywords === 'function'
+    ? window.dedupeKeywords(list)
+    : list.filter(Boolean);
+}
+
+function buildKeywordChips(stockKeywords, pinnedKeywords, urlParams, excludedAuto) {
+  var chips = [];
+  var seen = {};
+  function pushChip(kw, kind, locked) {
+    var key = String(kw || '').trim();
+    if (!key) return;
+    var lower = key.toLowerCase();
+    if (seen[lower]) return;
+    seen[lower] = true;
+    chips.push({ kw: key, kind: kind, locked: !!locked });
+  }
+  (stockKeywords || []).forEach(function (kw) {
+    pushChip(kw, 'stock', false);
+  });
+  (pinnedKeywords || []).forEach(function (kw) {
+    if ((stockKeywords || []).some(function (s) {
+      return String(s).toLowerCase() === String(kw).toLowerCase();
+    })) {
+      return;
+    }
+    var locked = (window.LOCKED_PINNED_KEYWORDS || []).indexOf(kw) >= 0;
+    pushChip(kw, 'pinned', locked);
+  });
+  var excluded = {};
+  (excludedAuto || []).forEach(function (k) {
+    excluded[String(k).toLowerCase()] = true;
+  });
+  if (urlParams && urlParams.name && !excluded[urlParams.name.toLowerCase()]) {
+    if (!seen[urlParams.name.toLowerCase()]) pushChip(urlParams.name, 'auto', false);
+  }
+  if (
+    urlParams &&
+    urlParams.code &&
+    !excluded[urlParams.code.toLowerCase()] &&
+    urlParams.code !== urlParams.name
+  ) {
+    if (!seen[urlParams.code.toLowerCase()]) pushChip(urlParams.code, 'auto', false);
+  }
+  return chips;
+}
+
 function NewsApp() {
   const [urlParams] = React.useState(parseNewsUrlParams);
   const [pinnedKeywords, setPinnedKeywords] = React.useState(() =>
     typeof window.getPinnedKeywords === 'function' ? window.getPinnedKeywords() : [],
   );
-  const [pinnedNews, setPinnedNews] = React.useState([]);
-  const [stockNews, setStockNews] = React.useState([]);
-  const [meta, setMeta] = React.useState({ gnewsEnabled: false, gnewsCount: 0, rssCount: 0, usedFallback: false });
-  const [isLoadingPinned, setIsLoadingPinned] = React.useState(false);
-  const [isLoadingStock, setIsLoadingStock] = React.useState(false);
+  const [stockKeywords, setStockKeywords] = React.useState(() => initStockKeywords(parseNewsUrlParams()));
+  const [activeKeyword, setActiveKeyword] = React.useState('');
+  const [recommendedNews, setRecommendedNews] = React.useState([]);
+  const [rssNews, setRssNews] = React.useState([]);
+  const [meta, setMeta] = React.useState({ gnewsEnabled: false, usedFallback: false });
+  const [isLoadingRecommended, setIsLoadingRecommended] = React.useState(false);
+  const [isLoadingRss, setIsLoadingRss] = React.useState(false);
   const [error, setError] = React.useState('');
-  const [newPinnedInput, setNewPinnedInput] = React.useState('');
+  const [newKeywordInput, setNewKeywordInput] = React.useState('');
+  const [editingKeyword, setEditingKeyword] = React.useState(null);
+  const [editingValue, setEditingValue] = React.useState('');
+  const [editingKind, setEditingKind] = React.useState('');
+  const [excludedAutoKeywords, setExcludedAutoKeywords] = React.useState([]);
 
-  const stockKeywords = React.useMemo(() => {
-    var list = (urlParams.keywords || []).slice();
-    if (urlParams.name) list.unshift(urlParams.name);
-    if (urlParams.code) list.push(urlParams.code);
-    var seen = {};
-    return list.filter(function (k) {
-      var key = k.toLowerCase();
-      if (!k || seen[key]) return false;
-      seen[key] = true;
-      return true;
-    });
-  }, [urlParams]);
+  const selectableKeywords = React.useMemo(
+    () => buildSelectableKeywords(stockKeywords, pinnedKeywords, urlParams, excludedAutoKeywords),
+    [stockKeywords, pinnedKeywords, urlParams, excludedAutoKeywords],
+  );
 
-  const loadPinned = React.useCallback(async () => {
-    setIsLoadingPinned(true);
+  const keywordChips = React.useMemo(
+    () => buildKeywordChips(stockKeywords, pinnedKeywords, urlParams, excludedAutoKeywords),
+    [stockKeywords, pinnedKeywords, urlParams, excludedAutoKeywords],
+  );
+
+  React.useEffect(function () {
+    if (!activeKeyword && selectableKeywords.length) {
+      setActiveKeyword(selectableKeywords[0]);
+    } else if (activeKeyword && selectableKeywords.indexOf(activeKeyword) < 0) {
+      setActiveKeyword(selectableKeywords[0] || '');
+    }
+  }, [selectableKeywords, activeKeyword]);
+
+  const loadRecommended = React.useCallback(async (keyword) => {
+    var kw = String(keyword || '').trim();
+    if (!kw) {
+      setRecommendedNews([]);
+      return;
+    }
+    setIsLoadingRecommended(true);
     setError('');
     try {
-      var keywords =
-        typeof window.getPinnedKeywords === 'function' ? window.getPinnedKeywords() : pinnedKeywords;
       var result;
-      if (typeof window.fetchPinnedNewsFromBackend === 'function') {
-        result = await window.fetchPinnedNewsFromBackend(keywords, 72);
+      if (typeof window.fetchRecommendedForKeyword === 'function') {
+        result = await window.fetchRecommendedForKeyword(kw, 72, 20);
       } else {
         throw new Error('新闻服务未加载');
       }
-      setPinnedNews(result.items || []);
-      setMeta((prev) => ({
-        ...prev,
-        gnewsEnabled: result.gnewsEnabled,
-        gnewsCount: (result.gnewsCount || 0) + (prev.gnewsCountStock || 0),
-        rssCount: (result.rssCount || 0) + (prev.rssCountStock || 0),
-        usedFallback: false,
-      }));
+      setRecommendedNews((result.items || []).slice(0, 20));
+      setMeta(function (prev) {
+        return Object.assign({}, prev, {
+          gnewsEnabled: result.gnewsEnabled,
+          usedFallback: false,
+        });
+      });
     } catch (e) {
       console.warn('推荐新闻 API 失败，尝试 RSS 回退:', e);
       try {
         var fb =
           typeof window.fetchNewsClientRssFallback === 'function'
-            ? await window.fetchNewsClientRssFallback(pinnedKeywords, 72)
+            ? await window.fetchNewsClientRssFallback([kw], 72)
             : [];
-        setPinnedNews(fb);
-        setMeta((prev) => ({ ...prev, usedFallback: true }));
+        setRecommendedNews(fb.slice(0, 20));
+        setMeta(function (prev) {
+          return Object.assign({}, prev, { usedFallback: true });
+        });
       } catch (e2) {
         setError((e && e.message) || '推荐新闻加载失败');
       }
     } finally {
-      setIsLoadingPinned(false);
+      setIsLoadingRecommended(false);
     }
-  }, [pinnedKeywords]);
+  }, []);
 
-  const loadStockNews = React.useCallback(async () => {
-    if (!urlParams.code && !urlParams.name && stockKeywords.length === 0) {
-      setStockNews([]);
-      return;
-    }
-    setIsLoadingStock(true);
+  const loadRss = React.useCallback(async (keyword) => {
+    var kw = String(keyword || '').trim();
+    setIsLoadingRss(true);
     try {
       var result;
-      if (typeof window.fetchNewsFromBackend === 'function') {
-        result = await window.fetchNewsFromBackend({
-          code: urlParams.code,
-          market: urlParams.market,
-          name: urlParams.name,
-          keywords: stockKeywords,
-          hours: 72,
-        });
-        setStockNews(result.items || []);
-        setMeta((prev) => ({
-          ...prev,
-          gnewsEnabled: result.gnewsEnabled,
-          gnewsCountStock: result.gnewsCount || 0,
-          rssCountStock: result.rssCount || 0,
-        }));
+      if (typeof window.fetchRssNewsFromBackend === 'function') {
+        result = await window.fetchRssNewsFromBackend(kw, 72, 40);
+      } else {
+        throw new Error('RSS 服务未加载');
       }
+      setRssNews(result.items || []);
     } catch (e) {
-      console.warn('股票新闻 API 失败，RSS 回退:', e);
+      console.warn('RSS API 失败，尝试浏览器 RSS 回退:', e);
       try {
         var fb =
           typeof window.fetchNewsClientRssFallback === 'function'
-            ? await window.fetchNewsClientRssFallback(stockKeywords, 72)
+            ? await window.fetchNewsClientRssFallback(kw ? [kw] : [], 72)
             : [];
-        setStockNews(fb);
-        setMeta((prev) => ({ ...prev, usedFallback: true }));
+        setRssNews(fb);
+        setMeta(function (prev) {
+          return Object.assign({}, prev, { usedFallback: true });
+        });
       } catch (_) {}
     } finally {
-      setIsLoadingStock(false);
+      setIsLoadingRss(false);
     }
-  }, [urlParams, stockKeywords]);
+  }, []);
 
-  React.useEffect(() => {
-    loadPinned();
-  }, [loadPinned]);
-
-  React.useEffect(() => {
-    if (urlParams.code || urlParams.name || stockKeywords.length) {
-      loadStockNews();
-    }
-  }, [loadStockNews, urlParams.code, urlParams.name, stockKeywords.length]);
+  React.useEffect(function () {
+    if (!activeKeyword) return;
+    loadRecommended(activeKeyword);
+    loadRss(activeKeyword);
+  }, [activeKeyword, loadRecommended, loadRss]);
 
   React.useEffect(function () {
     if (!window.GuxiaomiChat) return;
-    var query = stockKeywords.join(' ');
     window.GuxiaomiChat.setContext({
       page: 'news',
-      scopeKey: (urlParams.code || 'all') + '|news',
-      title: urlParams.code ? (urlParams.name || urlParams.code) + ' · 新闻' : '新闻中心',
+      scopeKey: (urlParams.code || 'all') + '|news|' + activeKeyword,
+      title: urlParams.code
+        ? (urlParams.name || urlParams.code) + ' · 新闻'
+        : '新闻中心',
       news: {
-        query: query,
+        query: activeKeyword || stockKeywords.join(' '),
         stockCode: urlParams.code || '',
-        headlines: (stockNews.length ? stockNews : pinnedNews).slice(0, 8).map(function (n) {
+        headlines: recommendedNews.slice(0, 8).map(function (n) {
           return n && n.title;
         }).filter(Boolean),
       },
     });
-  }, [urlParams, stockKeywords, stockNews, pinnedNews]);
+  }, [urlParams, activeKeyword, stockKeywords, recommendedNews]);
 
-  const addPinnedKeyword = () => {
-    var kw = String(newPinnedInput || '').trim();
-    if (!kw) return;
-    var next = pinnedKeywords.concat([kw]);
-    setPinnedKeywords(next);
-    if (typeof window.saveExtraPinnedKeywords === 'function') {
-      window.saveExtraPinnedKeywords(next);
+  const persistStockKeywords = React.useCallback(function (next) {
+    var clean =
+      typeof window.dedupeKeywords === 'function'
+        ? window.dedupeKeywords(next)
+        : next.filter(Boolean);
+    setStockKeywords(clean);
+    if (urlParams.code && typeof window.persistStockKeywordsToStorage === 'function') {
+      window.persistStockKeywordsToStorage(urlParams.code, clean);
     }
-    setNewPinnedInput('');
-    loadPinned();
+    return clean;
+  }, [urlParams.code]);
+
+  const hasStockContext = !!(urlParams.code || urlParams.name);
+
+  const refreshPinnedKeywords = React.useCallback(function () {
+    if (typeof window.getPinnedKeywords === 'function') {
+      setPinnedKeywords(window.getPinnedKeywords());
+    }
+  }, []);
+
+  const selectKeyword = function (kw) {
+    setActiveKeyword(kw);
   };
 
-  const removeExtraPinned = (kw) => {
-    if ((window.LOCKED_PINNED_KEYWORDS || []).indexOf(kw) >= 0) return;
-    var next = pinnedKeywords.filter(function (k) {
-      return k !== kw;
-    });
-    setPinnedKeywords(next);
-    if (typeof window.saveExtraPinnedKeywords === 'function') {
-      window.saveExtraPinnedKeywords(next);
+  const addKeyword = function () {
+    var kw = String(newKeywordInput || '').trim();
+    if (!kw) return;
+    if (typeof window.showPinnedKeyword === 'function') {
+      window.showPinnedKeyword(kw);
     }
-    loadPinned();
+    setExcludedAutoKeywords(function (prev) {
+      return prev.filter(function (k) {
+        return String(k).toLowerCase() !== kw.toLowerCase();
+      });
+    });
+    if (hasStockContext) {
+      if (stockKeywords.some(function (k) {
+        return String(k).toLowerCase() === kw.toLowerCase();
+      })) {
+        setActiveKeyword(kw);
+        setNewKeywordInput('');
+        return;
+      }
+      persistStockKeywords(stockKeywords.concat([kw]));
+      setNewKeywordInput('');
+      setActiveKeyword(kw);
+      return;
+    }
+    if (
+      pinnedKeywords.some(function (k) {
+        return String(k).toLowerCase() === kw.toLowerCase();
+      })
+    ) {
+      refreshPinnedKeywords();
+      setNewKeywordInput('');
+      setActiveKeyword(kw);
+      return;
+    }
+    var nextPinned = pinnedKeywords.concat([kw]);
+    setPinnedKeywords(nextPinned);
+    if (typeof window.saveExtraPinnedKeywords === 'function') {
+      window.saveExtraPinnedKeywords(nextPinned);
+    }
+    refreshPinnedKeywords();
+    setNewKeywordInput('');
+    setActiveKeyword(kw);
+  };
+
+  const removeKeyword = function (chip) {
+    if (!chip || !chip.kw) return;
+    var kw = chip.kw;
+    if (chip.kind === 'stock') {
+      var next = persistStockKeywords(stockKeywords.filter(function (k) {
+        return k !== kw;
+      }));
+      if (activeKeyword === kw) setActiveKeyword(next[0] || selectableKeywords.filter(function (k) { return k !== kw; })[0] || '');
+      return;
+    }
+    if (chip.kind === 'auto') {
+      setExcludedAutoKeywords(function (prev) {
+        return prev.concat([kw]);
+      });
+      if (activeKeyword === kw) {
+        setActiveKeyword(selectableKeywords.filter(function (k) { return k !== kw; })[0] || '');
+      }
+      return;
+    }
+    if (chip.kind === 'pinned') {
+      if (chip.locked && typeof window.hidePinnedKeyword === 'function') {
+        window.hidePinnedKeyword(kw);
+        refreshPinnedKeywords();
+      } else {
+        var nextPin = pinnedKeywords.filter(function (k) {
+          return k !== kw;
+        });
+        setPinnedKeywords(nextPin);
+        if (typeof window.saveExtraPinnedKeywords === 'function') {
+          window.saveExtraPinnedKeywords(nextPin);
+        }
+        refreshPinnedKeywords();
+      }
+      if (activeKeyword === kw) {
+        setActiveKeyword(selectableKeywords.filter(function (k) { return k !== kw; })[0] || '');
+      }
+    }
+  };
+
+  const startEditKeyword = function (chip) {
+    if (!chip || chip.kind === 'auto') return;
+    setEditingKeyword(chip.kw);
+    setEditingValue(chip.kw);
+    setEditingKind(chip.kind);
+  };
+
+  const commitEditKeyword = function () {
+    var oldKw = editingKeyword;
+    var kind = editingKind;
+    var newKw = String(editingValue || '').trim();
+    setEditingKeyword(null);
+    setEditingValue('');
+    setEditingKind('');
+    if (!oldKw || !newKw || oldKw === newKw) return;
+    if (kind === 'stock') {
+      var nextStock = stockKeywords.map(function (k) {
+        return k === oldKw ? newKw : k;
+      });
+      persistStockKeywords(nextStock);
+      if (activeKeyword === oldKw) setActiveKeyword(newKw);
+      return;
+    }
+    if (kind === 'pinned' && !((window.LOCKED_PINNED_KEYWORDS || []).indexOf(oldKw) >= 0)) {
+      var nextPin = pinnedKeywords.map(function (k) {
+        return k === oldKw ? newKw : k;
+      });
+      setPinnedKeywords(nextPin);
+      if (typeof window.saveExtraPinnedKeywords === 'function') {
+        window.saveExtraPinnedKeywords(nextPin);
+      }
+      refreshPinnedKeywords();
+      if (activeKeyword === oldKw) setActiveKeyword(newKw);
+    }
+  };
+
+  const refreshAll = function () {
+    if (activeKeyword) {
+      loadRecommended(activeKeyword);
+      loadRss(activeKeyword);
+    }
   };
 
   return (
@@ -251,16 +451,24 @@ function NewsApp() {
       <div className="mx-auto max-w-5xl px-3 py-4 md:px-6 md:py-6">
         <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-black text-slate-50 md:text-2xl">新闻中心</h1>
+            <h1 className="text-xl font-black text-slate-50 md:text-2xl">
+              新闻中心
+              {hasStockContext && (
+                <span className="ml-2 text-base font-semibold text-slate-400 md:text-lg">
+                  · {urlParams.code}
+                  {urlParams.name ? ' ' + urlParams.name : ''}
+                </span>
+              )}
+            </h1>
             <p className="mt-1 text-xs text-slate-400 md:text-sm">
-              后端聚合 GNews + RSS
+              上方 GNews 推荐 · 下方 RSS 订阅
               {meta.gnewsEnabled ? (
                 <span className="ml-2 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-200">
                   GNews 已启用
                 </span>
               ) : (
                 <span className="ml-2 rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-amber-100">
-                  GNews 未配置，仅 RSS
+                  GNews 未配置
                 </span>
               )}
               {meta.usedFallback && (
@@ -269,7 +477,7 @@ function NewsApp() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => { loadPinned(); loadStockNews(); }} className="btn btn-primary btn-sm">
+            <button type="button" onClick={refreshAll} className="btn btn-primary btn-sm">
               刷新
             </button>
             <button type="button" onClick={goBackToSource} className="btn btn-secondary btn-sm">
@@ -288,96 +496,152 @@ function NewsApp() {
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="flex items-center gap-2 text-lg font-bold text-slate-50">
               <span className="icon-flame text-amber-300"></span>
-              推荐新闻专区
+              推荐新闻
             </h2>
-            <span className="text-xs text-slate-400">锁定关键词头条 · 近 72 小时</span>
+            <span className="text-xs text-slate-400">
+              当前关键词「{activeKeyword || '—'}」· 单关键词最多 20 条 · 近 72 小时
+            </span>
+          </div>
+
+          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            关键词（点击切换 · 可添加 / 删除 / 编辑）
           </div>
           <div className="mb-4 flex flex-wrap gap-2">
-            {pinnedKeywords.map(function (kw) {
-              var locked = (window.LOCKED_PINNED_KEYWORDS || []).indexOf(kw) >= 0;
+            {keywordChips.map(function (chip) {
+              var editing = editingKeyword === chip.kw;
+              if (editing) {
+                return (
+                  <span key={chip.kind + '-' + chip.kw} className="inline-flex items-center gap-1">
+                    <input
+                      autoFocus
+                      value={editingValue}
+                      onChange={(e) => setEditingValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitEditKeyword();
+                        if (e.key === 'Escape') {
+                          setEditingKeyword(null);
+                          setEditingValue('');
+                          setEditingKind('');
+                        }
+                      }}
+                      onBlur={commitEditKeyword}
+                      className="h-7 w-24 rounded-lg border border-cyan-400/40 bg-slate-950/60 px-2 text-xs text-slate-100 outline-none"
+                    />
+                  </span>
+                );
+              }
+              var tone =
+                chip.kind === 'stock'
+                  ? 'cyan'
+                  : chip.locked
+                    ? 'amber'
+                    : 'slate';
               return (
-                <span
-                  key={kw}
-                  className={
-                    'inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold ' +
-                    (locked
-                      ? 'border-amber-300/30 bg-amber-400/10 text-amber-100'
-                      : 'border-white/15 bg-white/[0.08] text-slate-200')
-                  }
-                >
-                  {locked && <span className="icon-lock text-[10px] opacity-80"></span>}
-                  {kw}
-                  {!locked && (
-                    <button type="button" onClick={() => removeExtraPinned(kw)} className="opacity-70 hover:opacity-100">
-                      <span className="icon-x text-[10px]"></span>
-                    </button>
-                  )}
-                </span>
+                <KeywordChip
+                  key={chip.kind + '-' + chip.kw}
+                  kw={chip.kw}
+                  active={activeKeyword === chip.kw}
+                  tone={tone}
+                  locked={chip.locked}
+                  editable={chip.kind !== 'auto'}
+                  onSelect={() => selectKeyword(chip.kw)}
+                  onRemove={() => removeKeyword(chip)}
+                  onEdit={chip.kind !== 'auto' ? () => startEditKeyword(chip) : null}
+                />
               );
             })}
             <div className="flex items-center gap-1">
               <input
-                value={newPinnedInput}
-                onChange={(e) => setNewPinnedInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') addPinnedKeyword(); }}
-                placeholder="添加关注词"
+                value={newKeywordInput}
+                onChange={(e) => setNewKeywordInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') addKeyword();
+                }}
+                placeholder="添加关键词"
                 className="h-8 w-28 rounded-lg border border-white/15 bg-slate-950/50 px-2 text-xs text-slate-100 outline-none focus:border-cyan-400/50"
               />
-              <button type="button" onClick={addPinnedKeyword} className="btn btn-secondary btn-sm">
-                添加
+              <button type="button" onClick={addKeyword} className="btn btn-secondary btn-sm" title="添加关键词">
+                <span className="icon-plus text-xs"></span>
               </button>
             </div>
           </div>
-          {isLoadingPinned ? (
+
+          {isLoadingRecommended ? (
             <div className="flex justify-center py-10">
               <div className="icon-loader animate-spin text-2xl text-cyan-300"></div>
             </div>
-          ) : pinnedNews.length === 0 ? (
-            <p className="py-6 text-center text-sm text-slate-400">暂无推荐头条</p>
+          ) : recommendedNews.length === 0 ? (
+            <p className="py-6 text-center text-sm text-slate-400">
+              {activeKeyword ? '暂无「' + activeKeyword + '」相关推荐' : '请选择关键词'}
+            </p>
           ) : (
             <div className="space-y-2">
-              {pinnedNews.slice(0, 20).map(function (news, idx) {
-                return <HeadlineNewsRow key={'pin-' + idx} news={news} rank={idx + 1} />;
+              {recommendedNews.map(function (news, idx) {
+                return <HeadlineNewsRow key={'rec-' + idx} news={news} rank={idx + 1} />;
               })}
             </div>
           )}
         </section>
 
-        {(urlParams.code || urlParams.name || stockKeywords.length > 0) && (
-          <section className="card p-4 md:p-5">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-lg font-bold text-slate-50">
-                {urlParams.code ? `${urlParams.code}${urlParams.name ? ' ' + urlParams.name : ''}` : '关键词'} · 相关新闻
-              </h2>
-              <div className="flex flex-wrap gap-1.5">
-                {stockKeywords.map(function (kw) {
-                  return (
-                    <span key={kw} className="rounded-full border border-cyan-300/25 bg-cyan-400/10 px-2.5 py-0.5 text-[11px] text-cyan-100">
-                      {kw}
-                    </span>
-                  );
-                })}
-              </div>
+        <section className="card p-4 md:p-5">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-lg font-bold text-slate-50">
+              <span className="icon-rss text-emerald-300"></span>
+              RSS 订阅
+            </h2>
+            <span className="text-xs text-slate-400">
+              {activeKeyword ? '已按「' + activeKeyword + '」过滤' : '最新财经 RSS'} · 近 72 小时
+            </span>
+          </div>
+          {isLoadingRss ? (
+            <div className="flex justify-center py-8">
+              <div className="icon-loader animate-spin text-2xl text-emerald-300"></div>
             </div>
-            {isLoadingStock ? (
-              <div className="flex justify-center py-8">
-                <div className="icon-loader animate-spin text-2xl text-cyan-300"></div>
-              </div>
-            ) : stockNews.length === 0 ? (
-              <p className="py-6 text-center text-sm text-slate-400">
-                未匹配到相关新闻。请确认已从持仓/详情页带入关键词，或检查 GNews API Key。
-              </p>
-            ) : (
-              <div className="grid gap-3 md:grid-cols-2">
-                {stockNews.map(function (news, idx) {
-                  return <NewsCard key={'stock-' + idx} news={news} />;
-                })}
-              </div>
-            )}
-          </section>
-        )}
+          ) : rssNews.length === 0 ? (
+            <p className="py-6 text-center text-sm text-slate-400">暂无 RSS 新闻</p>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              {rssNews.map(function (news, idx) {
+                return <NewsCard key={'rss-' + idx} news={news} />;
+              })}
+            </div>
+          )}
+        </section>
       </div>
     </div>
+  );
+}
+
+function KeywordChip({ kw, active, tone, locked, editable, onSelect, onRemove, onEdit }) {
+  var toneClass =
+    tone === 'cyan'
+      ? active
+        ? 'border-cyan-300/60 bg-cyan-400/20 text-cyan-50 ring-1 ring-cyan-300/40'
+        : 'border-cyan-300/25 bg-cyan-400/10 text-cyan-100'
+      : tone === 'amber'
+        ? active
+          ? 'border-amber-300/60 bg-amber-400/20 text-amber-50 ring-1 ring-amber-300/40'
+          : 'border-amber-300/30 bg-amber-400/10 text-amber-100'
+        : active
+          ? 'border-white/30 bg-white/[0.14] text-slate-50 ring-1 ring-white/20'
+          : 'border-white/15 bg-white/[0.08] text-slate-200';
+  return (
+    <span className={'inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ' + toneClass}>
+      <button type="button" onClick={onSelect} className="inline-flex items-center gap-1">
+        {locked && <span className="icon-lock text-[10px] opacity-80"></span>}
+        {kw}
+      </button>
+      {editable && onEdit && (
+        <button type="button" onClick={onEdit} className="opacity-60 hover:opacity-100" title="编辑关键词">
+          <span className="icon-pencil text-[10px]"></span>
+        </button>
+      )}
+      {onRemove && (
+        <button type="button" onClick={onRemove} className="opacity-70 hover:opacity-100">
+          <span className="icon-x text-[10px]"></span>
+        </button>
+      )}
+    </span>
   );
 }
 

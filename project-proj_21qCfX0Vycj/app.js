@@ -694,6 +694,13 @@ function App() {
                     <span>新增</span>
                   </button>
                   <a
+                    href="news.html?from=index.html"
+                    className="btn btn-secondary nav-chip gap-1"
+                  >
+                    <div className="icon-newspaper"></div>
+                    <span>新闻</span>
+                  </a>
+                  <a
                     href="analysis.html?from=index.html"
                     className="btn btn-secondary nav-chip gap-1"
                   >

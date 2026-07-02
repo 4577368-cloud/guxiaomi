@@ -328,6 +328,65 @@ def get_pinned_headlines(keywords: List[str], max_age_hours: int = 72, max_items
     return get_news_for_page("", "", "", extra_keywords=clean, max_age_hours=max_age_hours, max_items=max_items)
 
 
+def get_recommended_for_keyword(keyword: str, max_age_hours: int = 72, max_items: int = 20) -> List[dict]:
+    """单关键词推荐：优先 GNews，不足时用 RSS 补足。"""
+    kw = (keyword or "").strip()
+    if not kw:
+        return []
+    keywords = [kw]
+
+    def _matched(text: str) -> List[str]:
+        t = (text or "").lower()
+        return [k for k in keywords if k and k.lower() in t]
+
+    def _enrich(it: dict, source_type: str) -> dict:
+        text = (it.get("title") or "") + " " + (it.get("summary") or "")
+        matched = _matched(text) or keywords
+        return {**it, "source_type": source_type, "matched_keywords": matched}
+
+    combined: List[dict] = []
+    seen = set()
+    api_key = _gnews_api_key()
+    if api_key:
+        for it in fetch_gnews(kw, api_key, max_articles=max_items):
+            t = (it.get("title") or "").strip()
+            if t and t not in seen:
+                seen.add(t)
+                combined.append(_enrich(it, "gnews"))
+    if len(combined) < max_items:
+        need = max_items - len(combined)
+        for it in fetch_rss_news(NEWSPAGE_RSS_URLS, keywords, max_age_hours=max_age_hours, max_results=need):
+            t = (it.get("title") or "").strip()
+            if t and t not in seen:
+                seen.add(t)
+                combined.append(_enrich(it, "rss"))
+    try:
+        from dateutil import parser as date_parser
+        def _sort_key(x):
+            s = x.get("pub_date") or ""
+            try:
+                return date_parser.parse(s)
+            except Exception:
+                return datetime.min
+        combined.sort(key=_sort_key, reverse=True)
+    except Exception:
+        pass
+    return combined[:max_items]
+
+
+def get_rss_headlines(max_age_hours: int = 72, max_items: int = 40, keyword: Optional[str] = None) -> List[dict]:
+    """RSS 专区：仅 RSS 源，可选单关键词过滤。"""
+    kw = (keyword or "").strip()
+    keywords = [kw] if kw else None
+    items = fetch_rss_news(NEWSPAGE_RSS_URLS, keywords, max_age_hours=max_age_hours, max_results=max_items)
+    out: List[dict] = []
+    for it in items:
+        text = (it.get("title") or "") + " " + (it.get("summary") or "")
+        matched = [kw] if kw and kw.lower() in text.lower() else ([] if kw else [])
+        out.append({**it, "source_type": "rss", "matched_keywords": matched})
+    return out[:max_items]
+
+
 def get_news_for_report(stock_name: str, stock_code: str, market: str, max_items: int = 20) -> str:
     """
     聚合与该公司/股票相关的新闻，供报告生成时注入分析师上下文。

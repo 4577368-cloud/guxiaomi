@@ -308,24 +308,24 @@ function TargetPlanResultTable({ plan, market, targetAmount }) {
 
 function DetailMetric({ label, value, valueClass, hint }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3">
-      <div className="text-xs text-slate-400">{label}</div>
-      <div className={`gx-num mt-1 text-lg font-bold tabular-nums ${valueClass || 'text-slate-50'}`}>
+    <div className="rounded-xl border border-white/10 bg-white/[0.06] p-2 md:rounded-2xl md:p-3">
+      <div className="text-[10px] text-slate-400 md:text-xs">{label}</div>
+      <div className={`gx-num mt-0.5 text-sm font-bold tabular-nums md:mt-1 md:text-lg ${valueClass || 'text-slate-50'}`}>
         {value}
       </div>
-      {hint && <div className="mt-1 text-[11px] text-slate-500">{hint}</div>}
+      {hint && <div className="mt-0.5 text-[10px] text-slate-500 md:text-[11px]">{hint}</div>}
     </div>
   );
 }
 
 function DetailHeaderMetric({ label, value, valueClass, hint }) {
   return (
-    <div className="min-w-0 border-t border-white/10 pt-3 md:border-l md:border-t-0 md:pl-4 md:pt-0">
-      <div className="text-[11px] font-semibold text-slate-400">{label}</div>
-      <div className={`gx-num mt-1 truncate text-base font-black tabular-nums md:text-lg ${valueClass || 'text-slate-50'}`}>
+    <div className="min-w-0 rounded-lg border border-white/[0.08] bg-white/[0.04] px-2.5 py-2 md:rounded-none md:border-0 md:border-l md:border-white/10 md:bg-transparent md:px-0 md:py-0 md:pl-4">
+      <div className="text-[10px] font-medium leading-tight text-slate-400 md:text-[11px] md:font-semibold">{label}</div>
+      <div className={`gx-num mt-0.5 truncate text-sm font-bold tabular-nums md:mt-1 md:text-lg md:font-black ${valueClass || 'text-slate-50'}`}>
         {value}
       </div>
-      {hint && <div className="mt-0.5 truncate text-[11px] text-slate-500">{hint}</div>}
+      {hint && <div className="mt-0.5 truncate text-[10px] text-slate-500">{hint}</div>}
     </div>
   );
 }
@@ -699,9 +699,9 @@ function DetailSellSimulator({ stock, stockAnalysis, market }) {
 
   if (!stockAnalysis || totalShares <= 0) {
     return (
-      <section className="card mt-4 p-4">
-        <h3 className="text-lg font-bold text-slate-50">卖出模拟</h3>
-        <div className="mt-3 rounded-2xl border border-amber-300/20 bg-amber-400/10 p-4 text-sm text-amber-100">
+      <section className="card mt-3 !p-3 md:mt-4 md:!p-4">
+        <h3 className="text-base font-bold text-slate-50 md:text-lg">卖出模拟</h3>
+        <div className="mt-2 rounded-xl border border-amber-300/20 bg-amber-400/10 p-3 text-sm text-amber-100 md:mt-3 md:rounded-2xl md:p-4">
           当前没有有效持仓，暂不能进行卖出模拟。
         </div>
       </section>
@@ -726,11 +726,11 @@ function DetailSellSimulator({ stock, stockAnalysis, market }) {
     resolvedManual.price > 0 ? formatPriceVsBreakEven(resolvedManual.price, breakEven, market) : null;
 
   return (
-    <section className="card mt-4 p-4">
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+    <section className="card mt-3 !p-3 md:mt-4 md:!p-4">
+      <div className="mb-2 flex flex-wrap items-start justify-between gap-2 md:mb-3 md:gap-3">
         <div>
-          <h3 className="text-lg font-bold text-slate-50">卖出模拟</h3>
-          <p className="mt-0.5 text-[11px] text-slate-400">基于持仓与费率估算，不改动实际持仓。</p>
+          <h3 className="text-base font-bold text-slate-50 md:text-lg">卖出模拟</h3>
+          <p className="mt-0.5 text-[10px] text-slate-400 md:text-[11px]">基于持仓与费率估算，不改动实际持仓。</p>
         </div>
         <label className="flex items-center gap-2 text-xs text-slate-300">
           渠道
@@ -1183,10 +1183,10 @@ function DetailNewsPanel({ stock, newsUrl, onSaveKeywords }) {
   }, [loadNews, keywords.length]);
 
   return (
-    <section className="card mt-4 p-4">
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+    <section className="card mt-3 !p-3 md:mt-4 md:!p-4">
+      <div className="mb-2 flex flex-wrap items-start justify-between gap-2 md:mb-3 md:gap-3">
         <div className="min-w-0">
-          <h3 className="text-lg font-bold text-slate-50">相关新闻</h3>
+          <h3 className="text-base font-bold text-slate-50 md:text-lg">相关新闻</h3>
         </div>
         <div className="flex flex-wrap justify-end gap-1.5">
           <button
@@ -1346,11 +1346,11 @@ function DetailReportPanel({ stock, analysisUrl, refreshKey, onDiagnosis }) {
   }, [loadReports, refreshKey]);
 
   return (
-    <section className="card mt-4 overflow-hidden p-4">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+    <section className="card mt-3 overflow-hidden !p-3 md:mt-4 md:!p-4">
+      <div className="mb-2 flex flex-wrap items-start justify-between gap-2 md:mb-4 md:gap-3">
         <div>
-          <h3 className="text-lg font-bold text-slate-50">历史 AI 分析报告</h3>
-          <p className="mt-1 text-xs text-slate-400">自动筛选本地缓存和服务端列表中与该股票匹配的报告。</p>
+          <h3 className="text-base font-bold text-slate-50 md:text-lg">历史 AI 分析报告</h3>
+          <p className="mt-0.5 text-[10px] text-slate-400 md:mt-1 md:text-xs">自动筛选本地缓存和服务端列表中与该股票匹配的报告。</p>
         </div>
         <div className="flex gap-1.5">
           <button type="button" onClick={loadReports} disabled={loading} className="btn btn-secondary btn-sm disabled:opacity-50">
@@ -1645,6 +1645,69 @@ function StockDetailApp() {
     };
   }, [loadDetailHistory, stock]);
 
+  const detailMetrics = React.useMemo(function () {
+    if (!stock) {
+      return {
+        market: '',
+        current: 0,
+        effectiveChangePct: 0,
+        analysis: { currentValue: 0, avgCost: 0, totalShares: 0, breakEvenPrice: 0 },
+        hasHolding: false,
+        watchItem: null,
+        history: [],
+      };
+    }
+    const market = normalizeDetailMarket(stock.market);
+    const md = stock.marketData || {};
+    const current = Number(stock.currentPrice) || Number(md.price) || 0;
+    const previousClose = Number(stock.previousClose) || Number(md.previousClose) || 0;
+    const change = Number(stock.change);
+    const effectiveChange = Number.isFinite(change)
+      ? change
+      : previousClose > 0 && current > 0
+        ? current - previousClose
+        : 0;
+    const changePct = Number(stock.changePercent);
+    const effectiveChangePct = Number.isFinite(changePct)
+      ? changePct
+      : previousClose > 0
+        ? (effectiveChange / previousClose) * 100
+        : 0;
+    const analysis = calculateStockAnalysis(stock, stock.brokerChannel || 'futu');
+    const hasHolding = Array.isArray(stock.positions) && stock.positions.some((p) => p && p.enabled !== false && Number(p.shares) > 0);
+    const watchItem = stock.watchItem || (stock.detailSource === 'watch' ? stock : null);
+    const history = Array.isArray(detailHistory) && detailHistory.length
+      ? detailHistory
+      : Array.isArray(stock.priceHistory) && stock.priceHistory.length
+        ? stock.priceHistory
+        : (window.loadStockPriceHistory ? window.loadStockPriceHistory(stock.symbol, market) : []);
+    return {
+      market,
+      current,
+      effectiveChangePct,
+      analysis,
+      hasHolding,
+      watchItem,
+      history,
+    };
+  }, [stock, detailHistory]);
+
+  const openDetailDiagnosis = React.useCallback(function (report) {
+    if (!stock || !window.GuxiaomiChatDiagnosis) return;
+    const m = detailMetrics;
+    window.GuxiaomiChatDiagnosis.openFromStockDetail(stock, {
+      currentPrice: m.current,
+      changePercent: m.effectiveChangePct,
+      analysis: m.analysis,
+      hasHolding: m.hasHolding,
+      watchItem: m.watchItem,
+      watchDays: m.watchItem ? daysSinceDetail(m.watchItem.addedAt) : 0,
+      priceHistory: m.history,
+      report: report && report.body ? report.body : null,
+      reportBaseName: report && report.base_name,
+    });
+  }, [stock, detailMetrics]);
+
   if (!sessionReady) {
     return (
       <div className="flex min-h-screen items-center justify-center text-slate-400">
@@ -1707,21 +1770,6 @@ function StockDetailApp() {
   const newsUrl = buildDetailUrl('news.html', stock);
   const analysisUrl = buildDetailUrl('analysis.html', stock);
   const paipanUrl = buildDetailUrl('ziwei.html', stock);
-
-  const openDetailDiagnosis = React.useCallback(function (report) {
-    if (!stock || !window.GuxiaomiChatDiagnosis) return;
-    window.GuxiaomiChatDiagnosis.openFromStockDetail(stock, {
-      currentPrice: current,
-      changePercent: effectiveChangePct,
-      analysis: analysis,
-      hasHolding: hasHolding,
-      watchItem: watchItem,
-      watchDays: watchItem ? daysSinceDetail(watchItem.addedAt) : 0,
-      priceHistory: history,
-      report: report && report.body ? report.body : null,
-      reportBaseName: report && report.base_name,
-    });
-  }, [stock, current, effectiveChangePct, analysis, hasHolding, watchItem, history]);
 
   const sameStock = (item) => {
     if (!item) return false;
@@ -1820,43 +1868,43 @@ function StockDetailApp() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-3 py-4 md:px-6 md:py-6">
+      <main className="mx-auto max-w-7xl px-3 py-3 md:px-6 md:py-6">
         {portfolio.length > 1 && (
-          <div className="mb-3">
+          <div className="mb-2 md:mb-3">
             <StockNavigation portfolio={portfolio} />
           </div>
         )}
-        <section className="card mb-4 overflow-hidden p-4 md:p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-blue-300/30 bg-blue-400/12 px-2.5 py-1 text-xs font-semibold text-blue-100">{marketName(market)}</span>
-                {hasHolding && <span className="rounded-full border border-emerald-300/30 bg-emerald-400/12 px-2.5 py-1 text-xs font-semibold text-emerald-100">已持仓</span>}
-                {watchItem && <span className="rounded-full border border-amber-300/30 bg-amber-400/12 px-2.5 py-1 text-xs font-semibold text-amber-100">已关注 {daysSinceDetail(watchItem.addedAt)} 天</span>}
-                {!watchItem && hasHolding && <span className="rounded-full border border-amber-300/30 bg-amber-400/12 px-2.5 py-1 text-xs font-semibold text-amber-100">已关注</span>}
+        <section className="card mb-3 overflow-hidden !p-3 md:mb-4 md:!p-6">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="mb-1.5 flex flex-wrap items-center gap-1.5 md:mb-3 md:gap-2">
+                <span className="rounded-full border border-blue-300/30 bg-blue-400/12 px-2 py-0.5 text-[10px] font-semibold text-blue-100 md:px-2.5 md:py-1 md:text-xs">{marketName(market)}</span>
+                {hasHolding && <span className="rounded-full border border-emerald-300/30 bg-emerald-400/12 px-2 py-0.5 text-[10px] font-semibold text-emerald-100 md:px-2.5 md:py-1 md:text-xs">已持仓</span>}
+                {watchItem && <span className="rounded-full border border-amber-300/30 bg-amber-400/12 px-2 py-0.5 text-[10px] font-semibold text-amber-100 md:px-2.5 md:py-1 md:text-xs">已关注 {daysSinceDetail(watchItem.addedAt)} 天</span>}
+                {!watchItem && hasHolding && <span className="rounded-full border border-amber-300/30 bg-amber-400/12 px-2 py-0.5 text-[10px] font-semibold text-amber-100 md:px-2.5 md:py-1 md:text-xs">已关注</span>}
               </div>
-              <h2 className="flex flex-wrap items-baseline gap-3 text-3xl font-black tracking-tight text-slate-50 md:text-5xl">
+              <h2 className="flex flex-wrap items-baseline gap-2 text-2xl font-black tracking-tight text-slate-50 md:gap-3 md:text-5xl">
                 {stock.symbol}
-                {stock.name && stock.name !== stock.symbol && <span className="text-lg font-semibold text-slate-300 md:text-2xl">{stock.name}</span>}
+                {stock.name && stock.name !== stock.symbol && <span className="text-sm font-semibold text-slate-300 md:text-2xl">{stock.name}</span>}
               </h2>
             </div>
-            <div className="text-right lg:min-w-[14rem]">
-              <div className="text-xs text-slate-400">当前价格</div>
-              <div className="gx-num mt-1 text-4xl font-black tabular-nums text-amber-100 md:text-5xl">{detailMoney(current, market, market === 'US' ? 3 : 2)}</div>
-              <div className={`gx-num mt-1 text-sm font-semibold tabular-nums ${positive ? 'text-emerald-300' : 'text-rose-300'}`}>
+            <div className="shrink-0 text-right">
+              <div className="text-[10px] text-slate-400 md:text-xs">当前价格</div>
+              <div className="gx-num mt-0.5 text-2xl font-black tabular-nums text-amber-100 md:mt-1 md:text-5xl">{detailMoney(current, market, market === 'US' ? 3 : 2)}</div>
+              <div className={`gx-num mt-0.5 text-xs font-semibold tabular-nums md:mt-1 md:text-sm ${positive ? 'text-emerald-300' : 'text-rose-300'}`}>
                 {effectiveChange >= 0 ? '+' : ''}{detailMoney(effectiveChange, market, market === 'US' ? 3 : 2)} · {detailPercent(effectiveChangePct)}
               </div>
             </div>
           </div>
-          <div className="mt-5 border-t border-white/10 pt-4">
-            <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-3 border-t border-white/10 pt-3 md:mt-5 md:pt-4">
+            <div className="grid gap-2 lg:grid-cols-[1fr_auto] lg:items-end lg:gap-3">
+              <div className="grid grid-cols-2 gap-2 md:gap-3 xl:grid-cols-4">
                 <DetailHeaderMetric label="持仓市值" value={hasHolding ? detailMoney(analysis.currentValue, market, 2) : '未持仓'} valueClass="text-slate-50" />
                 <DetailHeaderMetric label="浮动盈亏" value={hasHolding ? `${analysis.profit >= 0 ? '+' : ''}${detailMoney(analysis.profit, market, 2)}` : '—'} valueClass={analysis.profit >= 0 ? 'text-emerald-300' : 'text-rose-300'} hint={hasHolding ? detailPercent(analysis.profitPercent) : ''} />
                 <DetailHeaderMetric label="平均成本" value={hasHolding ? detailMoney(analysis.avgCost, market, market === 'US' ? 3 : 2) : '—'} hint={hasHolding ? `${formatPrice(analysis.totalShares, 0)} 股` : ''} />
                 <DetailHeaderMetric label="跟踪表现" value={isTracked ? `${watchGain >= 0 ? '+' : ''}${detailMoney(watchGain, market, 2)}` : '未跟踪'} valueClass={watchGain >= 0 ? 'text-emerald-300' : 'text-rose-300'} hint={isTracked ? detailPercent(watchGainPct) : ''} />
               </div>
-              <div className="flex min-w-[4.8rem] flex-row justify-start gap-1.5 lg:flex-col lg:justify-end">
+              <div className="flex flex-row gap-1.5 lg:flex-col lg:justify-end">
                 <button type="button" onClick={() => setShowPositionModal(true)} className="btn btn-secondary nav-chip justify-center gap-1 lg:w-full">
                   <div className="icon-plus"></div>
                   <span>加仓</span>
@@ -1876,10 +1924,10 @@ function StockDetailApp() {
           </div>
         </section>
 
-        <div className="grid gap-4 lg:grid-cols-12">
-          <section className="card p-4 lg:col-span-8">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h3 className="text-lg font-bold text-slate-50">价格趋势</h3>
+        <div className="grid gap-3 lg:grid-cols-12 lg:gap-4">
+          <section className="card !p-3 lg:col-span-8 md:!p-4">
+            <div className="mb-2 flex items-center justify-between gap-3 md:mb-3">
+              <h3 className="text-base font-bold text-slate-50 md:text-lg">价格趋势</h3>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-slate-400">历史日线 / 本地记录</span>
                 <button
@@ -1902,9 +1950,9 @@ function StockDetailApp() {
             )}
           </section>
 
-          <section className="card p-4 lg:col-span-4">
-            <h3 className="mb-3 text-lg font-bold text-slate-50">行情快照</h3>
-            <div className="grid grid-cols-2 gap-2">
+          <section className="card !p-3 lg:col-span-4 md:!p-4">
+            <h3 className="mb-2 text-base font-bold text-slate-50 md:mb-3 md:text-lg">行情快照</h3>
+            <div className="grid grid-cols-2 gap-1.5 md:gap-2">
               <DetailMetric label="开盘" value={Number(md.open) > 0 ? detailMoney(md.open, market, 2) : '—'} />
               <DetailMetric label="前收" value={previousClose > 0 ? detailMoney(previousClose, market, 2) : '—'} />
               <DetailMetric label="最高" value={highPrice > 0 ? detailMoney(highPrice, market, 2) : '—'} valueClass="text-emerald-300" />
@@ -1917,9 +1965,9 @@ function StockDetailApp() {
           </section>
         </div>
 
-        <section className="card mt-4 p-4">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-lg font-bold text-slate-50">持仓批次</h3>
+        <section className="card mt-3 !p-3 md:mt-4 md:!p-4">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 md:mb-3 md:gap-3">
+            <h3 className="text-base font-bold text-slate-50 md:text-lg">持仓批次</h3>
             <span className="text-xs text-slate-400">{positions.length} 笔有效记录</span>
           </div>
           {positions.length === 0 ? (

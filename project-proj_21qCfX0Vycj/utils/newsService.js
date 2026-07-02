@@ -33,6 +33,46 @@ var LOCKED_PINNED_KEYWORDS = [
 ];
 
 var PINNED_STORAGE_KEY = 'news_pinned_keywords_v1';
+var HIDDEN_PINNED_KEYWORDS_KEY = 'news_hidden_pinned_v1';
+
+function getHiddenPinnedKeywords() {
+  try {
+    var raw = localStorage.getItem(HIDDEN_PINNED_KEYWORDS_KEY);
+    if (raw) {
+      var parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
+    }
+  } catch (_) {}
+  return [];
+}
+
+function hidePinnedKeyword(kw) {
+  var k = String(kw || '').trim();
+  if (!k) return;
+  var key = k.toLowerCase();
+  var hidden = getHiddenPinnedKeywords();
+  if (hidden.some(function (h) {
+    return String(h).toLowerCase() === key;
+  })) {
+    return;
+  }
+  hidden.push(k);
+  try {
+    localStorage.setItem(HIDDEN_PINNED_KEYWORDS_KEY, JSON.stringify(hidden));
+  } catch (_) {}
+}
+
+function showPinnedKeyword(kw) {
+  var k = String(kw || '').trim();
+  if (!k) return;
+  var key = k.toLowerCase();
+  var hidden = getHiddenPinnedKeywords().filter(function (h) {
+    return String(h).toLowerCase() !== key;
+  });
+  try {
+    localStorage.setItem(HIDDEN_PINNED_KEYWORDS_KEY, JSON.stringify(hidden));
+  } catch (_) {}
+}
 
 function getNewsApiBase() {
   var injected = String(window.ANALYSIS_API_BASE || '').replace(/\/$/, '');
@@ -84,10 +124,14 @@ function getPinnedKeywords() {
     }
   } catch (_) {}
   var merged = LOCKED_PINNED_KEYWORDS.concat(extra);
+  var hiddenSet = {};
+  getHiddenPinnedKeywords().forEach(function (h) {
+    hiddenSet[String(h).toLowerCase()] = true;
+  });
   var seen = {};
   return merged.filter(function (k) {
     var key = k.toLowerCase();
-    if (!k || seen[key]) return false;
+    if (!k || seen[key] || hiddenSet[key]) return false;
     seen[key] = true;
     return true;
   });
@@ -194,6 +238,132 @@ async function fetchPinnedNewsFromBackend(keywords, hours) {
   };
 }
 
+async function fetchRecommendedForKeyword(keyword, hours, limit) {
+  var base = getNewsApiBase();
+  if (!base) throw new Error('未配置 API 地址');
+  var kw = String(keyword || '').trim();
+  if (!kw) {
+    return { items: [], gnewsEnabled: false, gnewsCount: 0, rssCount: 0 };
+  }
+  var q = new URLSearchParams();
+  q.set('keyword', kw);
+  q.set('hours', String(hours || 72));
+  q.set('limit', String(limit || 20));
+  var res = await fetch(base + '/api/news/recommended?' + q.toString(), {
+    headers: { Accept: 'application/json' },
+  });
+  var data = await res.json().catch(function () {
+    return {};
+  });
+  if (!res.ok || !data || data.ok === false) {
+    throw new Error((data && data.error) || '推荐新闻 API 请求失败');
+  }
+  return {
+    items: (data.items || []).map(normalizeNewsItem).filter(Boolean),
+    gnewsEnabled: !!data.gnews_enabled,
+    gnewsCount: Number(data.gnews_count) || 0,
+    rssCount: Number(data.rss_count) || 0,
+  };
+}
+
+async function fetchRssNewsFromBackend(keyword, hours, limit) {
+  var base = getNewsApiBase();
+  if (!base) throw new Error('未配置 API 地址');
+  var q = new URLSearchParams();
+  var kw = String(keyword || '').trim();
+  if (kw) q.set('keyword', kw);
+  q.set('hours', String(hours || 72));
+  q.set('limit', String(limit || 40));
+  var res = await fetch(base + '/api/news/rss?' + q.toString(), {
+    headers: { Accept: 'application/json' },
+  });
+  var data = await res.json().catch(function () {
+    return {};
+  });
+  if (!res.ok || !data || data.ok === false) {
+    throw new Error((data && data.error) || 'RSS 新闻 API 请求失败');
+  }
+  return {
+    items: (data.items || []).map(normalizeNewsItem).filter(Boolean),
+    gnewsEnabled: false,
+    gnewsCount: 0,
+    rssCount: Number(data.rss_count) || 0,
+  };
+}
+
+function dedupeKeywords(list) {
+  var seen = {};
+  return (list || [])
+    .map(function (k) {
+      return String(k || '').trim();
+    })
+    .filter(function (k) {
+      if (!k) return false;
+      var key = k.toLowerCase();
+      if (seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+}
+
+function loadStockKeywordsFromStorage(code, market) {
+  var norm = String(code || '').trim().toUpperCase();
+  if (!norm) return [];
+  var match = function (item) {
+    return String(item && item.symbol || '').trim().toUpperCase() === norm;
+  };
+  if (typeof window.loadPortfolio === 'function') {
+    var portfolio = window.loadPortfolio() || [];
+    var found = portfolio.find(match);
+    if (found && Array.isArray(found.keywords) && found.keywords.length) {
+      return found.keywords.map(String).filter(Boolean);
+    }
+  }
+  if (typeof window.loadWatchlist === 'function') {
+    var watchlist = window.loadWatchlist() || [];
+    var w = watchlist.find(match);
+    if (w && Array.isArray(w.keywords) && w.keywords.length) {
+      return w.keywords.map(String).filter(Boolean);
+    }
+  }
+  return [];
+}
+
+function persistStockKeywordsToStorage(code, keywords) {
+  var norm = String(code || '').trim().toUpperCase();
+  if (!norm) return;
+  var clean = dedupeKeywords(keywords);
+  var match = function (item) {
+    return String(item && item.symbol || '').trim().toUpperCase() === norm;
+  };
+  if (typeof window.loadPortfolio === 'function' && typeof window.savePortfolio === 'function') {
+    var portfolio = window.loadPortfolio() || [];
+    var touched = false;
+    var nextPortfolio = portfolio.map(function (item) {
+      if (!match(item)) return item;
+      touched = true;
+      return Object.assign({}, item, { keywords: clean });
+    });
+    if (touched) window.savePortfolio(nextPortfolio);
+  }
+  if (typeof window.loadWatchlist === 'function' && typeof window.saveWatchlist === 'function') {
+    var watchlist = window.loadWatchlist() || [];
+    var touchedWatch = false;
+    var nextWatch = watchlist.map(function (item) {
+      if (!match(item)) return item;
+      touchedWatch = true;
+      return Object.assign({}, item, { keywords: clean });
+    });
+    if (touchedWatch) window.saveWatchlist(nextWatch);
+  }
+  try {
+    var url = new URL(window.location.href);
+    if (clean.length) url.searchParams.set('keywords', clean.join(','));
+    else url.searchParams.delete('keywords');
+    window.history.replaceState({}, '', url.toString());
+  } catch (_) {}
+}
+
 async function fetchNewsClientRssFallback(keywords, hours) {
   if (typeof fetchRSSFeeds !== 'function') return [];
   var feeds =
@@ -217,10 +387,17 @@ async function fetchNewsClientRssFallback(keywords, hours) {
 window.LOCKED_PINNED_KEYWORDS = LOCKED_PINNED_KEYWORDS;
 window.getPinnedKeywords = getPinnedKeywords;
 window.saveExtraPinnedKeywords = saveExtraPinnedKeywords;
+window.hidePinnedKeyword = hidePinnedKeyword;
+window.showPinnedKeyword = showPinnedKeyword;
 window.buildNewsUrl = buildNewsUrl;
 window.collectStockKeywords = collectStockKeywords;
 window.fetchNewsFromBackend = fetchNewsFromBackend;
 window.fetchPinnedNewsFromBackend = fetchPinnedNewsFromBackend;
+window.fetchRecommendedForKeyword = fetchRecommendedForKeyword;
+window.fetchRssNewsFromBackend = fetchRssNewsFromBackend;
 window.fetchNewsClientRssFallback = fetchNewsClientRssFallback;
 window.normalizeNewsItem = normalizeNewsItem;
 window.getNewsApiBase = getNewsApiBase;
+window.dedupeKeywords = dedupeKeywords;
+window.loadStockKeywordsFromStorage = loadStockKeywordsFromStorage;
+window.persistStockKeywordsToStorage = persistStockKeywordsToStorage;

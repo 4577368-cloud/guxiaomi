@@ -1712,6 +1712,67 @@ def api_news_pinned(keywords: str = "", hours: int = 72):
         return {"ok": False, "items": [], "gnews_enabled": False, "error": str(e)}
 
 
+@app.get("/api/news/recommended")
+def api_news_recommended(keyword: str = "", hours: int = 72, limit: int = 20):
+    """单关键词推荐新闻（GNews 优先，最多 limit 条）。"""
+    try:
+        from news_feeds import get_recommended_for_keyword, _gnews_api_key
+        kw = (keyword or "").strip()
+        if not kw:
+            return {"ok": True, "items": [], "gnews_enabled": bool(_gnews_api_key()), "gnews_count": 0, "rss_count": 0}
+        cap = max(1, min(int(limit or 20), 40))
+        raw = get_recommended_for_keyword(kw, max_age_hours=hours, max_items=cap)
+        items = [{
+            "title": it.get("title") or "",
+            "source": it.get("source") or "",
+            "link": it.get("link") or "",
+            "summary": it.get("summary") or "",
+            "pub_date": it.get("pub_date") or "",
+            "source_type": it.get("source_type") or "rss",
+            "matched_keywords": it.get("matched_keywords") or [],
+        } for it in raw]
+        gnews_count = sum(1 for x in items if x.get("source_type") == "gnews")
+        return {
+            "ok": True,
+            "items": items,
+            "keyword": kw,
+            "gnews_enabled": bool(_gnews_api_key()),
+            "gnews_count": gnews_count,
+            "rss_count": len(items) - gnews_count,
+        }
+    except Exception as e:
+        return {"ok": False, "items": [], "gnews_enabled": False, "error": str(e)}
+
+
+@app.get("/api/news/rss")
+def api_news_rss(keyword: str = "", hours: int = 72, limit: int = 40):
+    """RSS 专区：仅 RSS 源，可选单关键词过滤。"""
+    try:
+        from news_feeds import get_rss_headlines
+        cap = max(1, min(int(limit or 40), 80))
+        kw = (keyword or "").strip() or None
+        raw = get_rss_headlines(max_age_hours=hours, max_items=cap, keyword=kw)
+        items = [{
+            "title": it.get("title") or "",
+            "source": it.get("source") or "",
+            "link": it.get("link") or "",
+            "summary": it.get("summary") or "",
+            "pub_date": it.get("pub_date") or "",
+            "source_type": "rss",
+            "matched_keywords": it.get("matched_keywords") or [],
+        } for it in raw]
+        return {
+            "ok": True,
+            "items": items,
+            "keyword": kw or "",
+            "gnews_enabled": False,
+            "gnews_count": 0,
+            "rss_count": len(items),
+        }
+    except Exception as e:
+        return {"ok": False, "items": [], "gnews_enabled": False, "error": str(e)}
+
+
 @app.get("/api/health")
 def health():
     return {"ok": True}
