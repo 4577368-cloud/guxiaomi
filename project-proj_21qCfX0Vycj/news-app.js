@@ -15,7 +15,7 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex items-center justify-center">
+        <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-100">
           <div className="text-center">
             <h1 className="text-2xl font-bold mb-4">出现错误</h1>
             <button onClick={() => window.location.reload()} className="btn btn-primary">
@@ -42,44 +42,15 @@ class ErrorBoundary extends React.Component {
     window.ANALYSIS_API_BASE = 'http://localhost:' + api;
   }
 })();
-var _h = typeof location !== 'undefined' ? location.hostname : '';
-const API_BASE =
-  window.ANALYSIS_API_BASE ||
-  (_h === 'localhost' || _h === '127.0.0.1'
-    ? 'http://localhost:8123'
-    : typeof location !== 'undefined' && location.origin
-      ? location.origin
-      : '');
-
-var CLIENT_RSS_FEEDS = [
-  'https://plink.anyfeeder.com/zaobao/realtime/china',
-  'https://plink.anyfeeder.com/zaobao/realtime/world',
-  'https://plink.anyfeeder.com/bbc/cn',
-  'https://plink.anyfeeder.com/fortunechina',
-  'https://plink.anyfeeder.com/weixin/cctvnewscenter',
-  'https://plink.anyfeeder.com/guangmingribao',
-  'https://plink.anyfeeder.com/people-daily',
-  'https://plink.anyfeeder.com/weixin/wallstreetcn',
-  'https://plink.anyfeeder.com/tmtpost',
-  'https://plink.anyfeeder.com/jiemian/finance',
-  'https://plink.anyfeeder.com/jiemian/business',
-  'https://plink.anyfeeder.com/jingjiribao',
-  'https://plink.anyfeeder.com/chinadaily/world',
-  'https://plink.anyfeeder.com/weixin/caixinwang',
-  'https://cn.wsj.com/zh-hans/rss',
-  'https://plink.anyfeeder.com/weixin/thepapernews',
-  'https://plink.anyfeeder.com/weixin/cctvyscj',
-  'https://plink.anyfeeder.com/weixin/hqsbwx'
-];
 
 function parseNewsUrlParams() {
   const q = new URLSearchParams(window.location.search);
   return {
     code: q.get('code') || '',
-    market: q.get('market') || 'A 股',
+    market: q.get('market') || 'A股',
     name: q.get('name') || '',
-    keywords: (q.get('keywords') || '').split(',').map(k => k.trim()).filter(Boolean),
-    from: q.get('from') || ''
+    keywords: (q.get('keywords') || '').split(',').map((k) => k.trim()).filter(Boolean),
+    from: q.get('from') || '',
   };
 }
 
@@ -111,675 +82,377 @@ function goBackToSource() {
   window.location.href = 'index.html';
 }
 
+function formatNewsTime(pubDate) {
+  if (!pubDate) return '';
+  try {
+    var d = new Date(pubDate);
+    if (Number.isNaN(d.getTime())) return String(pubDate).slice(0, 16);
+    return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  } catch (_) {
+    return String(pubDate).slice(0, 16);
+  }
+}
+
 function NewsApp() {
-  const [newsList, setNewsList] = React.useState([]);
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [isCopying, setIsCopying] = React.useState(false);
-  const [urlParams] = React.useState(parseNewsUrlParams());
-  const [keywordInput, setKeywordInput] = React.useState('');
+  const [urlParams] = React.useState(parseNewsUrlParams);
+  const [pinnedKeywords, setPinnedKeywords] = React.useState(() =>
+    typeof window.getPinnedKeywords === 'function' ? window.getPinnedKeywords() : [],
+  );
+  const [pinnedNews, setPinnedNews] = React.useState([]);
+  const [stockNews, setStockNews] = React.useState([]);
+  const [meta, setMeta] = React.useState({ gnewsEnabled: false, gnewsCount: 0, rssCount: 0, usedFallback: false });
+  const [isLoadingPinned, setIsLoadingPinned] = React.useState(false);
+  const [isLoadingStock, setIsLoadingStock] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [newPinnedInput, setNewPinnedInput] = React.useState('');
 
-  const fetchNewsFromClient = React.useCallback(async (overrideKeyword) => {
-    setIsLoading(true);
+  const stockKeywords = React.useMemo(() => {
+    var list = (urlParams.keywords || []).slice();
+    if (urlParams.name) list.unshift(urlParams.name);
+    if (urlParams.code) list.push(urlParams.code);
+    var seen = {};
+    return list.filter(function (k) {
+      var key = k.toLowerCase();
+      if (!k || seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+  }, [urlParams]);
+
+  const loadPinned = React.useCallback(async () => {
+    setIsLoadingPinned(true);
+    setError('');
     try {
-      var keywords = [];
-      if (overrideKeyword !== undefined) {
-        var one = overrideKeyword ? String(overrideKeyword).trim() : '';
-        keywords = one ? [one] : [];
+      var keywords =
+        typeof window.getPinnedKeywords === 'function' ? window.getPinnedKeywords() : pinnedKeywords;
+      var result;
+      if (typeof window.fetchPinnedNewsFromBackend === 'function') {
+        result = await window.fetchPinnedNewsFromBackend(keywords, 72);
       } else {
-        if (urlParams.name) keywords.push(urlParams.name);
-        if (urlParams.code) keywords.push(urlParams.code);
-        keywords = keywords.concat(urlParams.keywords || []);
-        keywords = keywords.filter(Boolean);
+        throw new Error('新闻服务未加载');
       }
-      if (typeof fetchRSSFeeds !== 'function') {
-        throw new Error('RSS 脚本未加载，请刷新页面');
-      }
-      var raw = await fetchRSSFeeds(CLIENT_RSS_FEEDS, keywords, 30, false, 72);
-      var items = (raw || []).map(function (it) {
-        return {
-          title: it.title || '',
-          description: it.description || '',
-          sourceName: it.sourceName || it.source || '',
-          link: it.link || '',
-          pub_date: it.pubDate || '',
-          matchedKeywords: it.matchedKeywords || []
-        };
-      });
-      setNewsList(items);
+      setPinnedNews(result.items || []);
+      setMeta((prev) => ({
+        ...prev,
+        gnewsEnabled: result.gnewsEnabled,
+        gnewsCount: (result.gnewsCount || 0) + (prev.gnewsCountStock || 0),
+        rssCount: (result.rssCount || 0) + (prev.rssCountStock || 0),
+        usedFallback: false,
+      }));
     } catch (e) {
-      console.error('获取新闻失败:', e);
-      alert('获取新闻失败：' + (e.message || '请检查网络或稍后重试'));
+      console.warn('推荐新闻 API 失败，尝试 RSS 回退:', e);
+      try {
+        var fb =
+          typeof window.fetchNewsClientRssFallback === 'function'
+            ? await window.fetchNewsClientRssFallback(pinnedKeywords, 72)
+            : [];
+        setPinnedNews(fb);
+        setMeta((prev) => ({ ...prev, usedFallback: true }));
+      } catch (e2) {
+        setError((e && e.message) || '推荐新闻加载失败');
+      }
     } finally {
-      setIsLoading(false);
+      setIsLoadingPinned(false);
     }
-  }, [urlParams.code, urlParams.name, urlParams.keywords]);
+  }, [pinnedKeywords]);
 
-  const fetchNewsFromAPI = fetchNewsFromClient;
+  const loadStockNews = React.useCallback(async () => {
+    if (!urlParams.code && !urlParams.name && stockKeywords.length === 0) {
+      setStockNews([]);
+      return;
+    }
+    setIsLoadingStock(true);
+    try {
+      var result;
+      if (typeof window.fetchNewsFromBackend === 'function') {
+        result = await window.fetchNewsFromBackend({
+          code: urlParams.code,
+          market: urlParams.market,
+          name: urlParams.name,
+          keywords: stockKeywords,
+          hours: 72,
+        });
+        setStockNews(result.items || []);
+        setMeta((prev) => ({
+          ...prev,
+          gnewsEnabled: result.gnewsEnabled,
+          gnewsCountStock: result.gnewsCount || 0,
+          rssCountStock: result.rssCount || 0,
+        }));
+      }
+    } catch (e) {
+      console.warn('股票新闻 API 失败，RSS 回退:', e);
+      try {
+        var fb =
+          typeof window.fetchNewsClientRssFallback === 'function'
+            ? await window.fetchNewsClientRssFallback(stockKeywords, 72)
+            : [];
+        setStockNews(fb);
+        setMeta((prev) => ({ ...prev, usedFallback: true }));
+      } catch (_) {}
+    } finally {
+      setIsLoadingStock(false);
+    }
+  }, [urlParams, stockKeywords]);
 
   React.useEffect(() => {
-    if (urlParams.code || urlParams.name) {
-      fetchNewsFromAPI(undefined);
+    loadPinned();
+  }, [loadPinned]);
+
+  React.useEffect(() => {
+    if (urlParams.code || urlParams.name || stockKeywords.length) {
+      loadStockNews();
     }
-  }, []);
+  }, [loadStockNews, urlParams.code, urlParams.name, stockKeywords.length]);
 
   React.useEffect(function () {
     if (!window.GuxiaomiChat) return;
-    var query = [urlParams.name, urlParams.code]
-      .concat(urlParams.keywords || [])
-      .filter(Boolean)
-      .join(' ');
+    var query = stockKeywords.join(' ');
     window.GuxiaomiChat.setContext({
       page: 'news',
       scopeKey: (urlParams.code || 'all') + '|news',
-      title: urlParams.code
-        ? (urlParams.name || urlParams.code) + ' · 新闻'
-        : '新闻订阅',
+      title: urlParams.code ? (urlParams.name || urlParams.code) + ' · 新闻' : '新闻中心',
       news: {
         query: query,
         stockCode: urlParams.code || '',
-        headlines: (newsList || []).slice(0, 8).map(function (n) {
+        headlines: (stockNews.length ? stockNews : pinnedNews).slice(0, 8).map(function (n) {
           return n && n.title;
         }).filter(Boolean),
       },
     });
-  }, [urlParams, newsList]);
+  }, [urlParams, stockKeywords, stockNews, pinnedNews]);
 
-  const copyNews = async () => {
-    if (newsList.length === 0) {
-      alert('没有新闻可以复制');
-      return;
+  const addPinnedKeyword = () => {
+    var kw = String(newPinnedInput || '').trim();
+    if (!kw) return;
+    var next = pinnedKeywords.concat([kw]);
+    setPinnedKeywords(next);
+    if (typeof window.saveExtraPinnedKeywords === 'function') {
+      window.saveExtraPinnedKeywords(next);
     }
-    setIsCopying(true);
-    try {
-      let content = `📰 新闻 (${newsList.length}条，近72小时)\n`;
-      content += `生成时间: ${new Date().toLocaleString('zh-CN')}\n\n`;
-      content += '='.repeat(80) + '\n\n';
-      newsList.forEach((news, index) => {
-        const cleanTitle = (news.title || '').replace(/<[^>]*>/g, '').trim();
-        const cleanDesc = (news.description || '').replace(/<[^>]*>/g, '').trim();
-        content += `${index + 1}. ${cleanTitle}\n`;
-        content += `   来源: ${news.sourceName || ''}\n`;
-        content += `   简介: ${cleanDesc}\n`;
-        content += `   链接: ${news.link || ''}\n`;
-        content += `\n${'='.repeat(80)}\n\n`;
-      });
-      await navigator.clipboard.writeText(content);
-      alert('✅ 新闻内容已复制到剪贴板');
-    } catch (error) {
-      console.error('复制失败:', error);
-      alert('❌ 复制失败，请稍后重试');
-    } finally {
-      setIsCopying(false);
+    setNewPinnedInput('');
+    loadPinned();
+  };
+
+  const removeExtraPinned = (kw) => {
+    if ((window.LOCKED_PINNED_KEYWORDS || []).indexOf(kw) >= 0) return;
+    var next = pinnedKeywords.filter(function (k) {
+      return k !== kw;
+    });
+    setPinnedKeywords(next);
+    if (typeof window.saveExtraPinnedKeywords === 'function') {
+      window.saveExtraPinnedKeywords(next);
     }
+    loadPinned();
   };
 
   return (
-    <>
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto">
-          <div className="bg-white shadow-lg">
-            <div className="p-3 md:p-6">
-              <NewsPreview 
-                newsList={newsList}
-                isLoading={isLoading}
-                isCopying={isCopying}
-                urlParams={urlParams}
-                keywordInput={keywordInput}
-                setKeywordInput={setKeywordInput}
-                onFetchNews={() => fetchNewsFromAPI(undefined)}
-                onFetchByKeyword={() => fetchNewsFromAPI(keywordInput)}
-                onCopyNews={copyNews}
-              />
-            </div>
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100">
+      <div className="mx-auto max-w-5xl px-3 py-4 md:px-6 md:py-6">
+        <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-black text-slate-50 md:text-2xl">新闻中心</h1>
+            <p className="mt-1 text-xs text-slate-400 md:text-sm">
+              后端聚合 GNews + RSS
+              {meta.gnewsEnabled ? (
+                <span className="ml-2 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-200">
+                  GNews 已启用
+                </span>
+              ) : (
+                <span className="ml-2 rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-amber-100">
+                  GNews 未配置，仅 RSS
+                </span>
+              )}
+              {meta.usedFallback && (
+                <span className="ml-2 text-amber-300">（API 失败，已回退浏览器 RSS）</span>
+              )}
+            </p>
           </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-function NewsPreview({ newsList, isLoading, isCopying, urlParams, keywordInput, setKeywordInput, onFetchNews, onFetchByKeyword, onCopyNews }) {
-  const [selectedSource, setSelectedSource] = React.useState(null);
-  const keywordResults = React.useMemo(() =>
-    newsList.filter(function (n) { return (n.matchedKeywords || []).length > 0; }),
-    [newsList]
-  );
-  const regularResults = React.useMemo(() =>
-    newsList.filter(function (n) { return (n.matchedKeywords || []).length === 0; }),
-    [newsList]
-  );
-  const sources = React.useMemo(function () {
-    var set = {};
-    newsList.forEach(function (n) { if (n.sourceName) set[n.sourceName] = true; });
-    return Object.keys(set).sort();
-  }, [newsList]);
-  const filterBySource = function (list) {
-    return selectedSource ? list.filter(function (n) { return n.sourceName === selectedSource; }) : list;
-  };
-  const keywordFiltered = filterBySource(keywordResults);
-  const regularFiltered = filterBySource(regularResults);
-
-  return (
-    <div className="flex flex-col min-h-[50vh] md:h-auto">
-      <div className="flex flex-col gap-2 mb-3">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <h2 className="text-sm md:text-lg font-bold flex items-center gap-1.5">
-            新闻预览
-            {(urlParams.code || urlParams.name) && (
-              <span className="text-xs font-normal text-gray-500">
-                {urlParams.code}{urlParams.name ? ` ${urlParams.name}` : ''} · 近72小时 · 每源最多30条
-              </span>
-            )}
-          </h2>
-          <div className="flex flex-wrap gap-1.5 items-center">
-            <button onClick={onFetchNews} disabled={isLoading} className="btn btn-primary btn-sm disabled:opacity-50">
-              {isLoading ? '获取中' : '获取'}
-            </button>
-            <input
-              type="text"
-              value={keywordInput}
-              onChange={(e) => setKeywordInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') onFetchByKeyword(); }}
-              placeholder="按关键词获取"
-              className="w-28 px-2 py-1 text-sm border border-gray-300 rounded"
-            />
-            <button type="button" onClick={onFetchByKeyword} disabled={isLoading} className="btn btn-secondary btn-sm disabled:opacity-50">
-              按关键词获取
-            </button>
-            <button onClick={onCopyNews} disabled={newsList.length === 0 || isCopying} className="btn btn-secondary btn-sm disabled:opacity-50">
-              {isCopying ? '复制中' : '复制'}
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => { loadPinned(); loadStockNews(); }} className="btn btn-primary btn-sm">
+              刷新
             </button>
             <button type="button" onClick={goBackToSource} className="btn btn-secondary btn-sm">
               返回
             </button>
           </div>
-        </div>
-      </div>
+        </header>
 
-      {newsList.length > 0 && !isLoading && sources.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          <span className="text-xs text-gray-500 self-center mr-1">来源：</span>
-          <button
-            type="button"
-            onClick={() => setSelectedSource(null)}
-            className={`px-2.5 py-1 text-xs rounded-full border ${selectedSource === null ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
-          >
-            全部
-          </button>
-          {sources.map(function (s) {
-            return (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setSelectedSource(s)}
-                className={`px-2.5 py-1 text-xs rounded-full border ${selectedSource === s ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
-              >
-                {s}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {newsList.length === 0 && !isLoading && (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center max-w-md px-4">
-            <p className="text-sm text-gray-600 mb-2">
-              {(urlParams.code || urlParams.name)
-                ? '暂无新闻或加载失败。请点击「获取」重试。'
-                : '从股票卡片点击「新闻」进入，或输入关键词后点击「按关键词获取」'}
-            </p>
-            {(urlParams.code || urlParams.name) && (
-              <p className="text-xs text-gray-400">
-                新闻由浏览器通过代理拉取 RSS，与修改前一致。若始终无内容请检查网络或稍后重试。
-              </p>
-            )}
+        {error && (
+          <div className="mb-4 rounded-xl border border-rose-400/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">
+            {error}
           </div>
-        </div>
-      )}
+        )}
 
-      {isLoading && (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="icon-loader text-4xl text-[var(--primary-color)] animate-spin"></div>
-        </div>
-      )}
-
-      {!isLoading && newsList.length > 0 && (
-        <div className="flex-1 overflow-y-auto space-y-6">
-          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-            <h3 className="text-base font-bold text-gray-900 mb-3 pb-2 border-b border-gray-200">关键词结果</h3>
-            {keywordFiltered.length === 0 ? (
-              <p className="text-sm text-gray-500">暂无匹配关键词的新闻</p>
-            ) : (
-              <div className="space-y-3">
-                {keywordFiltered.map(function (news, index) { return <NewsItem key={'kw-' + index} news={news} />; })}
-              </div>
-            )}
+        <section className="card mb-4 p-4 md:p-5">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-lg font-bold text-slate-50">
+              <span className="icon-flame text-amber-300"></span>
+              推荐新闻专区
+            </h2>
+            <span className="text-xs text-slate-400">锁定关键词头条 · 近 72 小时</span>
           </div>
-          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-            <h3 className="text-base font-bold text-gray-900 mb-3 pb-2 border-b border-gray-200">常规新闻</h3>
-            {regularFiltered.length === 0 ? (
-              <p className="text-sm text-gray-500">暂无常规新闻</p>
-            ) : (
-              <div className="space-y-3">
-                {regularFiltered.map(function (news, index) { return <NewsItem key={'reg-' + index} news={news} />; })}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function NewsItem({ news }) {
-  const cleanText = (text) => {
-    return text.replace(/<[^>]*>/g, '').trim();
-  };
-
-  return (
-    <div className="p-4 border border-gray-200 rounded-xl bg-white hover:shadow-lg transition-shadow">
-      <h3 className="font-bold text-base md:text-lg text-gray-900 mb-3 leading-snug">
-        {cleanText(news.title)}
-      </h3>
-      <p className="text-sm text-gray-600 mb-3 leading-relaxed line-clamp-3">
-        {cleanText(news.description)}
-      </p>
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-1.5">
-          <span className="text-xs bg-green-50 text-green-700 px-2 py-1 rounded border border-green-200 font-medium">
-            {news.sourceName}
-          </span>
-          {(news.matchedKeywords || []).map((keyword, i) => (
-            <span 
-              key={i} 
-              className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200"
-            >
-              {keyword}
-            </span>
-          ))}
-        </div>
-        <a
-          href={news.link}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1 whitespace-nowrap flex-shrink-0 font-medium"
-        >
-          详情
-          <div className="icon-external-link text-sm"></div>
-        </a>
-      </div>
-    </div>
-  );
-}
-
-function _NewsConfigUnused({ config, setConfig, onSave }) {
-  const [newRssFeed, setNewRssFeed] = React.useState('');
-  const [newKeyword, setNewKeyword] = React.useState('');
-  const [newRecipient, setNewRecipient] = React.useState('');
-  const [testingFeed, setTestingFeed] = React.useState(false);
-  const [testResult, setTestResult] = React.useState(null);
-
-  const testRssFeed = async (feedUrl) => {
-    if (!feedUrl.trim()) {
-      alert('请先输入RSS订阅源地址');
-      return;
-    }
-
-    setTestingFeed(true);
-    setTestResult(null);
-
-    try {
-      const proxyUrl = `https://proxy-api.trickle-app.host/?url=${encodeURIComponent(feedUrl)}`;
-      
-      // Add timeout to prevent hanging
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
-      
-      const response = await fetch(proxyUrl, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/rss+xml, application/xml, text/xml, application/atom+xml, */*'
-        },
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        let errorMsg = '';
-        if (response.status === 404) {
-          errorMsg = 'RSS源不存在或地址错误 (404)';
-        } else if (response.status === 503) {
-          errorMsg = 'RSS源暂时不可用，请稍后重试 (503)';
-        } else if (response.status === 403) {
-          errorMsg = 'RSS源拒绝访问 (403)';
-        } else if (response.status === 500) {
-          errorMsg = 'RSS源服务器错误 (500)';
-        } else {
-          errorMsg = `HTTP错误 ${response.status}`;
-        }
-        throw new Error(errorMsg);
-      }
-
-      const text = await response.text();
-      
-      if (!text || text.trim().length === 0) {
-        throw new Error('RSS源返回空内容');
-      }
-      
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(text, 'text/xml');
-
-      const parserError = xmlDoc.querySelector('parsererror');
-      if (parserError) {
-        throw new Error('RSS源格式无效，无法解析XML');
-      }
-
-      let items = xmlDoc.querySelectorAll('item');
-      if (items.length === 0) {
-        items = xmlDoc.querySelectorAll('entry');
-      }
-
-      if (items.length === 0) {
-        throw new Error('RSS源中未找到任何新闻条目');
-      }
-
-      setTestResult({
-        success: true,
-        message: `✅ 测试成功！找到 ${items.length} 条新闻`,
-        itemCount: items.length
-      });
-    } catch (error) {
-      console.error('RSS测试失败:', error);
-      
-      let errorMessage = error.message;
-      if (error.name === 'AbortError') {
-        errorMessage = '请求超时，RSS源响应太慢';
-      }
-      
-      setTestResult({
-        success: false,
-        message: `❌ 测试失败: ${errorMessage}`
-      });
-    } finally {
-      setTestingFeed(false);
-    }
-  };
-
-  return (
-    <div>
-      <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-        <div className="icon-settings text-lg text-blue-600"></div>
-        订阅配置
-      </h2>
-
-      <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2">
-        <RSSFeedsSection 
-          feeds={config.rssFeeds}
-          newFeed={newRssFeed}
-          setNewFeed={setNewRssFeed}
-          onUpdate={(feeds) => setConfig({ ...config, rssFeeds: feeds })}
-          testingFeed={testingFeed}
-          testResult={testResult}
-          onTestFeed={() => testRssFeed(newRssFeed)}
-        />
-
-        <KeywordsSection
-          keywords={config.keywords}
-          newKeyword={newKeyword}
-          setNewKeyword={setNewKeyword}
-          onUpdate={(keywords) => setConfig({ ...config, keywords })}
-        />
-
-        <div>
-          <label className="block text-sm font-medium mb-2">收件邮箱</label>
-          <div className="space-y-2">
-            {config.recipientEmails.map((email, index) => (
-              <div key={index} className="flex gap-2">
-                <input
-                  type="email"
-                  value={email}
-                  readOnly
-                  className="flex-1 px-3 py-2 text-sm border rounded-lg bg-gray-50"
-                />
-                <button
-                  onClick={() => {
-                    const newEmails = config.recipientEmails.filter((_, i) => i !== index);
-                    setConfig({ ...config, recipientEmails: newEmails });
-                  }}
-                  className="btn btn-danger"
-                >
-                  <div className="icon-trash-2 text-sm"></div>
-                </button>
-              </div>
-            ))}
-            <div className="flex gap-2">
-              <input
-                type="email"
-                value={newRecipient}
-                onChange={(e) => setNewRecipient(e.target.value)}
-                placeholder="添加收件邮箱"
-                className="flex-1 px-3 py-2 text-sm border rounded-lg"
-              />
-              <button
-                onClick={() => {
-                  if (newRecipient.trim()) {
-                    setConfig({ 
-                      ...config, 
-                      recipientEmails: [...config.recipientEmails, newRecipient.trim()] 
-                    });
-                    setNewRecipient('');
+          <div className="mb-4 flex flex-wrap gap-2">
+            {pinnedKeywords.map(function (kw) {
+              var locked = (window.LOCKED_PINNED_KEYWORDS || []).indexOf(kw) >= 0;
+              return (
+                <span
+                  key={kw}
+                  className={
+                    'inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold ' +
+                    (locked
+                      ? 'border-amber-300/30 bg-amber-400/10 text-amber-100'
+                      : 'border-white/15 bg-white/[0.08] text-slate-200')
                   }
-                }}
-                className="btn btn-success"
-              >
-                <div className="icon-plus text-sm"></div>
+                >
+                  {locked && <span className="icon-lock text-[10px] opacity-80"></span>}
+                  {kw}
+                  {!locked && (
+                    <button type="button" onClick={() => removeExtraPinned(kw)} className="opacity-70 hover:opacity-100">
+                      <span className="icon-x text-[10px]"></span>
+                    </button>
+                  )}
+                </span>
+              );
+            })}
+            <div className="flex items-center gap-1">
+              <input
+                value={newPinnedInput}
+                onChange={(e) => setNewPinnedInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') addPinnedKeyword(); }}
+                placeholder="添加关注词"
+                className="h-8 w-28 rounded-lg border border-white/15 bg-slate-950/50 px-2 text-xs text-slate-100 outline-none focus:border-cyan-400/50"
+              />
+              <button type="button" onClick={addPinnedKeyword} className="btn btn-secondary btn-sm">
+                添加
               </button>
             </div>
           </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-2">自动获取并发送时间</label>
-          <input
-            type="time"
-            value={config.scheduleTime}
-            onChange={(e) => setConfig({ ...config, scheduleTime: e.target.value })}
-            className="w-full px-3 py-2 text-sm border rounded-lg"
-          />
-          <p className="text-xs text-gray-500 mt-1">
-            系统将在设定时间自动获取新闻并发送邮件
-          </p>
-        </div>
-
-        <button onClick={onSave} className="w-full btn btn-primary">
-          保存配置
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function RSSFeedsSection({ feeds, newFeed, setNewFeed, onUpdate, testingFeed, testResult, onTestFeed }) {
-  const [isExpanded, setIsExpanded] = React.useState(false);
-  
-  const getSourceNameFromUrl = (feedUrl) => {
-    const sourceMapping = {
-      'plink.anyfeeder.com/zaobao': '联合早报',
-      'rsshub.app/zaobao': '联合早报',
-      'plink.anyfeeder.com/voa': 'VOA',
-      'plink.anyfeeder.com/fortunechina': '财富中文网',
-      'plink.anyfeeder.com/reuters': '路透社',
-      'plink.anyfeeder.com/bbc': 'BBC',
-      'plink.anyfeeder.com/weixin/cctvnewscenter': '央视新闻',
-      'plink.anyfeeder.com/guangmingribao': '光明日报',
-      'plink.anyfeeder.com/people-daily': '人民日报',
-      'plink.anyfeeder.com/weixin/wallstreetcn': '华尔街见闻',
-      'plink.anyfeeder.com/tmtpost': '钛媒体',
-      'plink.anyfeeder.com/qq': '腾讯新闻',
-      'plink.anyfeeder.com/weixin/CBNweekly2008': '第一财经周刊',
-      'plink.anyfeeder.com/thepaper': '澎湃新闻',
-      'plink.anyfeeder.com/abc': 'ABC新闻',
-      'plink.anyfeeder.com/nytimes': '纽约时报',
-      'www.reddit.com/r/ecommerce': 'Reddit电商版块'
-    };
-    
-    for (const [key, value] of Object.entries(sourceMapping)) {
-      if (feedUrl.includes(key)) {
-        return value;
-      }
-    }
-    
-    return new URL(feedUrl).hostname;
-  };
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <label className="block text-sm font-medium">RSS订阅源 ({feeds.length})</label>
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
-        >
-          {isExpanded ? (
-            <>
-              <span>收起</span>
-              <div className="icon-chevron-up text-xs"></div>
-            </>
+          {isLoadingPinned ? (
+            <div className="flex justify-center py-10">
+              <div className="icon-loader animate-spin text-2xl text-cyan-300"></div>
+            </div>
+          ) : pinnedNews.length === 0 ? (
+            <p className="py-6 text-center text-sm text-slate-400">暂无推荐头条</p>
           ) : (
-            <>
-              <span>展开</span>
-              <div className="icon-chevron-down text-xs"></div>
-            </>
+            <div className="space-y-2">
+              {pinnedNews.slice(0, 20).map(function (news, idx) {
+                return <HeadlineNewsRow key={'pin-' + idx} news={news} rank={idx + 1} />;
+              })}
+            </div>
           )}
-        </button>
-      </div>
-      
-      {isExpanded && (
-        <div className="space-y-2 mb-3 max-h-60 overflow-y-auto">
-          {feeds.map((feed, index) => (
-          <div key={index} className="flex items-center gap-3 p-2 border rounded-lg bg-gray-50">
-            <div className="flex-shrink-0 min-w-[100px]">
-              <span className="text-sm font-semibold text-gray-900">{getSourceNameFromUrl(feed)}</span>
+        </section>
+
+        {(urlParams.code || urlParams.name || stockKeywords.length > 0) && (
+          <section className="card p-4 md:p-5">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-lg font-bold text-slate-50">
+                {urlParams.code ? `${urlParams.code}${urlParams.name ? ' ' + urlParams.name : ''}` : '关键词'} · 相关新闻
+              </h2>
+              <div className="flex flex-wrap gap-1.5">
+                {stockKeywords.map(function (kw) {
+                  return (
+                    <span key={kw} className="rounded-full border border-cyan-300/25 bg-cyan-400/10 px-2.5 py-0.5 text-[11px] text-cyan-100">
+                      {kw}
+                    </span>
+                  );
+                })}
+              </div>
             </div>
-            <div className="flex-1 overflow-hidden">
-              <a 
-                href={feed}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-blue-600 hover:text-blue-800 hover:underline truncate block"
-                title={feed}
-              >
-                {feed}
-              </a>
-            </div>
-            <button
-              onClick={() => onUpdate(feeds.filter((_, i) => i !== index))}
-              className="btn btn-danger btn-sm flex-shrink-0"
-            >
-              删除
-            </button>
-          </div>
-        ))}
-        </div>
-      )}
-      
-      <div className="space-y-2">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={newFeed}
-            onChange={(e) => setNewFeed(e.target.value)}
-            placeholder="添加RSS订阅源"
-            className="flex-1 px-3 py-2 text-sm border rounded-lg"
-          />
-          <button
-            onClick={onTestFeed}
-            disabled={testingFeed || !newFeed.trim()}
-            className="btn btn-secondary disabled:opacity-50 flex items-center gap-1"
-            title="测试RSS源"
-          >
-            {testingFeed ? (
-              <>
-                <div className="icon-loader text-sm animate-spin"></div>
-                <span className="hidden sm:inline">测试中</span>
-              </>
+            {isLoadingStock ? (
+              <div className="flex justify-center py-8">
+                <div className="icon-loader animate-spin text-2xl text-cyan-300"></div>
+              </div>
+            ) : stockNews.length === 0 ? (
+              <p className="py-6 text-center text-sm text-slate-400">
+                未匹配到相关新闻。请确认已从持仓/详情页带入关键词，或检查 GNews API Key。
+              </p>
             ) : (
-              <>
-                <div className="icon-check-circle text-sm"></div>
-                <span className="hidden sm:inline">测试</span>
-              </>
+              <div className="grid gap-3 md:grid-cols-2">
+                {stockNews.map(function (news, idx) {
+                  return <NewsCard key={'stock-' + idx} news={news} />;
+                })}
+              </div>
             )}
-          </button>
-          <button
-            onClick={() => {
-              if (newFeed.trim()) {
-                onUpdate([...feeds, newFeed.trim()]);
-                setNewFeed('');
-              }
-            }}
-            className="btn btn-success"
-          >
-            <div className="icon-plus text-sm"></div>
-          </button>
-        </div>
-        {testResult && (
-          <div className={`p-2 rounded text-sm ${
-            testResult.success 
-              ? 'bg-green-50 text-green-700 border border-green-200' 
-              : 'bg-red-50 text-red-700 border border-red-200'
-          }`}>
-            {testResult.message}
-          </div>
+          </section>
         )}
       </div>
     </div>
   );
 }
 
-function KeywordsSection({ keywords, newKeyword, setNewKeyword, onUpdate }) {
+function HeadlineNewsRow({ news, rank }) {
+  var clean = (news.title || '').replace(/<[^>]*>/g, '').trim();
   return (
-    <div>
-      <label className="block text-sm font-medium mb-2">关键词</label>
-      <div className="flex flex-wrap gap-2 mb-2">
-        {keywords.map((keyword, index) => (
-          <span key={index} className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm flex items-center gap-2">
-            {keyword}
-            <button
-              onClick={() => onUpdate(keywords.filter((_, i) => i !== index))}
-              className="text-blue-600 hover:text-blue-800"
-            >
-              <div className="icon-x text-xs"></div>
-            </button>
-          </span>
-        ))}
+    <a
+      href={news.link || '#'}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 transition-colors hover:border-cyan-300/30 hover:bg-white/[0.08]"
+    >
+      <span className="gx-num mt-0.5 w-6 shrink-0 text-center text-sm font-black text-amber-300">{rank}</span>
+      <div className="min-w-0 flex-1">
+        <h3 className="line-clamp-2 text-sm font-bold leading-snug text-slate-50 group-hover:text-cyan-100 md:text-base">
+          {clean}
+        </h3>
+        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+          <SourceBadge news={news} />
+          {formatNewsTime(news.pub_date) && <span>{formatNewsTime(news.pub_date)}</span>}
+          {(news.matchedKeywords || []).slice(0, 3).map(function (kw) {
+            return (
+              <span key={kw} className="rounded border border-blue-300/20 bg-blue-400/10 px-1.5 py-0.5 text-blue-100">
+                {kw}
+              </span>
+            );
+          })}
+        </div>
       </div>
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={newKeyword}
-          onChange={(e) => setNewKeyword(e.target.value)}
-          placeholder="添加关键词"
-          className="flex-1 px-3 py-2 text-sm border rounded-lg"
-        />
-        <button
-          onClick={() => {
-            if (newKeyword.trim()) {
-              onUpdate([...keywords, newKeyword.trim()]);
-              setNewKeyword('');
-            }
-          }}
-          className="btn btn-success"
-        >
-          <div className="icon-plus text-sm"></div>
-        </button>
-      </div>
-    </div>
+      <span className="icon-external-link shrink-0 text-slate-500 group-hover:text-cyan-200"></span>
+    </a>
   );
 }
 
+function NewsCard({ news }) {
+  var cleanTitle = (news.title || '').replace(/<[^>]*>/g, '').trim();
+  var cleanDesc = (news.description || '').replace(/<[^>]*>/g, '').trim();
+  return (
+    <a
+      href={news.link || '#'}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="block rounded-2xl border border-white/10 bg-white/[0.05] p-4 transition-colors hover:border-pink-300/30 hover:bg-white/[0.08]"
+    >
+      <div className="mb-2 flex flex-wrap items-center gap-1.5">
+        <SourceBadge news={news} />
+        {(news.matchedKeywords || []).map(function (kw, i) {
+          return (
+            <span key={i} className="rounded-full border border-blue-300/20 bg-blue-400/10 px-2 py-0.5 text-[11px] text-blue-100">
+              {kw}
+            </span>
+          );
+        })}
+      </div>
+      <h3 className="line-clamp-2 text-sm font-bold leading-snug text-slate-50 md:text-base">{cleanTitle}</h3>
+      {cleanDesc && <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-slate-400">{cleanDesc}</p>}
+    </a>
+  );
+}
 
+function SourceBadge({ news }) {
+  var isGnews = news.sourceType === 'gnews' || String(news.sourceName || '').toLowerCase().indexOf('gnews') >= 0;
+  return (
+    <span
+      className={
+        'rounded-full border px-2 py-0.5 text-[11px] font-semibold ' +
+        (isGnews
+          ? 'border-violet-300/30 bg-violet-400/10 text-violet-100'
+          : 'border-emerald-300/25 bg-emerald-400/10 text-emerald-100')
+      }
+    >
+      {isGnews ? 'GNews' : news.sourceName || 'RSS'}
+    </span>
+  );
+}
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(

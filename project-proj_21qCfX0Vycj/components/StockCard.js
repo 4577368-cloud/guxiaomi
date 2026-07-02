@@ -432,7 +432,6 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
     };
 
     const marketStr = stock.market === 'US' ? '美股' : stock.market === 'HK' ? '港股' : 'A股';
-    const keywords = Array.isArray(stock.keywords) ? stock.keywords : [];
     const returnPath = typeof window !== 'undefined'
       ? `${window.location.pathname.split('/').pop() || 'index.html'}${window.location.search || ''}${window.location.hash || ''}`
       : 'index.html';
@@ -440,7 +439,9 @@ function StockCard({ stock: stockProp, onUpdate, onDelete, isCollapsed, onToggle
     const detailUrl = `stock-detail.html?code=${encodeURIComponent(stock.symbol)}&market=${encodeURIComponent(marketStr)}${stock.name ? '&name=' + encodeURIComponent(stock.name) : ''}`;
     const analysisUrl = `analysis.html?code=${encodeURIComponent(stock.symbol)}&market=${encodeURIComponent(marketStr)}${stock.name ? '&name=' + encodeURIComponent(stock.name) : ''}${fromParam}`;
     const paipanUrl = `ziwei.html?code=${encodeURIComponent(stock.symbol)}&market=${encodeURIComponent(marketStr)}${stock.name ? '&name=' + encodeURIComponent(stock.name) : ''}${fromParam}`;
-    const newsUrl = 'news.html?code=' + encodeURIComponent(stock.symbol) + '&market=' + encodeURIComponent(marketStr) + (stock.name ? '&name=' + encodeURIComponent(stock.name) : '') + (keywords.length ? '&keywords=' + encodeURIComponent(keywords.join(',')) : '') + fromParam;
+    const newsUrl = typeof window.buildNewsUrl === 'function'
+      ? window.buildNewsUrl(stock, { from: returnPath })
+      : 'news.html?code=' + encodeURIComponent(stock.symbol) + '&market=' + encodeURIComponent(marketStr) + (stock.name ? '&name=' + encodeURIComponent(stock.name) : '') + fromParam;
 
     const handleAddKeyword = (kw) => {
       const k = (kw || '').trim();

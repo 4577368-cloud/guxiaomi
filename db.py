@@ -289,6 +289,39 @@ def init_db() -> None:
         """,
         commit=True,
     )
+    _execute(
+        """
+        CREATE TABLE IF NOT EXISTS stock_price_snapshots (
+            id SERIAL PRIMARY KEY,
+            user_id VARCHAR(64) DEFAULT 'default',
+            symbol VARCHAR(32) NOT NULL,
+            market VARCHAR(32) NOT NULL,
+            snapshot_date DATE NOT NULL,
+            price NUMERIC(18,4),
+            previous_close NUMERIC(18,4),
+            change_amount NUMERIC(18,4),
+            change_percent NUMERIC(18,4),
+            shares NUMERIC(18,4),
+            market_value NUMERIC(18,4),
+            daily_profit NUMERIC(18,4),
+            source VARCHAR(64),
+            context VARCHAR(32) DEFAULT 'quote',
+            quote_json JSONB,
+            fetched_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW(),
+            UNIQUE(user_id, market, symbol, snapshot_date)
+        );
+        """,
+        commit=True,
+    )
+    _execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_price_snapshots_symbol_date
+            ON stock_price_snapshots(user_id, market, symbol, snapshot_date DESC);
+        """,
+        commit=True,
+    )
 
 
 def _parse_dt(value: Any) -> Optional[datetime]:
@@ -302,6 +335,21 @@ def _parse_dt(value: Any) -> Optional[datetime]:
                 return datetime.strptime(value, fmt)
             except ValueError:
                 continue
+    return None
+
+
+def _parse_date(value: Any):
+    """解析 YYYY-MM-DD 日期。"""
+    if value is None:
+        return None
+    if hasattr(value, "isoformat") and not isinstance(value, str):
+        return value
+    if isinstance(value, str):
+        s = value.strip()[:10]
+        try:
+            return datetime.strptime(s, "%Y-%m-%d").date()
+        except ValueError:
+            return None
     return None
 
 
@@ -791,6 +839,9 @@ def watchlist_upsert(user_id: str, item: Dict[str, Any]) -> None:
         ),
         commit=True,
     )
+    _sync_price_history_to_snapshots(
+        user_id, symbol, market, item.get("priceHistory"), context="watchlist", source="watchlist_sync"
+    )
 
 
 def watchlist_delete(user_id: str, symbol: str, market: str) -> bool:
@@ -889,6 +940,9 @@ def portfolio_upsert(user_id: str, stock: Dict[str, Any]) -> None:
         ),
         commit=True,
     )
+    _sync_price_history_to_snapshots(
+        user_id, symbol, market, stock.get("priceHistory"), context="portfolio", source="portfolio_sync"
+    )
 
 
 def portfolio_delete(user_id: str, symbol: str, market: str) -> bool:
@@ -985,3 +1039,178 @@ def settings_set(user_id: str, settings: Dict[str, Any]) -> None:
         ),
         commit=True,
     )
+
+
+# ---------------------------------------------------------------------------
+# Stock price snapshots (daily quotes / portfolio marks)
+# ---------------------------------------------------------------------------
+
+def _snapshot_row_to_history(row: Dict[str, Any]) -> Dict[str, Any]:
+    snap = row.get("snapshot_date")
+    date_str = snap.isoformat() if hasattr(snap, "isoformat") else str(snap or "")
+    return {
+        "date": date_str,
+        "price": float(row["price"]) if row.get("price") is not None else None,
+        "previousClose": float(row["previous_close"]) if row.get("previous_close") is not None else None,
+        "shares": float(row["shares"]) if row.get("shares") is not None else None,
+        "dailyProfit": float(row["daily_profit"]) if row.get("daily_profit") is not None else None,
+        "marketValue": float(row["market_value"]) if row.get("market_value") is not None else None,
+        "change": float(row["change_amount"]) if row.get("change_amount") is not None else None,
+        "changePercent": float(row["change_percent"]) if row.get("change_percent") is not None else None,
+        "source": row.get("source") or "",
+        "context": row.get("context") or "",
+    }
+
+
+def _sync_price_history_to_snapshots(
+    user_id: str,
+    symbol: str,
+    market: str,
+    price_history: Any,
+    context: str = "portfolio",
+    source: str = "history_sync",
+) -> None:
+    """把 priceHistory 数组逐日写入快照表。"""
+    if not is_db_enabled() or not price_history:
+        return
+    if isinstance(price_history, str):
+        try:
+            price_history = json.loads(price_history)
+        except Exception:
+            return
+    if not isinstance(price_history, list):
+        return
+    for entry in price_history:
+        if not isinstance(entry, dict):
+            continue
+        snap_date = _parse_date(entry.get("date"))
+        if snap_date is None:
+            continue
+        price = _num_or_none(entry.get("price"))
+        if price is None or price <= 0:
+            continue
+        shares = _num_or_none(entry.get("shares"))
+        market_value = (price * shares) if shares is not None and shares > 0 else None
+        price_snapshot_upsert(
+            user_id,
+            {
+                "symbol": symbol,
+                "market": market,
+                "snapshot_date": snap_date.isoformat(),
+                "price": price,
+                "previous_close": _num_or_none(entry.get("previousClose")),
+                "shares": shares,
+                "market_value": market_value,
+                "daily_profit": _num_or_none(entry.get("dailyProfit")),
+                "context": context,
+                "source": source,
+            },
+        )
+
+
+def price_snapshot_upsert(user_id: str, snap: Dict[str, Any]) -> None:
+    if not is_db_enabled():
+        return
+    symbol = str(snap.get("symbol", "")).upper().strip()
+    market = str(snap.get("market", "")).upper().strip()
+    if not symbol or not market:
+        return
+    snap_date = _parse_date(snap.get("snapshot_date") or snap.get("date"))
+    if snap_date is None:
+        snap_date = datetime.now().date()
+    price = _num_or_none(snap.get("price"))
+    if price is None or price <= 0:
+        return
+    prev = _num_or_none(snap.get("previous_close") or snap.get("previousClose"))
+    shares = _num_or_none(snap.get("shares"))
+    market_value = _num_or_none(snap.get("market_value") or snap.get("marketValue"))
+    if market_value is None and shares is not None and shares > 0:
+        market_value = price * shares
+    change_amount = _num_or_none(snap.get("change_amount") or snap.get("change"))
+    change_percent = _num_or_none(snap.get("change_percent") or snap.get("changePercent"))
+    if change_amount is None and prev is not None:
+        change_amount = price - prev
+    if change_percent is None and prev is not None and prev > 0:
+        change_percent = (price - prev) / prev * 100
+    quote_json = snap.get("quote_json") or snap.get("quote") or snap.get("marketData")
+    if quote_json is not None and not isinstance(quote_json, str):
+        quote_json = json.dumps(quote_json, ensure_ascii=False)
+    fetched_at = _parse_dt(snap.get("fetched_at")) or datetime.now()
+    _execute(
+        """
+        INSERT INTO stock_price_snapshots (
+            user_id, symbol, market, snapshot_date, price, previous_close,
+            change_amount, change_percent, shares, market_value, daily_profit,
+            source, context, quote_json, fetched_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (user_id, market, symbol, snapshot_date) DO UPDATE SET
+            price = EXCLUDED.price,
+            previous_close = COALESCE(EXCLUDED.previous_close, stock_price_snapshots.previous_close),
+            change_amount = COALESCE(EXCLUDED.change_amount, stock_price_snapshots.change_amount),
+            change_percent = COALESCE(EXCLUDED.change_percent, stock_price_snapshots.change_percent),
+            shares = COALESCE(EXCLUDED.shares, stock_price_snapshots.shares),
+            market_value = COALESCE(EXCLUDED.market_value, stock_price_snapshots.market_value),
+            daily_profit = COALESCE(EXCLUDED.daily_profit, stock_price_snapshots.daily_profit),
+            source = COALESCE(EXCLUDED.source, stock_price_snapshots.source),
+            context = COALESCE(EXCLUDED.context, stock_price_snapshots.context),
+            quote_json = COALESCE(EXCLUDED.quote_json, stock_price_snapshots.quote_json),
+            fetched_at = EXCLUDED.fetched_at,
+            updated_at = NOW();
+        """,
+        (
+            user_id,
+            symbol,
+            market,
+            snap_date,
+            price,
+            prev,
+            change_amount,
+            change_percent,
+            shares,
+            market_value,
+            _num_or_none(snap.get("daily_profit") or snap.get("dailyProfit")),
+            str(snap.get("source") or "").strip() or None,
+            str(snap.get("context") or "quote").strip() or "quote",
+            quote_json,
+            fetched_at,
+        ),
+        commit=True,
+    )
+
+
+def price_snapshot_record_batch(user_id: str, items: List[Dict[str, Any]]) -> int:
+    if not is_db_enabled():
+        return 0
+    count = 0
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        price_snapshot_upsert(user_id, item)
+        count += 1
+    return count
+
+
+def price_snapshot_list(
+    symbol: str,
+    market: str,
+    days: int = 30,
+    user_id: str = "default",
+) -> List[Dict[str, Any]]:
+    if not is_db_enabled():
+        return []
+    sym = str(symbol or "").upper().strip()
+    mkt = str(market or "").upper().strip()
+    n = max(1, min(int(days or 30), 365))
+    rows = _execute(
+        """
+        SELECT snapshot_date, price, previous_close, change_amount, change_percent,
+               shares, market_value, daily_profit, source, context, quote_json, fetched_at
+        FROM stock_price_snapshots
+        WHERE user_id = %s AND symbol = %s AND market = %s
+          AND snapshot_date >= (CURRENT_DATE - %s::integer)
+        ORDER BY snapshot_date ASC
+        """,
+        (user_id, sym, mkt, n),
+        fetch=True,
+    )
+    return [_snapshot_row_to_history(row) for row in (rows or [])]

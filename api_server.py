@@ -683,6 +683,33 @@ class SettingsPayload(BaseModel):
     settings: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
+class PriceSnapshotPayload(BaseModel):
+    symbol: str
+    market: str
+    snapshot_date: Optional[str] = None
+    date: Optional[str] = None
+    price: float
+    previous_close: Optional[float] = None
+    previousClose: Optional[float] = None
+    change_amount: Optional[float] = None
+    change: Optional[float] = None
+    change_percent: Optional[float] = None
+    changePercent: Optional[float] = None
+    shares: Optional[float] = None
+    market_value: Optional[float] = None
+    marketValue: Optional[float] = None
+    daily_profit: Optional[float] = None
+    dailyProfit: Optional[float] = None
+    source: Optional[str] = None
+    context: Optional[str] = "quote"
+    quote: Optional[Dict[str, Any]] = None
+    marketData: Optional[Dict[str, Any]] = None
+
+
+class PriceSnapshotBatchRequest(BaseModel):
+    items: List[PriceSnapshotPayload] = Field(default_factory=list)
+
+
 _MODEL_KEYS = ("model1", "model2", "model3")
 _MODEL_LABEL_DEFAULTS = {
     "model1": "MiniMax",
@@ -824,6 +851,9 @@ def _run_analyze_task(job_id: str, req: AnalyzeRequest):
         if req.client_quote and not req.client_quote.is_mock:
             cq_dict = req.client_quote.model_dump(exclude_none=False)
         udn = (req.user_data_notes or "").strip() or None
+        price_notes = _build_price_history_notes(req.stock_code.strip(), market)
+        if price_notes:
+            udn = (udn + "\n\n" + price_notes).strip() if udn else price_notes
         sn = (req.stock_name or "").strip() or None
         report = analyst.analyze(
             stock_code=req.stock_code.strip(),
@@ -1313,7 +1343,15 @@ def api_portfolio_save(stock: PortfolioStockPayload):
 
 @app.post("/api/portfolio/save-all")
 def api_portfolio_save_all(stocks: List[PortfolioStockPayload]):
-    """批量保存持仓股票（全量 upsert）。"""
+    """批量保存持仓股票（全量同步：删除云端多余项后 upsert）。"""
+    incoming_keys = {
+        (s.market.upper().strip(), s.symbol.upper().strip())
+        for s in stocks
+    }
+    for item in db.portfolio_list():
+        key = (item["market"].upper().strip(), item["symbol"].upper().strip())
+        if key not in incoming_keys:
+            db.portfolio_delete("default", item["symbol"], item["market"])
     for stock in stocks:
         db.portfolio_upsert("default", stock.model_dump())
     return {"ok": True, "items": db.portfolio_list()}
@@ -1355,6 +1393,129 @@ def api_settings_set(payload: SettingsPayload):
     return {"ok": True, "settings": db.settings_get()}
 
 
+def _persist_quote_snapshot(
+    symbol: str,
+    market: str,
+    quote: Dict[str, Any],
+    source: str = "",
+    context: str = "quote",
+    shares: Optional[float] = None,
+    market_value: Optional[float] = None,
+    daily_profit: Optional[float] = None,
+) -> None:
+    """每次成功拉取行情后写入日快照。"""
+    if not db.is_db_enabled() or not quote:
+        return
+    try:
+        db.price_snapshot_upsert(
+            "default",
+            {
+                "symbol": symbol,
+                "market": market,
+                "snapshot_date": datetime.now().strftime("%Y-%m-%d"),
+                "price": quote.get("price"),
+                "previous_close": quote.get("previousClose"),
+                "change_amount": quote.get("change"),
+                "change_percent": quote.get("changePercent"),
+                "shares": shares,
+                "market_value": market_value,
+                "daily_profit": daily_profit,
+                "source": source or quote.get("source") or "",
+                "context": context,
+                "quote": quote,
+            },
+        )
+    except Exception:
+        pass
+
+
+def _merge_history_rows(external: List[Dict[str, Any]], snapshots: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """合并外部日线与数据库快照，按日期去重（快照优先补 shares/marketValue）。"""
+    by_date: Dict[str, Dict[str, Any]] = {}
+    for row in external or []:
+        if not isinstance(row, dict):
+            continue
+        d = (row.get("date") or row.get("Date") or "")[:10]
+        if not d:
+            continue
+        by_date[d] = dict(row)
+    for snap in snapshots or []:
+        d = (snap.get("date") or "")[:10]
+        if not d:
+            continue
+        existing = by_date.get(d) or {}
+        price = snap.get("price") or existing.get("close") or existing.get("price")
+        merged = {
+            **existing,
+            "date": d,
+            "close": price,
+            "price": price,
+            "previousClose": snap.get("previousClose") or existing.get("previousClose"),
+            "shares": snap.get("shares") if snap.get("shares") is not None else existing.get("shares"),
+            "dailyProfit": snap.get("dailyProfit") if snap.get("dailyProfit") is not None else existing.get("dailyProfit"),
+            "marketValue": snap.get("marketValue") if snap.get("marketValue") is not None else existing.get("marketValue"),
+            "source": snap.get("source") or existing.get("source") or "db_snapshot",
+        }
+        by_date[d] = merged
+    return [by_date[k] for k in sorted(by_date.keys())]
+
+
+def _build_price_history_notes(symbol: str, market: str) -> str:
+    """为分析任务拼接多周期价格快照摘要。"""
+    if not db.is_db_enabled():
+        return ""
+    sym = (symbol or "").strip().upper()
+    m = _normalize_market_code(market)
+    parts: List[str] = []
+    for days, label in ((7, "近7日"), (15, "近15日"), (30, "近30日")):
+        rows = db.price_snapshot_list(sym, m, days=days)
+        if not rows:
+            continue
+        lines = []
+        for r in rows:
+            line = f"{r.get('date')} 收盘{r.get('price')}"
+            if r.get("shares") is not None:
+                line += f" 持仓{r.get('shares')}"
+            if r.get("marketValue") is not None:
+                line += f" 市值{r.get('marketValue')}"
+            if r.get("dailyProfit") is not None:
+                line += f" 当日盈亏{r.get('dailyProfit')}"
+            lines.append(line)
+        parts.append(f"【{label}行情快照（数据库）】\n" + "\n".join(lines))
+    return "\n\n".join(parts)
+
+
+@app.post("/api/price-snapshots/record")
+def api_price_snapshots_record(req: PriceSnapshotBatchRequest):
+    """批量记录价格快照（前端刷新行情/更新持仓时调用）。"""
+    if not db.is_db_enabled():
+        return {"ok": False, "recorded": 0, "message": "数据库未启用"}
+    items = [item.model_dump(exclude_none=True) for item in req.items]
+    count = db.price_snapshot_record_batch("default", items)
+    return {"ok": True, "recorded": count}
+
+
+@app.get("/api/price-snapshots/history")
+def api_price_snapshots_history(symbol: str, market: str = "US", days: int = 30):
+    """查询某只股票在数据库中的日快照（7/15/30 天走势分析用）。"""
+    sym = (symbol or "").strip().upper()
+    if not sym:
+        raise HTTPException(status_code=400, detail="symbol 不能为空")
+    m = _normalize_market_code(market)
+    n = max(1, min(int(days or 30), 365))
+    if not db.is_db_enabled():
+        return {"ok": True, "symbol": sym, "market": m, "days": n, "history": [], "source": "none"}
+    history = db.price_snapshot_list(sym, m, days=n)
+    return {
+        "ok": True,
+        "symbol": sym,
+        "market": m,
+        "days": n,
+        "history": history,
+        "source": "postgres",
+    }
+
+
 @app.get("/api/stock/quote")
 def api_stock_quote(symbol: str, market: str = "US"):
     """实时行情：由后端拉取真实数据源，避免浏览器 CORS/代理导致落入模拟价。"""
@@ -1379,6 +1540,7 @@ def api_stock_quote(symbol: str, market: str = "US"):
     for source, fetcher in fetchers:
         try:
             quote = fetcher()
+            _persist_quote_snapshot(sym, m, quote, source=source, context="quote")
             return {
                 "ok": True,
                 "symbol": sym,
@@ -1392,6 +1554,8 @@ def api_stock_quote(symbol: str, market: str = "US"):
 
     try:
         quote = _fetch_quote_via_stock_service(sym, m)
+        src = quote.get("source") or "多源合并"
+        _persist_quote_snapshot(sym, m, quote, source=src, context="quote")
         return {
             "ok": True,
             "symbol": sym,
@@ -1448,18 +1612,33 @@ def api_stock_history(symbol: str, market: str = "US", days: int = 30):
         try:
             rows = fetcher()
             if rows:
+                db_rows = db.price_snapshot_list(sym, m, days=n) if db.is_db_enabled() else []
+                merged = _merge_history_rows(rows[-n:], db_rows)
                 return {
                     "ok": True,
                     "symbol": sym,
                     "market": m,
                     "days": n,
-                    "source": source,
+                    "source": source + ("+db" if db_rows else ""),
                     "has_alpha_vantage_key": bool(_alpha_vantage_key()),
-                    "history": rows[-n:],
+                    "history": merged[-n:],
                 }
             errors.append(f"{source}: empty")
         except Exception as exc:
             errors.append(f"{source}: {exc}")
+
+    if db.is_db_enabled():
+        db_rows = db.price_snapshot_list(sym, m, days=n)
+        if db_rows:
+            return {
+                "ok": True,
+                "symbol": sym,
+                "market": m,
+                "days": n,
+                "source": "postgres",
+                "has_alpha_vantage_key": bool(_alpha_vantage_key()),
+                "history": db_rows,
+            }
 
     return JSONResponse(
         {
@@ -1477,17 +1656,60 @@ def api_stock_history(symbol: str, market: str = "US", days: int = 30):
 
 
 @app.get("/api/news")
-def api_news(code: str, market: str = "A 股", name: str = "", keywords: str = "", hours: int = 48):
-    """拉取与该公司/股票相关的新闻（GNews + RSS）。keywords 为逗号分隔的备注关键词；hours 为新闻时效（默认 48）。"""
+def api_news(code: str = "", market: str = "A 股", name: str = "", keywords: str = "", hours: int = 48):
+    """拉取新闻（GNews + RSS）。keywords 为逗号分隔；仅关键词时可不传 code。"""
     try:
-        from news_feeds import get_news_for_page
-        market = _market_norm(market)
+        from news_feeds import get_news_for_page, _gnews_api_key
+        market = _market_norm(market) if market else ""
         extra = [k.strip() for k in keywords.split(",") if k.strip()] if keywords else None
-        raw = get_news_for_page(name or "", code.strip(), market, extra_keywords=extra, max_age_hours=hours, max_items=200)
-        items = [{"title": it.get("title") or "", "source": it.get("source") or "", "link": it.get("link") or "", "summary": it.get("summary") or "", "pub_date": it.get("pub_date") or ""} for it in raw]
-        return {"ok": True, "items": items}
+        raw = get_news_for_page(name or "", (code or "").strip(), market, extra_keywords=extra, max_age_hours=hours, max_items=200)
+        items = [{
+            "title": it.get("title") or "",
+            "source": it.get("source") or "",
+            "link": it.get("link") or "",
+            "summary": it.get("summary") or "",
+            "pub_date": it.get("pub_date") or "",
+            "source_type": it.get("source_type") or "rss",
+            "matched_keywords": it.get("matched_keywords") or [],
+        } for it in raw]
+        gnews_count = sum(1 for x in items if x.get("source_type") == "gnews")
+        return {
+            "ok": True,
+            "items": items,
+            "gnews_enabled": bool(_gnews_api_key()),
+            "gnews_count": gnews_count,
+            "rss_count": len(items) - gnews_count,
+        }
     except Exception as e:
-        return {"ok": False, "items": [], "error": str(e)}
+        return {"ok": False, "items": [], "gnews_enabled": False, "error": str(e)}
+
+
+@app.get("/api/news/pinned")
+def api_news_pinned(keywords: str = "", hours: int = 72):
+    """推荐新闻专区：按锁定关键词拉取头条。"""
+    try:
+        from news_feeds import get_pinned_headlines, _gnews_api_key
+        kw = [k.strip() for k in keywords.split(",") if k.strip()] if keywords else []
+        raw = get_pinned_headlines(kw, max_age_hours=hours, max_items=40)
+        items = [{
+            "title": it.get("title") or "",
+            "source": it.get("source") or "",
+            "link": it.get("link") or "",
+            "summary": it.get("summary") or "",
+            "pub_date": it.get("pub_date") or "",
+            "source_type": it.get("source_type") or "rss",
+            "matched_keywords": it.get("matched_keywords") or [],
+        } for it in raw]
+        gnews_count = sum(1 for x in items if x.get("source_type") == "gnews")
+        return {
+            "ok": True,
+            "items": items,
+            "gnews_enabled": bool(_gnews_api_key()),
+            "gnews_count": gnews_count,
+            "rss_count": len(items) - gnews_count,
+        }
+    except Exception as e:
+        return {"ok": False, "items": [], "gnews_enabled": False, "error": str(e)}
 
 
 @app.get("/api/health")

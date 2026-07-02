@@ -50,7 +50,7 @@ function migratePortfolioData(data) {
   };
 }
 
-function savePortfolio(portfolio) {
+function savePortfolio(portfolio, options) {
   try {
     const sanitizedPortfolio = portfolio.map(sanitizeStockData).filter(Boolean);
     const dataToSave = {
@@ -60,6 +60,13 @@ function savePortfolio(portfolio) {
     };
     localStorage.setItem(PORTFOLIO_STORAGE_KEY, JSON.stringify(dataToSave));
     console.log('投资组合数据已保存');
+    if (!options || !options.skipCloudSync) {
+      if (typeof window.persistAppPortfolio === 'function') {
+        window.persistAppPortfolio(sanitizedPortfolio);
+      } else if (typeof window.syncPortfolioToCloud === 'function') {
+        window.syncPortfolioToCloud(sanitizedPortfolio);
+      }
+    }
   } catch (error) {
     console.error('保存投资组合数据失败:', error);
   }
@@ -120,7 +127,7 @@ function exportPortfolio() {
   }
 }
 
-function saveCapitalPool(capitalPool) {
+function saveCapitalPool(capitalPool, options) {
   try {
     const dataToSave = {
       capitalPool: capitalPool,
@@ -128,6 +135,13 @@ function saveCapitalPool(capitalPool) {
     };
     localStorage.setItem('capital_pool_data', JSON.stringify(dataToSave));
     console.log('资金池数据已保存');
+    if (!options || !options.skipCloudSync) {
+      if (typeof window.persistAppCapitalPool === 'function') {
+        window.persistAppCapitalPool(capitalPool);
+      } else if (typeof window.syncCapitalPoolToCloud === 'function') {
+        window.syncCapitalPoolToCloud(capitalPool);
+      }
+    }
   } catch (error) {
     console.error('保存资金池数据失败:', error);
   }
@@ -223,6 +237,9 @@ function updateStockPriceHistory(stock, newPrice, previousClose) {
 
   const trimmed = priceHistory.slice(-365); // 只保留最近一年历史，防止无限增长
   saveStockPriceHistory(stock.symbol, stock.market, trimmed);
+  if (typeof window.recordStockPriceHistory === 'function') {
+    window.recordStockPriceHistory(stock.symbol, stock.market, trimmed, 'portfolio');
+  }
   return trimmed;
 }
 
@@ -272,7 +289,7 @@ function sanitizeWatchlistItem(item) {
   };
 }
 
-function saveWatchlist(watchlist) {
+function saveWatchlist(watchlist, options) {
   try {
     const sanitized = watchlist
       .map(item => sanitizeWatchlistItem(item))
@@ -284,6 +301,13 @@ function saveWatchlist(watchlist) {
     };
     localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(dataToSave));
     console.log('监控列表已保存');
+    if (!options || !options.skipCloudSync) {
+      if (typeof window.persistAppWatchlist === 'function') {
+        window.persistAppWatchlist(sanitized);
+      } else if (typeof window.syncWatchlistToCloud === 'function') {
+        window.syncWatchlistToCloud(sanitized);
+      }
+    }
   } catch (error) {
     console.error('保存监控列表失败:', error);
   }

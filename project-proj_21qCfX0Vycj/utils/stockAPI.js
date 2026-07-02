@@ -139,10 +139,17 @@ async function fetchQuoteFromBackend(symbol, market) {
       throw new Error(errMsg);
     }
     const q = data.quote;
-    return Object.assign({}, q, {
+    const result = Object.assign({}, q, {
       isMock: false,
       source: data.source || q.source || 'backend',
     });
+    if (typeof window.recordPriceSnapshot === 'function') {
+      window.recordPriceSnapshot(symbol, market, result, {
+        context: 'quote',
+        source: data.source || q.source || 'backend',
+      }).catch(function () {});
+    }
+    return result;
   } catch (error) {
     clearTimeout(timeoutId);
     throw error;

@@ -249,11 +249,11 @@ def fetch_gnews(query: str, api_key: str, max_articles: int = 10) -> List[dict]:
 
 
 def get_news_for_page(stock_name: str, stock_code: str, market: str, extra_keywords: Optional[List[str]] = None, max_age_hours: int = 48, max_items: int = 200) -> List[dict]:
-    """新闻页用：用股票代码+名称+备注关键词拉取，近 max_age_hours 小时，不限制每源条数。返回 [{title, link, summary, pub_date, source}]"""
-    keywords = []
+    """新闻页用：用股票代码+名称+备注关键词拉取，近 max_age_hours 小时。返回带 source_type / matched_keywords。"""
+    keywords: List[str] = []
     if stock_name:
-        keywords.append(stock_name)
-    code_clean = re.sub(r"[^\w]", "", stock_code).upper()
+        keywords.append(stock_name.strip())
+    code_clean = re.sub(r"[^\w]", "", stock_code or "").upper()
     if code_clean and code_clean not in keywords:
         keywords.append(code_clean)
     if extra_keywords:
@@ -261,35 +261,51 @@ def get_news_for_page(stock_name: str, stock_code: str, market: str, extra_keywo
             k = (k or "").strip()
             if k and k not in keywords:
                 keywords.append(k)
+    if not keywords and code_clean:
+        keywords = [code_clean]
     if not keywords:
-        keywords = [stock_code]
-    combined = []
+        return []
+
+    def _matched(text: str) -> List[str]:
+        t = (text or "").lower()
+        return [k for k in keywords if k and k.lower() in t]
+
+    def _enrich(it: dict, source_type: str, default_matched: Optional[List[str]] = None) -> dict:
+        text = (it.get("title") or "") + " " + (it.get("summary") or "")
+        matched = _matched(text) or default_matched or []
+        return {
+            **it,
+            "source_type": source_type,
+            "matched_keywords": matched,
+        }
+
+    combined: List[dict] = []
     seen = set()
     api_key = _gnews_api_key()
     if api_key:
-        for it in fetch_gnews(" OR ".join(keywords[:5]), api_key, max_articles=30):
+        gnews_query = " OR ".join(keywords[:5])
+        for it in fetch_gnews(gnews_query, api_key, max_articles=30):
             t = (it.get("title") or "").strip()
             if t and t not in seen:
                 seen.add(t)
-                combined.append(it)
+                combined.append(_enrich(it, "gnews", keywords[:3]))
     for it in fetch_rss_news(NEWSPAGE_RSS_URLS, keywords, max_age_hours=max_age_hours, max_results=max_items):
         t = (it.get("title") or "").strip()
         if t and t not in seen:
             seen.add(t)
-            combined.append(it)
-    # 若中文源无结果，尝试英文源（Reuters 等）带关键词或仅 48h 内
+            combined.append(_enrich(it, "rss"))
     if not combined:
         for it in fetch_rss_news(DEFAULT_RSS_URLS, keywords, max_age_hours=max_age_hours, max_results=max_items):
             t = (it.get("title") or "").strip()
             if t and t not in seen:
                 seen.add(t)
-                combined.append(it)
+                combined.append(_enrich(it, "rss"))
     if not combined:
         for it in fetch_rss_news(DEFAULT_RSS_URLS, None, max_age_hours=max_age_hours, max_results=min(50, max_items)):
             t = (it.get("title") or "").strip()
             if t and t not in seen:
                 seen.add(t)
-                combined.append(it)
+                combined.append(_enrich(it, "rss"))
     try:
         from dateutil import parser as date_parser
         def _sort_key(x):
@@ -302,6 +318,14 @@ def get_news_for_page(stock_name: str, stock_code: str, market: str, extra_keywo
     except Exception:
         pass
     return combined[:max_items]
+
+
+def get_pinned_headlines(keywords: List[str], max_age_hours: int = 72, max_items: int = 40) -> List[dict]:
+    """推荐专区：仅按锁定关键词聚合头条（GNews + RSS）。"""
+    clean = [k.strip() for k in (keywords or []) if k and str(k).strip()]
+    if not clean:
+        return []
+    return get_news_for_page("", "", "", extra_keywords=clean, max_age_hours=max_age_hours, max_items=max_items)
 
 
 def get_news_for_report(stock_name: str, stock_code: str, market: str, max_items: int = 20) -> str:

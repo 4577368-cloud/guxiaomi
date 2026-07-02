@@ -195,7 +195,12 @@ function App() {
     try {
       setIsLoading(true);
       fetchExchangeRates().catch(() => {});
-      const localPortfolio = loadPortfolio();
+      let localPortfolio = [];
+      if (typeof window.loadAppPortfolio === 'function') {
+        localPortfolio = await window.loadAppPortfolio();
+      } else {
+        localPortfolio = loadPortfolio();
+      }
       normalized = (Array.isArray(localPortfolio) ? localPortfolio : []).map(stock => {
         const symNorm = normalizePortfolioSymbol(stock.symbol, stock.market);
         const persistedHistory = window.loadStockPriceHistory
@@ -248,20 +253,28 @@ function App() {
       }
     }
     try {
-      const savedCapital = loadCapitalPool();
-      if (savedCapital && typeof savedCapital === 'object') {
-        setCapitalPool({
-          usd: Number(savedCapital.usd) || 0,
-          hkd: Number(savedCapital.hkd) || 0,
-          cny: Number(savedCapital.cny) || 0
-        });
+      let pool = { usd: 0, hkd: 0, cny: 0 };
+      if (typeof window.loadAppCapitalPool === 'function') {
+        pool = await window.loadAppCapitalPool();
+      } else {
+        pool = loadCapitalPool();
       }
+      setCapitalPool({
+        usd: Number(pool.usd) || 0,
+        hkd: Number(pool.hkd) || 0,
+        cny: Number(pool.cny) || 0
+      });
     } catch (e) {
       console.error('加载资金池失败', e);
     }
     // 加载监控列表
     try {
-      const savedWatchlist = window.loadWatchlist ? window.loadWatchlist() : [];
+      let savedWatchlist = [];
+      if (typeof window.loadAppWatchlist === 'function') {
+        savedWatchlist = await window.loadAppWatchlist();
+      } else {
+        savedWatchlist = window.loadWatchlist ? window.loadWatchlist() : [];
+      }
       const normalizedWatchlist = (Array.isArray(savedWatchlist) ? savedWatchlist : []).map(item => {
         const symNorm = normalizePortfolioSymbol(item.symbol, item.market);
         const persistedHistory = window.loadStockPriceHistory

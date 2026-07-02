@@ -56,6 +56,11 @@ function buildDetailUrl(path, stock) {
   params.set('code', stock.symbol || '');
   params.set('market', market);
   if (stock.name) params.set('name', stock.name);
+  const keywords =
+    typeof window.collectStockKeywords === 'function'
+      ? window.collectStockKeywords(stock)
+      : (Array.isArray(stock.keywords) ? stock.keywords : []);
+  if (keywords.length) params.set('keywords', keywords.join(','));
   params.set('from', getCurrentReturnPath());
   return `${path}?${params.toString()}`;
 }
@@ -325,9 +330,65 @@ function DetailHeaderMetric({ label, value, valueClass, hint }) {
   );
 }
 
+function getSparklineViewport(innerWidth) {
+  var mobile = innerWidth < 640;
+  var compact = innerWidth < 1024;
+  if (mobile) {
+    return {
+      width: 400,
+      height: 176,
+      pad: { left: 34, right: 8, top: 12, bottom: 22 },
+      pointRadius: 3,
+      selectedRadius: 5,
+      strokeWidth: 2.5,
+      tooltipWidth: 142,
+      yTickSize: 10,
+    };
+  }
+  if (compact) {
+    return {
+      width: 560,
+      height: 220,
+      pad: { left: 42, right: 12, top: 16, bottom: 34 },
+      pointRadius: 4,
+      selectedRadius: 6,
+      strokeWidth: 3.5,
+      tooltipWidth: 160,
+      yTickSize: 11,
+    };
+  }
+  return {
+    width: 720,
+    height: 260,
+    pad: { left: 54, right: 18, top: 20, bottom: 42 },
+    pointRadius: 4,
+    selectedRadius: 6,
+    strokeWidth: 4,
+    tooltipWidth: 174,
+    yTickSize: 11,
+  };
+}
+
+function useSparklineViewport() {
+  const [viewport, setViewport] = React.useState(function () {
+    return getSparklineViewport(typeof window !== 'undefined' ? window.innerWidth : 768);
+  });
+  React.useEffect(function () {
+    function onResize() {
+      setViewport(getSparklineViewport(window.innerWidth));
+    }
+    window.addEventListener('resize', onResize);
+    return function () {
+      window.removeEventListener('resize', onResize);
+    };
+  }, []);
+  return viewport;
+}
+
 function DetailSparkline({ history, currentPrice, positive, market }) {
   const [rangeDays, setRangeDays] = React.useState(15);
   const [activeIndex, setActiveIndex] = React.useState(null);
+  const viewport = useSparklineViewport();
   const rows = React.useMemo(() => {
     const list = (Array.isArray(history) ? history : [])
       .filter((row) => row && Number.isFinite(Number(row.price)))
@@ -354,9 +415,9 @@ function DetailSparkline({ history, currentPrice, positive, market }) {
   const min = Math.min.apply(null, prices);
   const max = Math.max.apply(null, prices);
   const range = Math.max(max - min, Math.abs(max) * 0.001, 0.001);
-  const width = 720;
-  const height = 260;
-  const pad = { left: 54, right: 18, top: 20, bottom: 42 };
+  const width = viewport.width;
+  const height = viewport.height;
+  const pad = viewport.pad;
   const chartW = width - pad.left - pad.right;
   const chartH = height - pad.top - pad.bottom;
   const coords = rows.map((row, idx) => {
@@ -403,7 +464,7 @@ function DetailSparkline({ history, currentPrice, positive, market }) {
   const areaPath = coords.length > 1
     ? `${smoothPath} L ${(end?.x || pad.left).toFixed(1)} ${(pad.top + chartH).toFixed(1)} L ${(start?.x || pad.left).toFixed(1)} ${(pad.top + chartH).toFixed(1)} Z`
     : '';
-  const tooltipWidth = 174;
+  const tooltipWidth = viewport.tooltipWidth;
   const tooltipX = selected ? Math.max(pad.left + 4, Math.min(width - pad.right - tooltipWidth, selected.x - tooltipWidth / 2)) : pad.left;
   const tooltipY = selected ? Math.max(pad.top + 8, selected.y - 76) : pad.top;
   const compactDate = (date) => {
@@ -462,23 +523,24 @@ function DetailSparkline({ history, currentPrice, positive, market }) {
           ))}
         </div>
       </div>
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="h-64 w-full touch-pan-y"
-        preserveAspectRatio="none"
-        aria-label="价格趋势图"
-        onMouseMove={(event) => syncActivePoint(event.clientX, event.currentTarget)}
-        onTouchMove={(event) => {
-          const touch = event.touches && event.touches[0];
-          if (touch) syncActivePoint(touch.clientX, event.currentTarget);
-        }}
-      >
+      <div className="relative w-full overflow-hidden rounded-xl bg-slate-950/20">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          className="block h-auto w-full max-h-[200px] sm:max-h-[240px] lg:max-h-[260px]"
+          preserveAspectRatio="xMidYMid meet"
+          aria-label="价格趋势图"
+          onMouseMove={(event) => syncActivePoint(event.clientX, event.currentTarget)}
+          onTouchMove={(event) => {
+            const touch = event.touches && event.touches[0];
+            if (touch) syncActivePoint(touch.clientX, event.currentTarget);
+          }}
+        >
         {ticks.map((tick, idx) => {
           const y = pad.top + ((max - tick) / range) * chartH;
           return (
             <g key={`tick-${idx}`}>
               <line x1={pad.left} x2={width - pad.right} y1={y} y2={y} stroke="rgba(148,163,184,0.14)" strokeDasharray="4 6" />
-              <text x={pad.left - 8} y={y + 4} textAnchor="end" fill="rgba(203,213,225,0.7)" fontSize="11">
+              <text x={pad.left - 6} y={y + 4} textAnchor="end" fill="rgba(203,213,225,0.7)" fontSize={viewport.yTickSize}>
                 {detailMoney(tick, market, market === 'US' ? 2 : 2)}
               </text>
             </g>
@@ -487,13 +549,13 @@ function DetailSparkline({ history, currentPrice, positive, market }) {
         <line x1={pad.left} x2={pad.left} y1={pad.top} y2={pad.top + chartH} stroke="rgba(148,163,184,0.18)" />
         <line x1={pad.left} x2={width - pad.right} y1={pad.top + chartH} y2={pad.top + chartH} stroke="rgba(148,163,184,0.18)" />
         {areaPath && <path d={areaPath} fill={fill} stroke="none" className="transition-all duration-200 ease-out" />}
-        <path d={smoothPath} fill="none" stroke={stroke} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="transition-all duration-200 ease-out" />
+        <path d={smoothPath} fill="none" stroke={stroke} strokeWidth={viewport.strokeWidth} strokeLinecap="round" strokeLinejoin="round" className="transition-all duration-200 ease-out" />
         {coords.map((point, idx) => (
           <g key={`${point.date}-${idx}`}>
             <circle
               cx={point.x}
               cy={point.y}
-              r={idx === selectedIndex ? 6 : 4}
+              r={idx === selectedIndex ? viewport.selectedRadius : viewport.pointRadius}
               fill={idx === selectedIndex ? '#f8fafc' : pointColor(idx)}
               stroke={pointColor(idx)}
               strokeWidth="2"
@@ -541,16 +603,17 @@ function DetailSparkline({ history, currentPrice, positive, market }) {
           </g>
         )}
         {start && (
-          <text x={pad.left} y={height - 14} textAnchor="start" fill="rgba(203,213,225,0.75)" fontSize="12">
+          <text x={pad.left} y={height - 10} textAnchor="start" fill="rgba(203,213,225,0.75)" fontSize={viewport.yTickSize}>
             {compactDate(start.date)}
           </text>
         )}
         {end && (
-          <text x={width - pad.right} y={height - 14} textAnchor="end" fill="rgba(203,213,225,0.75)" fontSize="12">
+          <text x={width - pad.right} y={height - 10} textAnchor="end" fill="rgba(203,213,225,0.75)" fontSize={viewport.yTickSize}>
             {compactDate(end.date)}
           </text>
         )}
       </svg>
+      </div>
       <div className="mt-1 flex items-center justify-between text-xs text-slate-400">
         <span>{rows.length < rangeDays ? `当前仅有 ${rows.length} 个历史点` : `近 ${rangeDays} 天`}</span>
         <span>区间 {detailMoney(min, market, 2)} - {detailMoney(max, market, 2)}</span>
@@ -1091,8 +1154,19 @@ function DetailNewsPanel({ stock, newsUrl, onSaveKeywords }) {
     setLoading(true);
     setError('');
     try {
+      if (typeof window.fetchNewsFromBackend === 'function') {
+        const result = await window.fetchNewsFromBackend({
+          code: stock.symbol,
+          market: marketName(stock.market),
+          name: stock.name || '',
+          keywords: keywords,
+          hours: 72,
+        });
+        setItems((result.items || []).slice(0, 8));
+        return;
+      }
       if (typeof fetchRSSFeeds !== 'function') {
-        throw new Error('RSS 工具未加载');
+        throw new Error('新闻服务未加载');
       }
       const raw = await fetchRSSFeeds(DETAIL_RSS_FEEDS, keywords, 10, false, 72);
       setItems((raw || []).slice(0, 8));
@@ -1102,7 +1176,7 @@ function DetailNewsPanel({ stock, newsUrl, onSaveKeywords }) {
     } finally {
       setLoading(false);
     }
-  }, [keywords]);
+  }, [keywords, stock]);
 
   React.useEffect(() => {
     if (keywords.length) loadNews();
@@ -1437,8 +1511,9 @@ function StockDetailApp() {
   const querySymbol = String(params.get('code') || params.get('symbol') || '').trim().toUpperCase();
   const queryMarket = normalizeDetailMarket(params.get('market') || '');
 
-  const [portfolio, setPortfolio] = React.useState(() => (window.loadPortfolio ? window.loadPortfolio() : []));
-  const [watchlist, setWatchlist] = React.useState(() => (window.loadWatchlist ? window.loadWatchlist() : []));
+  const [portfolio, setPortfolio] = React.useState([]);
+  const [watchlist, setWatchlist] = React.useState([]);
+  const [sessionReady, setSessionReady] = React.useState(false);
   const [showPositionModal, setShowPositionModal] = React.useState(false);
   const [reportRefreshKey, setReportRefreshKey] = React.useState(0);
   const [detailHistory, setDetailHistory] = React.useState([]);
@@ -1460,6 +1535,35 @@ function StockDetailApp() {
   }, [portfolio, watchlist, querySymbol, queryMarket]);
 
   React.useEffect(function () {
+    var cancelled = false;
+    async function loadSession() {
+      try {
+        var p = [];
+        var w = [];
+        if (typeof window.loadAppPortfolio === 'function') {
+          p = await window.loadAppPortfolio();
+        } else if (window.loadPortfolio) {
+          p = window.loadPortfolio() || [];
+        }
+        if (typeof window.loadAppWatchlist === 'function') {
+          w = await window.loadAppWatchlist();
+        } else if (window.loadWatchlist) {
+          w = window.loadWatchlist() || [];
+        }
+        if (cancelled) return;
+        setPortfolio(Array.isArray(p) ? p : []);
+        setWatchlist(Array.isArray(w) ? w : []);
+      } finally {
+        if (!cancelled) setSessionReady(true);
+      }
+    }
+    loadSession();
+    return function () {
+      cancelled = true;
+    };
+  }, []);
+
+  React.useEffect(function () {
     if (!window.GuxiaomiChat) return;
     window.GuxiaomiChat.setContext({
       page: 'stock-detail',
@@ -1478,7 +1582,16 @@ function StockDetailApp() {
         ? stock.priceHistory
         : (window.loadStockPriceHistory ? window.loadStockPriceHistory(stock.symbol, stock.market) : [])
     );
-    setDetailHistory(local);
+    var cloudHist = [];
+    if (typeof window.loadPriceSnapshotsFromCloud === 'function') {
+      try {
+        cloudHist = await window.loadPriceSnapshotsFromCloud(stock.symbol, stock.market, 60);
+      } catch (_) {}
+    }
+    var mergedLocal = typeof window.mergePriceHistoryRows === 'function'
+      ? window.mergePriceHistoryRows(local, cloudHist)
+      : local.concat(cloudHist);
+    setDetailHistory(normalizeDetailHistoryRows(mergedLocal));
     if (!silent) {
       setHistoryRefreshing(true);
       setHistoryMessage('');
@@ -1531,6 +1644,14 @@ function StockDetailApp() {
       cancelled = true;
     };
   }, [loadDetailHistory, stock]);
+
+  if (!sessionReady) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-slate-400">
+        <div className="icon-loader animate-spin text-2xl"></div>
+      </div>
+    );
+  }
 
   if (!stock) {
     return (
