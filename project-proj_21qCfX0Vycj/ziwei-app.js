@@ -125,6 +125,30 @@ function ziweiCountReports(item) {
   ].filter(function (r) { return r; }).length;
 }
 
+/** 取可用于导出的出生档案（已保存优先，否则合法草稿） */
+function getZiweiProfileForExport(ziweiProfiles, activeProfileId, profileDraft) {
+  if (!window.ZiweiProfileUtils) return null;
+  var active = (ziweiProfiles || []).find(function (p) { return p.id === activeProfileId; }) || null;
+  if (active && !window.ZiweiProfileUtils.validateProfile(active)) return active;
+  if (profileDraft && !window.ZiweiProfileUtils.validateProfile(profileDraft)) return profileDraft;
+  return null;
+}
+
+function buildZiweiEngineChartText(ziweiProfiles, activeProfileId, profileDraft) {
+  if (!window.ZiweiChartTextExport) return '';
+  var profile = getZiweiProfileForExport(ziweiProfiles, activeProfileId, profileDraft);
+  if (!profile) return '';
+  return window.ZiweiChartTextExport.exportFromProfile(profile, { refDate: new Date() });
+}
+
+function resolveZiweiReportInputText(engineText, inputText, inputTextSource) {
+  if (inputTextSource === 'manual' && inputText && inputText.trim()) {
+    return inputText.trim();
+  }
+  if (engineText) return engineText;
+  return (inputText || '').trim();
+}
+
 function ZiweiHistoryBar({
   historyList,
   activeTimeName,
@@ -138,49 +162,62 @@ function ZiweiHistoryBar({
   setNewHistoryName,
   setRenamingHistory,
   onConfirmRename,
+  variant,
 }) {
+  var isSidebar = variant === 'sidebar';
+
   if (!historyList || !historyList.length) {
     return (
-      <div className="zi-card px-3 py-2.5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <div className="icon-history text-base text-cyan-400" aria-hidden />
-            <div>
-              <h3 className="text-sm font-bold text-slate-100">历史报告</h3>
-              <p className="text-xs text-slate-500">生成报告后点「保存」，下次可一键恢复命盘与全部分析</p>
-            </div>
+      <div className={'zi-card px-2.5 py-2 h-full flex flex-col ' + (isSidebar ? '' : '')}>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            <div className="icon-history text-sm text-cyan-400" aria-hidden />
+            <h3 className="text-sm font-bold text-slate-100">历史报告</h3>
           </div>
           <button
             type="button"
             onClick={onSave}
             disabled={!canSave}
-            className="btn btn-primary btn-sm shrink-0 disabled:opacity-40"
+            className="btn btn-primary btn-xs shrink-0 disabled:opacity-40"
           >
-            保存当前
+            保存
           </button>
         </div>
+        {!isSidebar && (
+          <p className="text-[11px] text-slate-500 mt-1.5">生成报告后点「保存」，下次可一键恢复</p>
+        )}
+        {isSidebar && (
+          <p className="text-[10px] text-slate-600 mt-2">暂无记录</p>
+        )}
       </div>
     );
   }
 
   return (
-    <div className="zi-card overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
-        <div className="flex items-center gap-2">
-          <div className="icon-history text-base text-cyan-400" aria-hidden />
+    <div className={'zi-card overflow-hidden h-full flex flex-col ' + (isSidebar ? '' : '')}>
+      <div className={'flex items-center justify-between gap-2 border-b border-white/10 px-2.5 py-1.5 ' + (isSidebar ? '' : 'px-3 py-2')}>
+        <div className="flex items-center gap-1.5">
+          <div className="icon-history text-sm text-cyan-400" aria-hidden />
           <h3 className="text-sm font-bold text-slate-100">历史报告</h3>
-          <span className="text-xs text-slate-500">({historyList.length})</span>
+          <span className="text-[10px] text-slate-500">({historyList.length})</span>
         </div>
         <button
           type="button"
           onClick={onSave}
           disabled={!canSave}
-          className="btn btn-primary btn-sm shrink-0 disabled:opacity-40"
+          className="btn btn-primary btn-xs shrink-0 disabled:opacity-40"
         >
-          保存当前
+          保存
         </button>
       </div>
-      <div className="flex gap-2 overflow-x-auto px-3 py-2.5" style={{ scrollbarWidth: 'thin' }}>
+      <div
+        className={
+          isSidebar
+            ? 'flex flex-col gap-1 overflow-y-auto px-2 py-1.5 max-h-44 flex-1'
+            : 'flex gap-2 overflow-x-auto px-3 py-2.5'
+        }
+        style={isSidebar ? undefined : { scrollbarWidth: 'thin' }}
+      >
         {historyList.map(function (item, index) {
           var isActive = item.timeName === activeTimeName;
           var reportCount = ziweiCountReports(item);
@@ -213,7 +250,8 @@ function ZiweiHistoryBar({
             <div
               key={item.timeName + '-' + index}
               className={
-                'group flex min-w-[10.5rem] shrink-0 overflow-hidden rounded-lg border transition ' +
+                'group flex overflow-hidden rounded-lg border transition ' +
+                (isSidebar ? 'w-full ' : 'min-w-[10.5rem] shrink-0 ') +
                 (isActive
                   ? 'border-cyan-400/60 bg-cyan-500/10 ring-1 ring-cyan-400/30'
                   : 'border-white/10 bg-slate-900/50 hover:border-cyan-500/30 hover:bg-slate-900/70')
@@ -222,15 +260,15 @@ function ZiweiHistoryBar({
               <button
                 type="button"
                 onClick={function () { onLoad(item); }}
-                className="min-w-0 flex-1 px-2.5 py-2 text-left"
+                className={'min-w-0 flex-1 text-left ' + (isSidebar ? 'px-2 py-1.5' : 'px-2.5 py-2')}
               >
                 <div className="truncate text-xs font-bold text-slate-100">{item.timeName}</div>
-                <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-slate-500">
-                  <span>{item.timestamp}</span>
-                  <span className="rounded bg-cyan-500/15 px-1 py-0.5 text-cyan-300">{reportCount} 份</span>
+                <div className={'flex items-center gap-1.5 text-slate-500 ' + (isSidebar ? 'text-[9px] mt-0.5' : 'text-[10px] mt-0.5')}>
+                  <span className="truncate">{isSidebar ? item.timestamp.split(' ')[0] : item.timestamp}</span>
+                  <span className="rounded bg-cyan-500/15 px-1 py-px text-cyan-300 shrink-0">{reportCount}份</span>
                 </div>
               </button>
-              <div className="flex flex-col border-l border-white/10 opacity-0 transition group-hover:opacity-100">
+              <div className={'flex border-l border-white/10 ' + (isSidebar ? 'flex-row opacity-70' : 'flex-col opacity-0 group-hover:opacity-100')}>
                 <button type="button" onClick={function (e) { e.stopPropagation(); onCopy(item); }} className="px-1.5 py-1 text-slate-400 hover:text-green-400" title="复制">
                   <div className="icon-copy text-xs" aria-hidden />
                 </button>
@@ -253,33 +291,6 @@ function ZiweiHistoryBar({
             </div>
           );
         })}
-      </div>
-    </div>
-  );
-}
-
-function ZiweiInsightBar({ inputText, extractTimeFromInput, portfolioStocks, reportsReady, modelLabel }) {
-  var timeLabel = inputText && inputText.trim() ? extractTimeFromInput(inputText) : '';
-  return (
-    <div className="rounded-xl border border-cyan-500/20 bg-gradient-to-r from-cyan-950/40 to-slate-900/40 px-3 py-2.5">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-300">
-        {timeLabel && (
-          <span>
-            <span className="text-slate-500">命盘</span>{' '}
-            <strong className="text-slate-100">{timeLabel}</strong>
-          </span>
-        )}
-        <span>
-          <span className="text-slate-500">已生成</span>{' '}
-          <strong className="text-cyan-300">{reportsReady}/5</strong> 份报告
-        </span>
-        <span>
-          <span className="text-slate-500">持仓</span>{' '}
-          <strong>{portfolioStocks.length}</strong> 只
-        </span>
-        <span>
-          <span className="text-slate-500">模型</span> <strong>{modelLabel}</strong>
-        </span>
       </div>
     </div>
   );
@@ -676,6 +687,7 @@ function formatZiweiInlineText(text, opts) {
 
 function ZiweiApp() {
   const [inputText, setInputText] = React.useState('');
+  const [inputTextSource, setInputTextSource] = React.useState('auto');
   const [basicReport, setBasicReport] = React.useState(null);
   const [wealthReport, setWealthReport] = React.useState(null);
   const [stockAnalysisReport, setStockAnalysisReport] = React.useState(null);
@@ -697,6 +709,30 @@ function ZiweiApp() {
   const [showSaveDialog, setShowSaveDialog] = React.useState(false);
   const [saveDialogName, setSaveDialogName] = React.useState('');
   const [showInputText, setShowInputText] = React.useState(true);
+  const [ziweiProfiles, setZiweiProfiles] = React.useState(function () {
+    return window.ZiweiProfileStorage ? window.ZiweiProfileStorage.loadProfiles() : [];
+  });
+  const [activeProfileId, setActiveProfileId] = React.useState(function () {
+    return window.ZiweiProfileStorage ? window.ZiweiProfileStorage.getActiveProfileId() : '';
+  });
+  const [isNewProfileDraft, setIsNewProfileDraft] = React.useState(false);
+  const [profileDraft, setProfileDraft] = React.useState(function () {
+    if (window.ZiweiProfileStorage) {
+      var active = window.ZiweiProfileStorage.getActiveProfile();
+      if (active) return Object.assign({}, active);
+      return window.ZiweiProfileStorage.createEmptyProfile();
+    }
+    return {
+      id: 'zp_local',
+      name: '',
+      gender: 'male',
+      birthDate: '',
+      birthTime: '12:00',
+      province: '北京',
+      city: '北京',
+      longitude: 116.4,
+    };
+  });
   const MAX_HISTORY = 10;
   const [modelOptions, setModelOptions] = React.useState(ZIWEI_FALLBACK_MODEL_OPTIONS);
   const [selectedModelKey, setSelectedModelKey] = React.useState(() => {
@@ -734,6 +770,94 @@ function ZiweiApp() {
       loadInitialReports();
     }, []);
 
+    React.useEffect(function () {
+      if (!window.ZiweiProfileStorage || ziweiProfiles.length === 0) return;
+      if (isNewProfileDraft) return;
+      var valid =
+        activeProfileId &&
+        ziweiProfiles.some(function (p) {
+          return p.id === activeProfileId;
+        });
+      if (valid) return;
+      var first = ziweiProfiles[0];
+      if (first) {
+        setActiveProfileId(first.id);
+        window.ZiweiProfileStorage.setActiveProfileId(first.id);
+        setProfileDraft(Object.assign({}, first));
+      }
+    }, [ziweiProfiles, activeProfileId, isNewProfileDraft]);
+
+    const handleSelectZiweiProfile = function (id) {
+      var p = ziweiProfiles.find(function (x) { return x.id === id; });
+      if (!p) return;
+      setIsNewProfileDraft(false);
+      setActiveProfileId(id);
+      if (window.ZiweiProfileStorage) window.ZiweiProfileStorage.setActiveProfileId(id);
+      setProfileDraft(Object.assign({}, p));
+      setInputTextSource('auto');
+    };
+
+    const handleNewZiweiProfile = function () {
+      if (!window.ZiweiProfileStorage) return;
+      setIsNewProfileDraft(true);
+      setActiveProfileId('');
+      window.ZiweiProfileStorage.setActiveProfileId('');
+      setProfileDraft(window.ZiweiProfileStorage.createEmptyProfile());
+      setInputTextSource('auto');
+    };
+
+    const handleSaveZiweiProfile = function () {
+      if (!window.ZiweiProfileStorage || !window.ZiweiProfileUtils || !profileDraft) return;
+      var err = window.ZiweiProfileUtils.validateProfile(profileDraft);
+      if (err) {
+        window.alert(err);
+        return;
+      }
+      var normalized = Object.assign({}, profileDraft, {
+        birthDate: window.ZiweiProfileUtils.normalizeDate(profileDraft.birthDate),
+      });
+      var saved = window.ZiweiProfileStorage.upsertProfile(normalized);
+      var list = window.ZiweiProfileStorage.loadProfiles();
+      setZiweiProfiles(list);
+      setIsNewProfileDraft(false);
+      setActiveProfileId(saved.id);
+      setProfileDraft(Object.assign({}, saved));
+      setInputTextSource('auto');
+    };
+
+    const handleDeleteZiweiProfile = function (id) {
+      if (!window.ZiweiProfileStorage) return;
+      var list = window.ZiweiProfileStorage.deleteProfile(id);
+      setZiweiProfiles(list);
+      setIsNewProfileDraft(false);
+      var newActive = window.ZiweiProfileStorage.getActiveProfileId();
+      setActiveProfileId(newActive || '');
+      if (newActive) {
+        var p = list.find(function (x) { return x.id === newActive; });
+        if (p) setProfileDraft(Object.assign({}, p));
+      } else if (window.ZiweiProfileStorage.createEmptyProfile) {
+        setProfileDraft(window.ZiweiProfileStorage.createEmptyProfile());
+      }
+    };
+
+    const handleImportZiweiProfileFromText = function () {
+      if (!window.ZiweiProfileUtils) return;
+      var imported = window.ZiweiProfileUtils.profileFromPastedText(inputText);
+      if (!imported) {
+        window.alert('未能从文本中识别出生日期，请使用格式如 1990-5-15 12:0');
+        return;
+      }
+      setIsNewProfileDraft(true);
+      setProfileDraft(imported);
+      setActiveProfileId('');
+      if (window.ZiweiProfileStorage) window.ZiweiProfileStorage.setActiveProfileId('');
+      setInputTextSource('auto');
+    };
+
+    const handleSyncChartText = function () {
+      setInputTextSource('auto');
+    };
+
     const loadInitialReports = () => {
       // Load from local storage only
       const savedHistory = localStorage.getItem('ziwei_history');
@@ -756,7 +880,10 @@ function ZiweiApp() {
           if (reports.portfolioAnalysisReport) setPortfolioAnalysisReport(reports.portfolioAnalysisReport);
           if (reports.stockAnalysisReport) setStockAnalysisReport(reports.stockAnalysisReport);
           if (reports.flowReport) setFlowReport(reports.flowReport);
-          if (reports.inputText) setInputText(reports.inputText);
+          if (reports.inputText) {
+            setInputText(reports.inputText);
+            setInputTextSource('manual');
+          }
           if (reports.basicReport || reports.wealthReport) setShowInputText(false);
         } catch (e) {
           console.error('Failed to load saved reports:', e);
@@ -956,8 +1083,17 @@ function ZiweiApp() {
 
 
     const handleGenerate = async () => {
-      if (!inputText.trim()) {
+      const reportInput = resolveZiweiReportInputText(
+        buildZiweiEngineChartText(ziweiProfiles, activeProfileId, profileDraft),
+        inputText,
+        inputTextSource
+      );
+      if (!reportInput) {
+        alert('请先填写并保存出生信息（推荐），或粘贴命盘文本');
         return;
+      }
+      if (inputTextSource === 'auto' && engineChartText) {
+        setInputText(engineChartText);
       }
 
       setIsGenerating(true);
@@ -966,7 +1102,7 @@ function ZiweiApp() {
       setShowInputText(false);
       
       try {
-        const timeName = extractTimeFromInput(inputText);
+        const timeName = extractTimeFromInput(reportInput);
         const timestamp = new Date().toLocaleString('zh-CN');
         const model = llmModelLabel || '同源分析模型';
         
@@ -989,7 +1125,7 @@ function ZiweiApp() {
         
         while (retryCount <= maxRetries) {
           try {
-            basicResponse = await callAnalysisLlmAPI(basicSystemPrompt, inputText);
+            basicResponse = await callAnalysisLlmAPI(basicSystemPrompt, reportInput);
             break; // Success, exit retry loop
           } catch (error) {
             retryCount++;
@@ -1005,7 +1141,7 @@ function ZiweiApp() {
           id: Date.now(),
           timestamp: timestamp,
           timeName: timeName,
-          input: inputText,
+          input: reportInput,
           content: sanitizeZiweiReportContent(basicResponse),
           model: model,
           title: '紫微斗数基础命盘全析'
@@ -1017,13 +1153,13 @@ function ZiweiApp() {
         const nextYear = currentMonth === 12 ? currentYear + 1 : currentYear;
         const wealthSystemPrompt = buildZiweiWealthSystemPrompt(currentYear, currentMonth, currentDateStr, lunarMonth, nextYear, nextMonth);
         
-        let wealthResponse = await callAnalysisLlmAPI(wealthSystemPrompt, inputText);
+        let wealthResponse = await callAnalysisLlmAPI(wealthSystemPrompt, reportInput);
         
         setWealthReport({
           id: Date.now() + 1,
           timestamp: timestamp,
           timeName: timeName,
-          input: inputText,
+          input: reportInput,
           content: sanitizeZiweiReportContent(wealthResponse),
           model: model,
           title: '紫微斗数财富密码'
@@ -1082,7 +1218,7 @@ function ZiweiApp() {
             portfolioData += `- 持仓天数: ${holdingDays}天\n\n`;
           });
           
-          const portfolioUserPrompt = `请基于以下命盘信息和持仓组合数据生成整体持仓分析报告。\n\n## 命盘信息\n${inputText}\n\n${portfolioData}`;
+          const portfolioUserPrompt = `请基于以下命盘信息和持仓组合数据生成整体持仓分析报告。\n\n## 命盘信息\n${reportInput}\n\n${portfolioData}`;
           
           let portfolioResponse = await callAnalysisLlmAPI(portfolioSystemPrompt, portfolioUserPrompt);
           
@@ -1090,7 +1226,7 @@ function ZiweiApp() {
             id: Date.now() + 2,
             timestamp: timestamp,
             timeName: timeName,
-            input: inputText,
+            input: reportInput,
             content: sanitizeZiweiReportContent(portfolioResponse),
             model: model,
             title: '紫微斗数持仓组合分析'
@@ -1117,8 +1253,13 @@ function ZiweiApp() {
     };
 
     const handleGenerateFlow = async () => {
-      if (!inputText.trim()) {
-        alert('请先输入命盘信息');
+      const reportInput = resolveZiweiReportInputText(
+        buildZiweiEngineChartText(ziweiProfiles, activeProfileId, profileDraft),
+        inputText,
+        inputTextSource
+      );
+      if (!reportInput) {
+        alert('请先填写并保存出生信息（推荐），或粘贴命盘文本');
         return;
       }
       
@@ -1266,15 +1407,15 @@ ${buildZiweiDaxianPromptBlock(currentYear, currentDateStr)}
 
 ${flowContext}`;
         
-        const flowUserPrompt = `${inputText}`;
+        const flowUserPrompt = `${reportInput}`;
         
         let flowResponse = await callAnalysisLlmAPI(flowSystemPrompt, flowUserPrompt);
         
         setFlowReport({
           id: Date.now() + 3,
           timestamp: timestamp,
-          timeName: extractTimeFromInput(inputText),
-          input: inputText,
+          timeName: extractTimeFromInput(reportInput),
+          input: reportInput,
           content: sanitizeZiweiReportContent(flowResponse),
           model: model,
           title: '紫微斗数流月流日分析'
@@ -1305,6 +1446,11 @@ ${flowContext}`;
       }
       
       try {
+        const reportInput = resolveZiweiReportInputText(
+          buildZiweiEngineChartText(ziweiProfiles, activeProfileId, profileDraft),
+          inputText,
+          inputTextSource
+        );
         // First, refresh all stock prices
         console.log('开始刷新持仓股票价格...');
         const updatedStocks = [];
@@ -1406,11 +1552,11 @@ ${flowContext}`;
 当前日期：${currentDateStr}
 - 所有市场数据分析基于${currentDateStr}
 - 所有趋势判断和预测从${currentDateStr}开始
-${inputText.trim() ? `- 所有流年流月分析基于${currentYear}年\n- 所有流月分析基于农历${lunarMonth}（公历${currentYear}年${currentMonth}月）\n- 未来择时建议从${currentDateStr}之后开始\n- 绝对不得出现2023年、2024年或其他过去年份的时间引用` : ''}
+${reportInput ? `- 所有流年流月分析基于${currentYear}年\n- 所有流月分析基于农历${lunarMonth}（公历${currentYear}年${currentMonth}月）\n- 未来择时建议从${currentDateStr}之后开始\n- 绝对不得出现2023年、2024年或其他过去年份的时间引用` : ''}
 
-${inputText.trim() ? buildZiweiDaxianPromptBlock(currentYear, currentDateStr) : ''}
+${reportInput ? buildZiweiDaxianPromptBlock(currentYear, currentDateStr) : ''}
 
-你是一位资深的股票投资组合分析师，精通技术指标分析和持仓管理${inputText.trim() ? '，同时精通紫微斗数命理分析' : ''}。请根据用户提供的所有持仓股票的市场数据和持仓信息${inputText.trim() ? '以及命盘信息' : ''}，生成一份${inputText.trim() ? '融合技术分析、持仓评估与命理分析' : '技术分析与持仓评估'}的综合投资组合报告。
+你是一位资深的股票投资组合分析师，精通技术指标分析和持仓管理${reportInput ? '，同时精通紫微斗数命理分析' : ''}。请根据用户提供的所有持仓股票的市场数据和持仓信息${reportInput ? '以及命盘信息' : ''}，生成一份${reportInput ? '融合技术分析、持仓评估与命理分析' : '技术分析与持仓评估'}的综合投资组合报告。
 
 正文不要用 ** 加粗；禁止文末温馨提示或免责声明。
 
@@ -1459,7 +1605,7 @@ ${inputText.trim() ? buildZiweiDaxianPromptBlock(currentYear, currentDateStr) : 
 - **行业分散度**：是否存在行业过度集中风险
 
 ## 三、持仓排盘命理分析
-${inputText.trim() ? `
+${reportInput ? `
 ### 3.1 命盘与投资组合整体关系
 - **财帛宫与持仓状态对应**：分析命主财帛宫与整体盈亏的关系
 - **大运流年与投资时机**：评估当前是否处于适合持有的时期
@@ -1542,14 +1688,14 @@ ${inputText.trim() ? `
 - 策略失败的识别标准
 - 策略调整的触发条件`;
         
-        const userPrompt = inputText.trim() 
+        const userPrompt = reportInput
           ? `请基于以下股票数据和命盘信息生成技术分析与持仓评估报告。
 
 ## 股票市场数据
 ${allStocksData}
 
 ## 命盘信息
-${inputText}
+${reportInput}
 
 请在"持仓排盘分析"部分充分结合命盘信息进行分析，其他技术分析部分则主要基于股票市场数据。`
           : `请基于以下股票市场数据生成技术分析与持仓评估报告。
@@ -1570,7 +1716,7 @@ ${allStocksData}
         });
         
         // If conditions met, also generate portfolio report
-        if (shouldGeneratePortfolio && inputText.trim()) {
+        if (shouldGeneratePortfolio && reportInput) {
           try {
             console.log('同时生成持仓排盘报告...');
             
@@ -1620,15 +1766,15 @@ ${allStocksData}
             
             const portfolioSystemPrompt = buildZiweiPortfolioSystemPrompt(currentYear, currentMonth, currentDateStr, lunarMonth);
             
-            const portfolioUserPrompt = `请基于以下命盘信息和持仓组合数据生成整体持仓分析报告。\n\n## 命盘信息\n${inputText}\n\n${portfolioData}`;
+            const portfolioUserPrompt = `请基于以下命盘信息和持仓组合数据生成整体持仓分析报告。\n\n## 命盘信息\n${reportInput}\n\n${portfolioData}`;
             
             let portfolioResponse = await callAnalysisLlmAPI(portfolioSystemPrompt, portfolioUserPrompt);
             
             setPortfolioAnalysisReport({
               id: Date.now() + 10,
               timestamp: timestamp,
-              timeName: extractTimeFromInput(inputText),
-              input: inputText,
+              timeName: extractTimeFromInput(reportInput),
+              input: reportInput,
               content: sanitizeZiweiReportContent(portfolioResponse),
               model: model,
               title: '紫微斗数持仓组合分析'
@@ -1668,6 +1814,7 @@ ${allStocksData}
         setStockAnalysisReport(null);
         setFlowReport(null);
         setInputText('');
+        setInputTextSource('auto');
         setCollapsedReports({});
         setActiveHistoryName(null);
         setShowInputText(true);
@@ -1675,8 +1822,20 @@ ${allStocksData}
       }
     };
 
+    const scrollToReportSection = function () {
+      requestAnimationFrame(function () {
+        setTimeout(function () {
+          var el = document.getElementById('ziwei-report-section');
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 80);
+      });
+    };
+
     const viewHistoryReport = (item) => {
       setInputText(item.input);
+      setInputTextSource('manual');
       setActiveHistoryName(item.timeName);
       setShowInputText(false);
       
@@ -1737,8 +1896,14 @@ ${allStocksData}
           title: '紫微斗数流月流日分析'
         });
       }
-      
-      setActiveReportTab('basic');
+
+      if (item.basicReport) setActiveReportTab('basic');
+      else if (item.wealthReport) setActiveReportTab('wealth');
+      else if (item.portfolioReport) setActiveReportTab('portfolio');
+      else if (item.stockReport) setActiveReportTab('stock');
+      else if (item.flowReport) setActiveReportTab('flow');
+
+      scrollToReportSection();
     };
 
     const copyHistoryReport = (item) => {
@@ -1784,7 +1949,7 @@ ${allStocksData}
         return;
       }
 
-      const defaultName = extractTimeFromInput(inputText) || new Date().toLocaleString('zh-CN');
+      const defaultName = extractTimeFromInput(reportInputText || inputText) || new Date().toLocaleString('zh-CN');
       setSaveDialogName(defaultName);
       setShowSaveDialog(true);
     };
@@ -1804,7 +1969,7 @@ ${allStocksData}
 
     const historyItem = {
       timeName: timeName,
-      input: inputText,
+      input: reportInputText || inputText,
       timestamp: timestamp,
       basicReport: basicReport?.content || '',
       wealthReport: wealthReport?.content || '',
@@ -2126,16 +2291,61 @@ ${allStocksData}
       );
     };
 
-    const reportsReady = [
-      basicReport,
-      wealthReport,
-      portfolioAnalysisReport,
-      stockAnalysisReport,
-      flowReport,
-    ].filter(Boolean).length;
+    const parsedBirth = React.useMemo(function () {
+      var utils = window.ZiweiProfileUtils;
+      var activeProfile = ziweiProfiles.find(function (p) { return p.id === activeProfileId; }) || null;
+
+      if (utils && profileDraft && !utils.validateProfile(profileDraft)) {
+        return utils.profileToBirth(profileDraft);
+      }
+      if (utils && activeProfile) {
+        return utils.profileToBirth(activeProfile);
+      }
+      if (window.ZiweiBirthParse) {
+        return window.ZiweiBirthParse.parseZiweiBirthFromText(inputText);
+      }
+      return null;
+    }, [ziweiProfiles, activeProfileId, profileDraft, inputText]);
+
+    const chartBirthLabel = (function () {
+      var utils = window.ZiweiProfileUtils;
+      if (utils && profileDraft && !utils.validateProfile(profileDraft)) {
+        return utils.formatBirthLabel(profileDraft);
+      }
+      var activeProfile = ziweiProfiles.find(function (p) { return p.id === activeProfileId; }) || null;
+      if (utils && activeProfile) return utils.formatBirthLabel(activeProfile);
+      if (!parsedBirth) return '';
+      return parsedBirth.y + '-' + parsedBirth.m + '-' + parsedBirth.d + ' ' + parsedBirth.h + ':00';
+    })();
+
+    const canImportProfileFromText = !!(window.ZiweiProfileUtils && window.ZiweiProfileUtils.profileFromPastedText(inputText));
+
+    const engineChartText = React.useMemo(function () {
+      return buildZiweiEngineChartText(ziweiProfiles, activeProfileId, profileDraft);
+    }, [ziweiProfiles, activeProfileId, profileDraft]);
+
+    const reportInputText = React.useMemo(function () {
+      return resolveZiweiReportInputText(engineChartText, inputText, inputTextSource);
+    }, [engineChartText, inputText, inputTextSource]);
+
+    const hasReportInput = !!reportInputText;
+    const chartTextIsAuto = inputTextSource === 'auto' && !!engineChartText;
+
+    React.useEffect(function () {
+      if (inputTextSource === 'auto' && engineChartText) {
+        setInputText(engineChartText);
+      }
+    }, [engineChartText, inputTextSource]);
 
     const inputSummary = (function () {
-      if (!inputText.trim()) return '尚未填写命盘';
+      if (chartTextIsAuto) {
+        var profile = getZiweiProfileForExport(ziweiProfiles, activeProfileId, profileDraft);
+        if (profile && window.ZiweiProfileUtils) {
+          return window.ZiweiProfileUtils.formatProfileLabel(profile) + ' · 引擎排盘';
+        }
+        return '引擎排盘已同步';
+      }
+      if (!inputText.trim()) return '尚未生成命盘文本';
       var dateMatch = inputText.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
       if (dateMatch) return dateMatch[1] + '-' + dateMatch[2] + '-' + dateMatch[3];
       var first = inputText.trim().split('\n')[0];
@@ -2208,103 +2418,122 @@ ${allStocksData}
           <main className="px-2 py-4 md:px-4 md:py-5">
           <div className="max-w-6xl mx-auto space-y-3">
 
-            <ZiweiHistoryBar
-              historyList={historyList}
-              activeTimeName={activeHistoryName}
-              onLoad={viewHistoryReport}
-              onDelete={deleteHistoryItem}
-              onCopy={copyHistoryReport}
-              onSave={saveCurrentToHistory}
-              canSave={!!(basicReport || wealthReport)}
-              renamingHistory={renamingHistory}
-              newHistoryName={newHistoryName}
-              setNewHistoryName={setNewHistoryName}
-              setRenamingHistory={setRenamingHistory}
-              onConfirmRename={renameHistoryItem}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3 items-stretch">
+              <ZiweiBirthSection
+                profiles={ziweiProfiles}
+                activeId={activeProfileId}
+                isNewDraft={isNewProfileDraft}
+                draft={profileDraft}
+                onDraftChange={setProfileDraft}
+                onSelectProfile={handleSelectZiweiProfile}
+                onNewProfile={handleNewZiweiProfile}
+                onDeleteProfile={handleDeleteZiweiProfile}
+                onSaveProfile={handleSaveZiweiProfile}
+                onImportFromText={handleImportZiweiProfileFromText}
+                canImportFromText={canImportProfileFromText}
+              />
+
+              <ZiweiHistoryBar
+                variant="sidebar"
+                historyList={historyList}
+                activeTimeName={activeHistoryName}
+                onLoad={viewHistoryReport}
+                onDelete={deleteHistoryItem}
+                onCopy={copyHistoryReport}
+                onSave={saveCurrentToHistory}
+                canSave={!!(basicReport || wealthReport)}
+                renamingHistory={renamingHistory}
+                newHistoryName={newHistoryName}
+                setNewHistoryName={setNewHistoryName}
+                setRenamingHistory={setRenamingHistory}
+                onConfirmRename={renameHistoryItem}
+              />
+            </div>
+
+            <ZiweiChartPanel
+              birth={parsedBirth}
+              birthLabel={chartBirthLabel}
+              apiBase={getZiweiApiBase()}
+              modelKey={selectedModelKey}
+              modelLabel={selectedModelOption && selectedModelOption.label}
             />
 
-            <div className="zi-card p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2">
-                  <div className="icon-edit-3 shrink-0 text-sm text-slate-950 bg-gradient-to-br from-blue-300 to-cyan-300 p-1.5 rounded-lg shadow-lg shadow-blue-500/25" aria-hidden />
-                  <span className="text-sm font-bold text-slate-100">命盘输入</span>
-                  {!showInputText && (
-                    <span className="truncate text-xs text-slate-400 max-w-[10rem] sm:max-w-xs">{inputSummary}</span>
-                  )}
-                  {(hasAnyReport || inputText.trim()) && (
-                    <button
-                      type="button"
-                      onClick={function () { setShowInputText(!showInputText); }}
-                      className="text-xs font-semibold text-cyan-300 hover:text-cyan-200"
-                    >
-                      {showInputText ? '收起' : '修改'}
-                    </button>
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
+            <div className="zi-card px-3 py-2">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="text-sm font-bold text-slate-100 shrink-0">命盘文本</span>
+                {!showInputText && (
+                  <span className="truncate text-xs text-slate-400 max-w-[8rem] sm:max-w-xs">{inputSummary}</span>
+                )}
+                {(hasAnyReport || hasReportInput) && (
                   <button
                     type="button"
-                    onClick={handleGenerate}
-                    disabled={isGenerating || !inputText.trim()}
-                    className="btn btn-primary btn-sm gap-1 disabled:opacity-50"
+                    onClick={function () { setShowInputText(!showInputText); }}
+                    className="text-xs font-semibold text-cyan-300 hover:text-cyan-200 shrink-0"
                   >
-                    {isGenerating ? (
-                      <>
-                        <div className="icon-loader text-sm animate-spin" aria-hidden />
-                        生成中…
-                      </>
-                    ) : (
-                      <>
-                        <div className="icon-sparkles text-sm" aria-hidden />
-                        生成报告
-                      </>
-                    )}
+                    {showInputText ? '收起' : '修改'}
                   </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleGenerate}
+                  disabled={isGenerating || !hasReportInput}
+                  className="btn btn-primary btn-xs gap-1 disabled:opacity-50 shrink-0"
+                >
+                  {isGenerating ? (
+                    <>
+                      <div className="icon-loader text-xs animate-spin" aria-hidden />
+                      生成中
+                    </>
+                  ) : (
+                    '生成'
+                  )}
+                </button>
+                {hasAnyReport && (
                   <button
                     type="button"
                     onClick={handleReset}
-                    disabled={!hasAnyReport}
-                    className="btn btn-secondary btn-sm disabled:opacity-50"
+                    className="btn btn-secondary btn-xs shrink-0"
                   >
                     重置
                   </button>
-                </div>
+                )}
               </div>
 
               {showInputText && (
                 <div className="mt-2 rounded-xl border border-white/10 bg-slate-950/25 p-2">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-[11px] text-slate-500">
+                      由上方出生信息自动排盘生成，可直接用于 AI 分析；如需微调可编辑，点「同步命盘」恢复。
+                    </p>
+                    {engineChartText && inputTextSource === 'manual' && (
+                      <button
+                        type="button"
+                        onClick={handleSyncChartText}
+                        className="btn btn-secondary btn-xs shrink-0"
+                      >
+                        同步命盘
+                      </button>
+                    )}
+                  </div>
                   <textarea
                     value={inputText}
-                    onChange={function (e) { setInputText(e.target.value); }}
-                    placeholder="粘贴紫微斗数命盘文本（出生时间、十二宫星曜、四化等）…"
-                    className="input-field h-20 resize-y text-sm shadow-inner md:h-24"
+                    onChange={function (e) {
+                      setInputText(e.target.value);
+                      setInputTextSource('manual');
+                    }}
+                    placeholder="填写并保存出生信息后，命盘文本将自动生成…"
+                    className="input-field h-32 resize-y text-xs sm:text-sm shadow-inner md:h-40 font-mono leading-relaxed"
                   />
-                  <p className="mt-1.5 text-[11px] text-slate-500">
-                    支持整段粘贴；生成后将自动收起，命盘要点显示在下方状态条。
-                  </p>
                 </div>
               )}
             </div>
 
-            {hasAnyReport && (
-              <ZiweiInsightBar
-                inputText={inputText}
-                extractTimeFromInput={extractTimeFromInput}
-                portfolioStocks={portfolioStocks}
-                reportsReady={reportsReady}
-                modelLabel={llmModelLabel}
-              />
-            )}
-
-            <div className="space-y-4 md:space-y-6">
+            <div id="ziwei-report-section" className="space-y-4 md:space-y-6 scroll-mt-20">
             <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[10px] md:text-xs text-slate-400 uppercase tracking-[0.18em] mb-1">智能报告 · 流式输出</p>
-                <h2 className="text-lg md:text-2xl font-bold text-slate-50 flex items-center gap-2">
-                  <div className="icon-file-text text-lg md:text-2xl text-cyan-400"></div>
-                  分析报告
-                </h2>
-              </div>
+              <h2 className="text-lg md:text-xl font-bold text-slate-50 flex items-center gap-2">
+                <div className="icon-file-text text-lg text-cyan-400" aria-hidden />
+                分析报告
+              </h2>
               {(basicReport || wealthReport || portfolioAnalysisReport || stockAnalysisReport || flowReport) && (
                 <button
                   onClick={copyAllReports}
@@ -2428,7 +2657,7 @@ ${allStocksData}
                           icon={ZIWEI_TAB_THEME.basic.icon}
                           iconColorClass={ZIWEI_TAB_THEME.basic.emptyIcon}
                           title="还没有生成命盘全析报告"
-                          description="请点击上方「生成报告」按钮开始分析"
+                          description="请点击上方「生成」开始分析"
                         />
                       )}
                     </>
@@ -2485,7 +2714,7 @@ ${allStocksData}
                           icon={ZIWEI_TAB_THEME.wealth.icon}
                           iconColorClass={ZIWEI_TAB_THEME.wealth.emptyIcon}
                           title="还没有生成财富密码报告"
-                          description="点击「生成报告」后将与本页其他板块一并生成"
+                          description="点击「生成」后将与本页其他板块一并生成"
                         />
                       )}
                     </>
@@ -2542,7 +2771,7 @@ ${allStocksData}
                           icon={ZIWEI_TAB_THEME.portfolio.icon}
                           iconColorClass={ZIWEI_TAB_THEME.portfolio.emptyIcon}
                           title="还没有生成持仓排盘报告"
-                          description="在首页有持仓时，生成报告会自动包含持仓排盘分析"
+                          description="在首页有持仓时，生成会自动包含持仓排盘分析"
                         />
                       )}
                     </>
@@ -2643,7 +2872,7 @@ ${allStocksData}
                             <div className="flex items-center gap-1">
                               <button
                                 onClick={handleGenerateFlow}
-                                disabled={isGeneratingFlow || !inputText.trim() || (!wealthReport && !stockAnalysisReport && !portfolioAnalysisReport)}
+                                disabled={isGeneratingFlow || !hasReportInput || (!wealthReport && !stockAnalysisReport && !portfolioAnalysisReport)}
                                 className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.08] px-2 py-1 text-xs font-semibold text-amber-100 transition-colors hover:bg-white/[0.14] disabled:opacity-50"
                                 title="重新生成流月流日分析"
                               >
@@ -2684,7 +2913,7 @@ ${allStocksData}
                           onAction={handleGenerateFlow}
                           disabled={
                             isGeneratingFlow ||
-                            !inputText.trim() ||
+                            !hasReportInput ||
                             (!wealthReport && !stockAnalysisReport && !portfolioAnalysisReport)
                           }
                           actionGradient={ZIWEI_TAB_THEME.flow.btnGradient}

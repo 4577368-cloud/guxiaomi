@@ -152,6 +152,8 @@
             textarea.input-field {
                 @apply h-auto min-h-[5.5rem] py-2;
             }
+            .no-scrollbar::-webkit-scrollbar { display: none; }
+            .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         }
     </style>
 </head>
@@ -175,8 +177,27 @@
     })();
     </script>
     <script src="utils/storage.js"></script>
+    <script src="utils/ziwei/constants.bundle.js?v=20260703-step1"></script>
+    <script src="utils/ziwei/astrologyService.bundle.js?v=20260703-step1"></script>
+    <script src="utils/ziwei/interpretationService.bundle.js?v=20260703-step1"></script>
+    <script src="utils/ziwei/ziweiCore.js?v=20260703-step1"></script>
+    <script src="utils/ziwei/birthParse.js?v=20260703-step2"></script>
+    <script src="utils/ziwei/profileStorage.js?v=20260703-step3"></script>
+    <script src="utils/ziwei/profileUtils.js?v=20260703-step3"></script>
+    <script src="utils/ziwei/chartFlow.js?v=20260703-step2"></script>
+    <script src="utils/ziwei/palaceQuickAnalysis.js?v=20260703-tabs"></script>
+    <script src="utils/ziwei/palaceAnalysisContext.js?v=20260703-tabs"></script>
+    <script src="utils/ziwei/palaceAnalysisAi.js?v=20260703-tabs"></script>
+    <script src="utils/ziwei/chartTextExport.js?v=20260703-step4b"></script>
+    <script type="text/babel" src="components/ziwei/ZiweiChartView.js?v=20260703-ui2"></script>
+    <script type="text/babel" src="components/ziwei/ZiweiTimeControls.js?v=20260703-modal-ui"></script>
+    <script type="text/babel" src="components/ziwei/ZiweiProfileSwitcher.js?v=20260703-fix"></script>
+    <script type="text/babel" src="components/ziwei/ZiweiBirthProfileForm.js?v=20260703-layout"></script>
+    <script type="text/babel" src="components/ziwei/ZiweiBirthSection.js?v=20260703-fix"></script>
+    <script type="text/babel" src="components/ziwei/ZiweiPalaceAnalysisModal.js?v=20260703-ui2"></script>
+    <script type="text/babel" src="components/ziwei/ZiweiChartPanel.js?v=20260703-tabs"></script>
     <script type="text/babel" src="utils/databaseSync.js"></script>
-    <script type="text/babel" src="ziwei-app.js?v=20260701-trim-copy"></script>
+    <script type="text/babel" src="ziwei-app.js?v=20260703-compact"></script>
     <script type="text/babel" src="utils/chatContext.js?v=20260701-global-chat"></script>
     <script type="text/babel" src="utils/chatStorage.js?v=20260701-global-chat"></script>
     <script type="text/babel" src="utils/chatService.js?v=20260701-global-chat"></script>
