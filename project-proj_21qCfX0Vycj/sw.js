@@ -1,10 +1,9 @@
 // 股小蜜 Service Worker
-const CACHE_NAME = 'guxiaomi-v5.7-scroll-stick';
+const CACHE_NAME = 'guxiaomi-v5.8-no-paipan';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/ziwei.html',
-  '/paipan.html',
   '/news.html',
   '/analysis.html',
   '/stock-detail.html',

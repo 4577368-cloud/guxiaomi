@@ -256,7 +256,6 @@
     if (path.indexOf("ziwei") >= 0) return "ziwei";
     if (path.indexOf("stock-detail") >= 0) return "stock-detail";
     if (path.indexOf("news") >= 0) return "news";
-    if (path.indexOf("paipan") >= 0) return "paipan";
     return "global";
   }
 
