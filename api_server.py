@@ -672,6 +672,22 @@ class PortfolioRemoveRequest(BaseModel):
     market: str
 
 
+class ZiweiReportPayload(BaseModel):
+    """紫微斗数历史报告单项。"""
+    timeName: str
+    input: Optional[str] = ""
+    basicReport: Optional[str] = ""
+    wealthReport: Optional[str] = ""
+    portfolioReport: Optional[str] = ""
+    stockReport: Optional[str] = ""
+    flowReport: Optional[str] = ""
+    model: Optional[str] = ""
+
+
+class ZiweiReportDeleteRequest(BaseModel):
+    timeName: str
+
+
 class CapitalPoolPayload(BaseModel):
     usd: float = 0
     hkd: float = 0
@@ -1362,6 +1378,33 @@ def api_portfolio_remove(req: PortfolioRemoveRequest):
     """移除持仓股票。"""
     db.portfolio_delete("default", req.symbol, req.market)
     return {"ok": True, "items": db.portfolio_list()}
+
+
+@app.get("/api/ziwei/reports/list")
+def api_ziwei_reports_list(limit: int = 50):
+    """获取紫微斗数历史报告列表。"""
+    if not db.is_db_enabled():
+        return {"ok": True, "items": [], "source": "local"}
+    items = db.ziwei_reports_list("default", limit=limit)
+    return {"ok": True, "items": items, "source": "postgres"}
+
+
+@app.post("/api/ziwei/reports/save")
+def api_ziwei_reports_save(item: ZiweiReportPayload):
+    """保存或覆盖紫微斗数历史报告。"""
+    if not db.is_db_enabled():
+        raise HTTPException(status_code=503, detail="数据库未配置，无法保存报告")
+    db.ziwei_report_save("default", item.model_dump())
+    return {"ok": True, "items": db.ziwei_reports_list("default")}
+
+
+@app.post("/api/ziwei/reports/delete")
+def api_ziwei_reports_delete(req: ZiweiReportDeleteRequest):
+    """删除紫微斗数历史报告。"""
+    if not db.is_db_enabled():
+        return {"ok": True, "deleted": False, "source": "local"}
+    deleted = db.ziwei_report_delete("default", req.timeName)
+    return {"ok": True, "deleted": deleted, "items": db.ziwei_reports_list("default")}
 
 
 @app.get("/api/capital-pool/get")

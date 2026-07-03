@@ -291,6 +291,34 @@ def init_db() -> None:
     )
     _execute(
         """
+        CREATE TABLE IF NOT EXISTS ziwei_reports (
+            id SERIAL PRIMARY KEY,
+            user_id VARCHAR(64) DEFAULT 'default',
+            report_name VARCHAR(128) NOT NULL,
+            input_text TEXT,
+            basic_report TEXT,
+            wealth_report TEXT,
+            portfolio_report TEXT,
+            stock_report TEXT,
+            flow_report TEXT,
+            model VARCHAR(64),
+            saved_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW(),
+            UNIQUE(user_id, report_name)
+        );
+        """,
+        commit=True,
+    )
+    _execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_ziwei_reports_user_saved
+            ON ziwei_reports(user_id, saved_at DESC);
+        """,
+        commit=True,
+    )
+    _execute(
+        """
         CREATE TABLE IF NOT EXISTS stock_price_snapshots (
             id SERIAL PRIMARY KEY,
             user_id VARCHAR(64) DEFAULT 'default',
@@ -1214,3 +1242,97 @@ def price_snapshot_list(
         fetch=True,
     )
     return [_snapshot_row_to_history(row) for row in (rows or [])]
+
+
+def _ziwei_report_row_to_item(row: Dict[str, Any]) -> Dict[str, Any]:
+    saved = row.get("saved_at")
+    if hasattr(saved, "strftime"):
+        timestamp = saved.strftime("%Y/%m/%d %H:%M:%S")
+    else:
+        timestamp = str(saved or "")
+    return {
+        "timeName": row.get("report_name") or "",
+        "input": row.get("input_text") or "",
+        "timestamp": timestamp,
+        "basicReport": row.get("basic_report") or "",
+        "wealthReport": row.get("wealth_report") or "",
+        "portfolioReport": row.get("portfolio_report") or "",
+        "stockReport": row.get("stock_report") or "",
+        "flowReport": row.get("flow_report") or "",
+        "model": row.get("model") or "",
+        "chatHistory": [],
+    }
+
+
+def ziwei_reports_list(user_id: str = "default", limit: int = 50) -> List[Dict[str, Any]]:
+    if not is_db_enabled():
+        return []
+    n = max(1, min(int(limit or 50), 100))
+    rows = _execute(
+        """
+        SELECT report_name, input_text, basic_report, wealth_report, portfolio_report,
+               stock_report, flow_report, model, saved_at
+        FROM ziwei_reports
+        WHERE user_id = %s
+        ORDER BY saved_at DESC
+        LIMIT %s
+        """,
+        (user_id, n),
+        fetch=True,
+    )
+    return [_ziwei_report_row_to_item(row) for row in (rows or [])]
+
+
+def ziwei_report_save(user_id: str, item: Dict[str, Any]) -> None:
+    if not is_db_enabled():
+        raise RuntimeError("database disabled")
+    name = str(item.get("timeName") or item.get("report_name") or "").strip()
+    if not name:
+        raise ValueError("report name required")
+    _execute(
+        """
+        INSERT INTO ziwei_reports (
+            user_id, report_name, input_text, basic_report, wealth_report,
+            portfolio_report, stock_report, flow_report, model, saved_at, updated_at
+        ) VALUES (
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW()
+        )
+        ON CONFLICT (user_id, report_name) DO UPDATE SET
+            input_text = EXCLUDED.input_text,
+            basic_report = EXCLUDED.basic_report,
+            wealth_report = EXCLUDED.wealth_report,
+            portfolio_report = EXCLUDED.portfolio_report,
+            stock_report = EXCLUDED.stock_report,
+            flow_report = EXCLUDED.flow_report,
+            model = EXCLUDED.model,
+            saved_at = NOW(),
+            updated_at = NOW()
+        """,
+        (
+            user_id,
+            name,
+            item.get("input") or item.get("input_text") or "",
+            item.get("basicReport") or item.get("basic_report") or "",
+            item.get("wealthReport") or item.get("wealth_report") or "",
+            item.get("portfolioReport") or item.get("portfolio_report") or "",
+            item.get("stockReport") or item.get("stock_report") or "",
+            item.get("flowReport") or item.get("flow_report") or "",
+            item.get("model") or "",
+        ),
+        commit=True,
+    )
+
+
+def ziwei_report_delete(user_id: str, report_name: str) -> bool:
+    if not is_db_enabled():
+        return False
+    name = str(report_name or "").strip()
+    if not name:
+        return False
+    _execute(
+        "DELETE FROM ziwei_reports WHERE user_id = %s AND report_name = %s",
+        (user_id, name),
+        commit=True,
+    )
+    return True
+

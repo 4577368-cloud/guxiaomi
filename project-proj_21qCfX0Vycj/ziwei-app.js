@@ -149,6 +149,36 @@ function resolveZiweiReportInputText(engineText, inputText, inputTextSource) {
   return (inputText || '').trim();
 }
 
+/** 优先用与宫位解读同源的结构化事实底稿，失败则退回命盘文本 */
+function buildZiweiStructuredReportInput(ziweiProfiles, activeProfileId, profileDraft, fallbackText, focus) {
+  var profile = getZiweiProfileForExport(ziweiProfiles, activeProfileId, profileDraft);
+  if (!profile || !window.ZiweiChartReportContext) return fallbackText || '';
+  var refDate = new Date();
+  var structured =
+    focus === 'portfolio'
+      ? window.ZiweiChartReportContext.buildPortfolioFocus(profile, { refDate: refDate })
+      : window.ZiweiChartReportContext.buildFull(profile, { refDate: refDate });
+  return structured || fallbackText || '';
+}
+
+function buildZiweiPortfolioUserPrompt(chartFacts, portfolioData) {
+  return (
+    (chartFacts || '') +
+    '\n\n=== 当前持仓数据 ===\n' +
+    (portfolioData || '')
+  );
+}
+
+/** 保存报告默认名：姓名 + MMDD，如 张三0703；无姓名则 命主0703 */
+function buildZiweiDefaultReportName(ziweiProfiles, activeProfileId, profileDraft) {
+  var profile = getZiweiProfileForExport(ziweiProfiles, activeProfileId, profileDraft);
+  var name = profile && profile.name && String(profile.name).trim() ? String(profile.name).trim() : '命主';
+  var now = new Date();
+  var mm = String(now.getMonth() + 1).padStart(2, '0');
+  var dd = String(now.getDate()).padStart(2, '0');
+  return name + mm + dd;
+}
+
 function ZiweiHistoryBar({
   historyList,
   activeTimeName,
@@ -184,10 +214,10 @@ function ZiweiHistoryBar({
           </button>
         </div>
         {!isSidebar && (
-          <p className="text-[11px] text-slate-500 mt-1.5">生成报告后点「保存」，下次可一键恢复</p>
+          <p className="text-[11px] text-slate-500 mt-1.5">生成报告后点「保存」，同步到云端数据库</p>
         )}
         {isSidebar && (
-          <p className="text-[10px] text-slate-600 mt-2">暂无记录</p>
+          <p className="text-[10px] text-slate-500 mt-2">暂无记录</p>
         )}
       </div>
     );
@@ -296,6 +326,42 @@ function ZiweiHistoryBar({
   );
 }
 
+function ZiweiGenerateReportButton({
+  onClick,
+  disabled,
+  isGenerating,
+  size,
+  className,
+  title,
+}) {
+  var isCompact = size === 'xs';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled || isGenerating}
+      title={title || ''}
+      className={
+        'btn btn-primary gap-1 shrink-0 disabled:opacity-50 ' +
+        (isCompact ? 'btn-xs ' : 'nav-chip ') +
+        (className || '')
+      }
+    >
+      {isGenerating ? (
+        <>
+          <div className="icon-loader text-xs animate-spin" aria-hidden />
+          <span>生成中</span>
+        </>
+      ) : (
+        <>
+          <div className="icon-sparkles text-xs" aria-hidden />
+          <span>{isCompact ? '生成报告' : '生成报告'}</span>
+        </>
+      )}
+    </button>
+  );
+}
+
 function ZiweiReportPlaceholder({
   icon,
   iconColorClass,
@@ -372,41 +438,24 @@ function buildZiweiDaxianSupplement(currentYear, currentDateStr) {
 }
 
 function buildZiweiBasicSystemPrompt(currentYear, currentMonth, currentDateStr, lunarMonth) {
-  return `你是资深的国学易经术数领域专家，精通三合紫微、飞星紫微、河洛紫微、钦天四化等各流派技法。请根据用户提供的完整命盘文本，生成「紫微斗数基础命盘全析」。
+  return `你是资深紫微斗数实务派命理师，风格须与同页「宫位解读」一致：论星曜组合机理与三方四正引动，不讲单星词典，不写模板套话。
 
-${buildZiweiDaxianSupplement(currentYear, currentDateStr)}
+基准日：${currentDateStr}（${currentYear}年流年视角，农历约${lunarMonth}）
 
-重要时间参考：
-- 当前日期：${currentDateStr}
-- 流年流月流日分析以${currentDateStr}为基准，不得出现已过去的错误年份引用
-- 流月参考农历${lunarMonth}（公历${currentYear}年${currentMonth}月）
+【任务】根据用户提供的「十二宫事实底稿」（含本宫、对宫、三合、局势分、格局、大限流年），撰写命盘全析。
 
-【必须输出的完整结构】（每一部分须充分展开，引用用户输入中的星曜/宫位/四化，不得省略）
+【写法】
+- 每宫 3～5 句：先点组合，再谈对该领域的实际影响；财帛/官禄/田宅/迁移/福德可略详。
+- 大限与${currentYear}流年各写清：宫位、四化、对财官迁福的实际牵动。
+- 禁止 ** 加粗、免责声明、「详见命盘」、单星百科罗列。
 
-一、【命盘总览】
-四柱八字、五行局、命主性别、命宫、身宫、来因宫、命主特质概述
-
-二、【十二宫逐宫精析】（核心章节，不得缩水）
-对以下十二宫逐一分析，每宫须包含：主星与辅星配置、生年四化落点、该宫对人生的影响、投资相关视角（尤其财帛/官禄/田宅/迁移/福德须更详）：
-命宫、兄弟宫、夫妻宫、子女宫、财帛宫、疾厄宫、迁移宫、奴仆宫、官禄宫、田宅宫、福德宫、父母宫
-
-三、【生年四化飞星全局】
-禄、权、科、忌各自所在宫位及对命盘的整体牵引
-
-四、【格局与特殊组合】
-识别命盘中的主要格局（如府相朝垣、机月同梁、杀破狼等，按实际命盘写），说明成立条件与影响
-
-五、【当前大限深度分析】
-结合虚岁，写清当前大限宫位、干支、四化、主题、机遇与风险
-
-六、【下一大限前瞻】
-起运时间、宫位主题、与当前大限的承续与转折
-
-七、【${currentYear}年流年要点】
-流年命宫、流年四化、关键月份、事业财运人际健康注意事项
-
-八、【综合评语与建议】
-统合性格、事业、财运、投资 temperament、人际、健康，给出可执行建议`;
+【输出结构】
+【命盘总论】
+【十二宫精析】（逐宫用【命宫】…【父母宫】小标题）
+【生年四化全局】
+【格局要点】
+【当前大限与${currentYear}流年】
+【综合建议】`;
 }
 
 function buildZiweiWealthSystemPrompt(currentYear, currentMonth, currentDateStr, lunarMonth, nextYear, nextMonth) {
@@ -484,87 +533,25 @@ ${buildZiweiDaxianSupplement(currentYear, currentDateStr)}
 }
 
 function buildZiweiPortfolioSystemPrompt(currentYear, currentMonth, currentDateStr, lunarMonth) {
-  return `【重要时间基准】
-当前日期：${currentDateStr}
-- 所有流年分析基于${currentYear}年
-- 所有流月分析基于农历${lunarMonth}（公历${currentYear}年${currentMonth}月）
-- 未来时间节点预测从${currentDateStr}之后开始
-- 绝对不得出现2023年、2024年或其他过去年份的时间引用
-- 所有择时建议必须从${currentDateStr}之后的时间开始
+  return `你是资深紫微实务派命理师，兼通持仓分析。根据用户提供的「财官田迁宫位事实底稿」+「持仓数据」，写持仓排盘报告。
 
-你是一位资深的紫微斗数命理专家，同时精通股票投资和技术分析。请基于用户的命盘信息和当前持仓股票组合的详细数据（包括市场行情、技术指标和持仓情况），生成一份深度的持仓排盘分析报告。
+基准日：${currentDateStr}（${currentYear}年，农历约${lunarMonth}）
 
-${buildZiweiDaxianSupplement(currentYear, currentDateStr)}
+【严禁】
+- 先复述完整十二宫或单星词典
+- 模板套话、免责声明、** 加粗
 
-报告结构要求：
+【写法】
+- 【财运格局速写】2～4 句，只基于事实底稿中的财帛/身宫/田宅/官禄组合。
+- 【持仓逐一点评】每股 2～4 句：行业五行契合 + 盈亏/技术位与命盘节奏的对应，须引用具体持仓数据。
+- 【组合与仓位建议】【近期操作窗口】要可执行，结合${currentYear}流年。
 
-# 紫微斗数持仓排盘分析报告
-
-## 一、命盘基础运势分析
-
-### 1.1 命主特质识别
-- 命宫星曜组合的性格特征
-- 身宫位置的人生重点领域
-- 五行局数的基础能量类型
-
-### 1.2 财帛宫财运格局
-- 财帛宫主星的基本财运特征
-- 辅星对财运的加强或制约
-- 财帛宫四化飞星的财运变化
-
-### 1.3 官禄宫事业运势
-- 事业宫位的工作能力表现
-- 官禄与财帛的联动关系
-- 适合的行业发展方向
-
-## 二、当前运势周期分析
-
-### 2.1 大限运势重点
-- 当前大限宫位的主题领域（结合虚岁详尽展开）
-- 大限四化的运势变化特征
-- 大限对财官二宫的影响
-- 下一大限的起运与转折预览
-
-### 2.2 流年时机把握
-- 近期流年的财运机会点
-- 需要谨慎的时间段
-- 适合操作的流年特征
-
-## 三、持仓组合命理评估
-
-### 3.1 个股与命理契合度
-针对每只持仓股票，结合其市场数据和技术指标进行分析：
-
-[股票代码]：
-- 行业属性与五行匹配度
-- 当前价格走势与命主运势的对应关系
-- 技术指标（MA5、MA10、RSI）的命理解读
-- 持仓盈亏状况的命理原因分析
-- 操作风格适配（基于持仓天数和盈亏情况）
-
-### 3.2 市场分布命理分析
-- 美股、港股、A股配置的命理合理性
-- 不同市场与命主的契合度
-- 市场配置优化建议
-
-### 3.3 整体盈亏命理解读
-- 盈利股票与命主财运的关系
-- 亏损股票的命理原因
-- 整体盈亏与大限流年的对应
-
-## 四、技术面与命理结合
-
-### 4.1 关键价位分析
-### 4.2 买卖时机选择
-
-## 五、操作策略建议
-
-### 5.1 基于命理的仓位管理
-### 5.2 时间窗口选择
-
-## 六、风险提示
-
-（报告结束，不包含温馨提示、免责声明或任何文末附言）`;
+【输出结构】
+【财运格局速写】
+【持仓逐一点评】（每股一小节，标题含代码）
+【组合与仓位建议】
+【近期操作窗口】
+【风险提示】`;
 }
 
 function buildZiweiDaxianPromptBlock(currentYear, currentDateStr) {
@@ -858,15 +845,23 @@ function ZiweiApp() {
       setInputTextSource('auto');
     };
 
-    const loadInitialReports = () => {
-      // Load from local storage only
-      const savedHistory = localStorage.getItem('ziwei_history');
-      if (savedHistory) {
-        try {
-          const localReports = JSON.parse(savedHistory);
-          setHistoryList(localReports);
-        } catch (e) {
-          console.error('解析本地历史记录失败:', e);
+    const loadInitialReports = async function () {
+      var cloudItems = null;
+      if (window.ZiweiReportCloud && window.ZiweiReportCloud.loadReports) {
+        cloudItems = await window.ZiweiReportCloud.loadReports();
+      }
+      if (cloudItems) {
+        setHistoryList(cloudItems);
+        saveHistory(cloudItems);
+      } else {
+        const savedHistory = localStorage.getItem('ziwei_history');
+        if (savedHistory) {
+          try {
+            const localReports = JSON.parse(savedHistory);
+            setHistoryList(localReports);
+          } catch (e) {
+            console.error('解析本地历史记录失败:', e);
+          }
         }
       }
       
@@ -907,7 +902,7 @@ function ZiweiApp() {
       }
     };
 
-    // Save history to localStorage only
+    // Save history to localStorage (offline cache)
     const saveHistory = (newHistory) => {
       localStorage.setItem('ziwei_history', JSON.stringify(newHistory));
     };
@@ -1083,10 +1078,14 @@ function ZiweiApp() {
 
 
     const handleGenerate = async () => {
-      const reportInput = resolveZiweiReportInputText(
-        buildZiweiEngineChartText(ziweiProfiles, activeProfileId, profileDraft),
-        inputText,
-        inputTextSource
+      const engineText = buildZiweiEngineChartText(ziweiProfiles, activeProfileId, profileDraft);
+      const fallbackInput = resolveZiweiReportInputText(engineText, inputText, inputTextSource);
+      const reportInput = buildZiweiStructuredReportInput(
+        ziweiProfiles,
+        activeProfileId,
+        profileDraft,
+        fallbackInput,
+        'full'
       );
       if (!reportInput) {
         alert('请先填写并保存出生信息（推荐），或粘贴命盘文本');
@@ -1094,6 +1093,11 @@ function ZiweiApp() {
       }
       if (inputTextSource === 'auto' && engineChartText) {
         setInputText(engineChartText);
+      }
+
+      var reportEl = document.getElementById('ziwei-report-section');
+      if (reportEl) {
+        reportEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
 
       setIsGenerating(true);
@@ -1218,7 +1222,14 @@ function ZiweiApp() {
             portfolioData += `- 持仓天数: ${holdingDays}天\n\n`;
           });
           
-          const portfolioUserPrompt = `请基于以下命盘信息和持仓组合数据生成整体持仓分析报告。\n\n## 命盘信息\n${reportInput}\n\n${portfolioData}`;
+          const portfolioChartFacts = buildZiweiStructuredReportInput(
+            ziweiProfiles,
+            activeProfileId,
+            profileDraft,
+            reportInput,
+            'portfolio'
+          );
+          const portfolioUserPrompt = buildZiweiPortfolioUserPrompt(portfolioChartFacts, portfolioData);
           
           let portfolioResponse = await callAnalysisLlmAPI(portfolioSystemPrompt, portfolioUserPrompt);
           
@@ -1446,10 +1457,14 @@ ${flowContext}`;
       }
       
       try {
-        const reportInput = resolveZiweiReportInputText(
-          buildZiweiEngineChartText(ziweiProfiles, activeProfileId, profileDraft),
-          inputText,
-          inputTextSource
+        const engineText = buildZiweiEngineChartText(ziweiProfiles, activeProfileId, profileDraft);
+        const fallbackInput = resolveZiweiReportInputText(engineText, inputText, inputTextSource);
+        const reportInput = buildZiweiStructuredReportInput(
+          ziweiProfiles,
+          activeProfileId,
+          profileDraft,
+          fallbackInput,
+          'full'
         );
         // First, refresh all stock prices
         console.log('开始刷新持仓股票价格...');
@@ -1766,7 +1781,14 @@ ${allStocksData}
             
             const portfolioSystemPrompt = buildZiweiPortfolioSystemPrompt(currentYear, currentMonth, currentDateStr, lunarMonth);
             
-            const portfolioUserPrompt = `请基于以下命盘信息和持仓组合数据生成整体持仓分析报告。\n\n## 命盘信息\n${reportInput}\n\n${portfolioData}`;
+            const portfolioChartFacts = buildZiweiStructuredReportInput(
+              ziweiProfiles,
+              activeProfileId,
+              profileDraft,
+              reportInput,
+              'portfolio'
+            );
+            const portfolioUserPrompt = buildZiweiPortfolioUserPrompt(portfolioChartFacts, portfolioData);
             
             let portfolioResponse = await callAnalysisLlmAPI(portfolioSystemPrompt, portfolioUserPrompt);
             
@@ -1934,8 +1956,11 @@ ${allStocksData}
 
 
 
-  const deleteHistoryItem = (timeName) => {
+  const deleteHistoryItem = async function (timeName) {
     if (window.confirm('确定要删除这条历史记录吗？')) {
+      if (window.ZiweiReportCloud && window.ZiweiReportCloud.deleteReport) {
+        await window.ZiweiReportCloud.deleteReport(timeName);
+      }
       const newHistory = historyList.filter(h => h.timeName !== timeName);
       setHistoryList(newHistory);
       saveHistory(newHistory);
@@ -1949,12 +1974,12 @@ ${allStocksData}
         return;
       }
 
-      const defaultName = extractTimeFromInput(reportInputText || inputText) || new Date().toLocaleString('zh-CN');
+      const defaultName = buildZiweiDefaultReportName(ziweiProfiles, activeProfileId, profileDraft);
       setSaveDialogName(defaultName);
       setShowSaveDialog(true);
     };
 
-  const confirmSaveToHistory = () => {
+  const confirmSaveToHistory = async function () {
     if (!saveDialogName || !saveDialogName.trim()) {
       alert('请输入报告名称');
       return;
@@ -1995,10 +2020,15 @@ ${allStocksData}
     setActiveHistoryName(timeName);
     setShowSaveDialog(false);
     setSaveDialogName('');
-    alert('报告已保存到本地浏览器');
+
+    var cloudOk = false;
+    if (window.ZiweiReportCloud && window.ZiweiReportCloud.saveReport) {
+      cloudOk = await window.ZiweiReportCloud.saveReport(historyItem);
+    }
+    alert(cloudOk ? '报告已保存到云端数据库' : '云端不可用，已暂存本机浏览器');
   };
 
-    const renameHistoryItem = (oldName, newName) => {
+    const renameHistoryItem = async function (oldName, newName) {
       if (!newName || !newName.trim()) {
         alert('名称不能为空');
         return;
@@ -2020,6 +2050,16 @@ ${allStocksData}
       saveHistory(newHistory);
       setRenamingHistory(null);
       setNewHistoryName('');
+
+      var renamedItem = newHistory.find(function (h) { return h.timeName === trimmedName; });
+      if (renamedItem && window.ZiweiReportCloud) {
+        if (window.ZiweiReportCloud.saveReport) {
+          await window.ZiweiReportCloud.saveReport(renamedItem);
+        }
+        if (oldName !== trimmedName && window.ZiweiReportCloud.deleteReport) {
+          await window.ZiweiReportCloud.deleteReport(oldName);
+        }
+      }
       alert('重命名成功');
     };
 
@@ -2473,21 +2513,6 @@ ${allStocksData}
                     {showInputText ? '收起' : '修改'}
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={handleGenerate}
-                  disabled={isGenerating || !hasReportInput}
-                  className="btn btn-primary btn-xs gap-1 disabled:opacity-50 shrink-0"
-                >
-                  {isGenerating ? (
-                    <>
-                      <div className="icon-loader text-xs animate-spin" aria-hidden />
-                      生成中
-                    </>
-                  ) : (
-                    '生成'
-                  )}
-                </button>
                 {hasAnyReport && (
                   <button
                     type="button"
@@ -2534,15 +2559,24 @@ ${allStocksData}
                 <div className="icon-file-text text-lg text-cyan-400" aria-hidden />
                 分析报告
               </h2>
-              {(basicReport || wealthReport || portfolioAnalysisReport || stockAnalysisReport || flowReport) && (
-                <button
-                  onClick={copyAllReports}
-                  className="text-slate-400 hover:text-cyan-300 transition-colors p-2 rounded-lg hover:bg-white/5"
-                  title="复制所有报告"
-                >
-                  <div className="icon-copy text-xl"></div>
-                </button>
-              )}
+              <div className="flex items-center gap-2 shrink-0">
+                <ZiweiGenerateReportButton
+                  onClick={handleGenerate}
+                  disabled={!hasReportInput}
+                  isGenerating={isGenerating}
+                  size="xs"
+                  title={!hasReportInput ? '请先填写并保存出生档案' : '生成命盘全析与财富密码'}
+                />
+                {(basicReport || wealthReport || portfolioAnalysisReport || stockAnalysisReport || flowReport) && (
+                  <button
+                    onClick={copyAllReports}
+                    className="text-slate-400 hover:text-cyan-300 transition-colors p-2 rounded-lg hover:bg-white/5"
+                    title="复制所有报告"
+                  >
+                    <div className="icon-copy text-xl"></div>
+                  </button>
+                )}
+              </div>
             </div>
             
             <div className="zi-card overflow-hidden">
@@ -2657,7 +2691,11 @@ ${allStocksData}
                           icon={ZIWEI_TAB_THEME.basic.icon}
                           iconColorClass={ZIWEI_TAB_THEME.basic.emptyIcon}
                           title="还没有生成命盘全析报告"
-                          description="请点击上方「生成」开始分析"
+                          description="选择出生档案后，点击「生成报告」开始 AI 分析"
+                          actionLabel="生成报告"
+                          onAction={handleGenerate}
+                          disabled={isGenerating || !hasReportInput}
+                          actionGradient="linear-gradient(180deg, #0891b2 0%, #0e7490 100%)"
                         />
                       )}
                     </>
@@ -2714,7 +2752,11 @@ ${allStocksData}
                           icon={ZIWEI_TAB_THEME.wealth.icon}
                           iconColorClass={ZIWEI_TAB_THEME.wealth.emptyIcon}
                           title="还没有生成财富密码报告"
-                          description="点击「生成」后将与本页其他板块一并生成"
+                          description="与命盘全析一并生成，无需单独操作"
+                          actionLabel="生成报告"
+                          onAction={handleGenerate}
+                          disabled={isGenerating || !hasReportInput}
+                          actionGradient="linear-gradient(180deg, #d97706 0%, #b45309 100%)"
                         />
                       )}
                     </>
@@ -2932,7 +2974,7 @@ ${allStocksData}
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
             <div className="zi-card w-full max-w-md p-6 border-cyan-500/20">
               <h2 className="text-xl font-bold text-slate-100 mb-1">保存报告</h2>
-              <p className="text-xs text-slate-500 zi-mono-label mb-4">仅存本机浏览器</p>
+              <p className="text-xs text-slate-500 zi-mono-label mb-4">保存到云端数据库（离线时暂存本机）</p>
               <div className="mb-4">
                 <label className="block text-sm font-medium text-slate-400 mb-2">
                   报告名称
@@ -2942,7 +2984,7 @@ ${allStocksData}
                   value={saveDialogName}
                   onChange={(e) => setSaveDialogName(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-white/10 bg-slate-950 text-slate-100 focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500/30"
-                  placeholder="请输入报告名称"
+                  placeholder="如 张三0703"
                   autoFocus
                 />
               </div>

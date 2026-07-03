@@ -365,9 +365,59 @@
     };
   }
 
+  function exportPlainPalaceFacts(chart, palaceName, options) {
+    options = options || {};
+    var palace = (chart.palaces || []).find(function (p) {
+      return p.name === palaceName;
+    });
+    if (!palace) return '';
+
+    var sanFang = getSanFangSiZheng(chart.palaces, getPalaceBranch(palace));
+    var score = calculatePalaceScore(palace, chart);
+    var lines = [];
+
+    lines.push('【' + palace.name + '】' + palace.stem + palace.zhi + ' · 大限' + (palace.daXian || '—'));
+    lines.push('星曜：' + formatStarLine(palace));
+    lines.push('组合：' + interpretCombination(palace, sanFang));
+    lines.push('局势：' + score.score + '星（' + score.reason + '）');
+
+    if (sanFang.opposite) {
+      lines.push('对宫【' + sanFang.opposite.name + '】' + formatStarLine(sanFang.opposite));
+    }
+    sanFang.trine.forEach(function (p) {
+      lines.push('三合【' + p.name + '】' + formatStarLine(p));
+    });
+
+    var hua = [];
+    [palace, sanFang.opposite]
+      .concat(sanFang.trine)
+      .forEach(function (p) {
+        if (!p) return;
+        [].concat(p.stars.major, p.stars.minor).forEach(function (s) {
+          if (s.hua) hua.push(p.name + s.name + '化' + s.hua);
+        });
+      });
+    if (hua.length) lines.push('四化：' + hua.join('、'));
+
+    var pats = relatedPatterns(chart, palace);
+    if (pats.length) {
+      lines.push(
+        '格局：' +
+          pats
+            .map(function (pat) {
+              return pat.name + '（' + (pat.description || '') + '）';
+            })
+            .join('；')
+      );
+    }
+
+    return lines.join('\n');
+  }
+
   global.ZiweiPalaceAnalysis = {
     calculateScore: calculatePalaceScore,
     getModeLabel: getModeLabel,
     generateStructured: generateStructuredPalaceAnalysis,
+    exportPlainFacts: exportPlainPalaceFacts,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
