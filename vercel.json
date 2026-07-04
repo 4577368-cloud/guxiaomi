@@ -1,5 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "fastapi",
-  "buildCommand": "python3 scripts/write_env_js.py && rm -rf web_public && mkdir -p web_public && (cd project-proj_21qCfX0Vycj && tar --exclude=node_modules -cf - .) | (cd web_public && tar -xf -)"
+  "buildCommand": "python3 scripts/write_env_js.py && rm -rf web_public && mkdir -p web_public && (cd project-proj_21qCfX0Vycj && tar --exclude=node_modules -cf - .) | (cd web_public && tar -xf -) && python3 scripts/stamp_assets.py web_public"
 }

@@ -696,6 +696,122 @@ function formatPredDateChip(dateKey) {
   return m + "月" + d;
 }
 
+/** Date → "YYYY-MM-DD" */
+function dateToDateKey(d) {
+  var y = d.getFullYear();
+  var m = String(d.getMonth() + 1).padStart(2, "0");
+  var day = String(d.getDate()).padStart(2, "0");
+  return y + "-" + m + "-" + day;
+}
+
+/** 预测保存日历：高亮有快照的日期，点击某天切换到那天生成的预测 */
+function PredictionDateCalendar(props) {
+  var available =
+    props.availableKeys instanceof Set
+      ? props.availableKeys
+      : new Set(props.availableKeys || []);
+  var selectedKey = props.selectedKey;
+  var anchor =
+    selectedKey ||
+    (available.size ? Array.from(available).sort().reverse()[0] : null);
+  var anchorDate = anchor ? new Date(anchor + "T00:00:00") : new Date();
+  var ymState = React.useState({
+    y: anchorDate.getFullYear(),
+    m: anchorDate.getMonth(),
+  });
+  var ym = ymState[0];
+  var setYm = ymState[1];
+
+  var first = new Date(ym.y, ym.m, 1);
+  var startOffset = first.getDay();
+  var daysInMonth = new Date(ym.y, ym.m + 1, 0).getDate();
+  var cells = [];
+  for (var i = 0; i < startOffset; i++) cells.push(null);
+  for (var dd = 1; dd <= daysInMonth; dd++) cells.push(new Date(ym.y, ym.m, dd));
+
+  function shiftMonth(delta) {
+    setYm(function (prev) {
+      var nm = prev.m + delta;
+      var ny = prev.y + Math.floor(nm / 12);
+      nm = ((nm % 12) + 12) % 12;
+      return { y: ny, m: nm };
+    });
+  }
+
+  var weekdayLabels = ["日", "一", "二", "三", "四", "五", "六"];
+  var todayKey = dateToDateKey(new Date());
+
+  return (
+    <div className="w-[17rem] rounded-xl border border-white/15 bg-slate-900/95 p-3 shadow-xl backdrop-blur">
+      <div className="mb-2 flex items-center justify-between">
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm !px-2"
+          onClick={() => shiftMonth(-1)}
+          aria-label="上个月"
+        >
+          ‹
+        </button>
+        <span className="text-sm font-semibold text-slate-100">
+          {ym.y} 年 {ym.m + 1} 月
+        </span>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm !px-2"
+          onClick={() => shiftMonth(1)}
+          aria-label="下个月"
+        >
+          ›
+        </button>
+      </div>
+      <div className="grid grid-cols-7 gap-0.5 text-center text-[10px] text-slate-500">
+        {weekdayLabels.map((w) => (
+          <div key={w} className="py-0.5">
+            {w}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-0.5">
+        {cells.map((cell, idx) => {
+          if (!cell) return <div key={"e" + idx} />;
+          var key = dateToDateKey(cell);
+          var has = available.has(key);
+          var isSel = key === selectedKey;
+          var isToday = key === todayKey;
+          var cls =
+            "flex h-8 items-center justify-center rounded-md text-xs tabular-nums transition ";
+          if (isSel)
+            cls +=
+              "bg-cyan-400/30 text-cyan-50 font-bold ring-1 ring-cyan-300/60";
+          else if (has)
+            cls +=
+              "bg-emerald-500/15 text-emerald-200 font-semibold hover:bg-emerald-500/25 cursor-pointer";
+          else cls += "text-slate-600";
+          if (isToday && !isSel) cls += " ring-1 ring-white/25";
+          return (
+            <button
+              key={key}
+              type="button"
+              disabled={!has}
+              onClick={() => has && props.onSelect(key)}
+              className={cls}
+              title={has ? key + "（有快照）" : key}
+            >
+              {cell.getDate()}
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-2 flex items-center gap-2 text-[10px] text-slate-500">
+        <span className="inline-block h-2 w-2 rounded-sm bg-emerald-500/40"></span>
+        有快照
+        <span className="ml-1 inline-block h-2 w-2 rounded-sm bg-cyan-400/50"></span>
+        当前
+      </div>
+    </div>
+  );
+}
+
 function localDateKey() {
   var d = new Date();
   var y = d.getFullYear();
@@ -1444,6 +1560,8 @@ function AnalysisApp() {
   const [predPeriodTab, setPredPeriodTab] = React.useState(0);
   /** 当前选中的预测快照日期（保存日 YYYY-MM-DD，用于切换不同批次） */
   const [selectedPredDateKey, setSelectedPredDateKey] = React.useState(null);
+  /** 日历弹层：查看/切换更早的预测日期 */
+  const [showPredCalendar, setShowPredCalendar] = React.useState(false);
   const predPeriodTabRef = React.useRef(0);
   React.useEffect(() => {
     predPeriodTabRef.current = predPeriodTab;
@@ -1946,6 +2064,26 @@ function AnalysisApp() {
       });
     },
     [predDateKeys],
+  );
+
+  /** 所有有快照的日期集合，供日历高亮 */
+  const predAvailableSet = React.useMemo(
+    function () {
+      return new Set(predDateKeys);
+    },
+    [predDateKeys],
+  );
+
+  /** 默认只展示近 5 天日期条；当前选中若更早则额外补一枚，其余走日历 */
+  const visiblePredDateKeys = React.useMemo(
+    function () {
+      var top = predDateKeys.slice(0, 5);
+      if (selectedPredDateKey && top.indexOf(selectedPredDateKey) < 0) {
+        top = top.concat([selectedPredDateKey]);
+      }
+      return top;
+    },
+    [predDateKeys, selectedPredDateKey],
   );
 
   const currentBullSnapshotName = React.useMemo(
@@ -3102,6 +3240,14 @@ function AnalysisApp() {
           </div>
           </div>
           <div className="flex flex-wrap items-center gap-1.5 ml-auto">
+            <a
+              href="backtest.html"
+              className="btn btn-secondary btn-sm shrink-0 gap-1"
+              title="预测 + 研报命中率 / 胜率回测看板"
+            >
+              <span className="icon-target" aria-hidden="true"></span>
+              回测胜率
+            </a>
             <button
               type="button"
               className="btn btn-primary btn-sm shrink-0"
@@ -3118,14 +3264,55 @@ function AnalysisApp() {
         </div>
 
         <div className="mt-2 flex min-h-0 flex-1 flex-col border-t border-white/15 pt-2">
-          <div className="mb-1 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
-            按保存日期
+          <div className="mb-1 flex shrink-0 items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+              按保存日期
+            </span>
+            {predDateKeys.length > 0 && (
+              <div className="relative">
+                <button
+                  type="button"
+                  className={`btn btn-sm gap-1 ${
+                    showPredCalendar ? "btn-primary" : "btn-secondary"
+                  }`}
+                  onClick={() => setShowPredCalendar((v) => !v)}
+                  title="用日历查看/切换更早的预测日期"
+                >
+                  <span aria-hidden="true">🗓</span>
+                  日历
+                  <span className="text-[10px] opacity-70">
+                    共 {predDateKeys.length} 天
+                  </span>
+                </button>
+                {showPredCalendar && (
+                  <React.Fragment>
+                    <button
+                      type="button"
+                      aria-hidden="true"
+                      tabIndex={-1}
+                      className="fixed inset-0 z-20 cursor-default"
+                      onClick={() => setShowPredCalendar(false)}
+                    />
+                    <div className="absolute right-0 z-30 mt-1">
+                      <PredictionDateCalendar
+                        availableKeys={predAvailableSet}
+                        selectedKey={selectedPredDateKey}
+                        onSelect={(key) => {
+                          setSelectedPredDateKey(key);
+                          setShowPredCalendar(false);
+                        }}
+                      />
+                    </div>
+                  </React.Fragment>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap gap-1.5 mb-2 shrink-0">
             {predDateKeys.length === 0 && (
               <span className="text-sm text-slate-400">暂无预测快照</span>
             )}
-            {predDateKeys.map((dk) => (
+            {visiblePredDateKeys.map((dk) => (
               <button
                 key={dk}
                 type="button"
@@ -3140,6 +3327,16 @@ function AnalysisApp() {
                 {formatPredDateChip(dk)}
               </button>
             ))}
+            {predDateKeys.length > visiblePredDateKeys.length && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm text-slate-300"
+                onClick={() => setShowPredCalendar(true)}
+                title="更多历史日期（日历）"
+              >
+                更多…
+              </button>
+            )}
           </div>
           <div className="mb-1 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
             预测结果（日 / 周 / 月）

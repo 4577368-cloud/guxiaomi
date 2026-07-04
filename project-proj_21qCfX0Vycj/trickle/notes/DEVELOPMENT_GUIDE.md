@@ -59,8 +59,7 @@
 │   ├── storage.js             # 本地存储
 │   ├── calculations.js        # 盈亏计算
 │   ├── feeCalculations.js     # 手续费计算
-│   ├── technicalIndicators.js # 技术指标
-│   └── databaseSync.js        # 数据库同步
+│   └── technicalIndicators.js # 技术指标
 └── trickle/              # Trickle特殊文件夹
     ├── assets/               # 资源文件
     ├── notes/                # 项目文档
@@ -209,7 +208,7 @@
 - 离线访问支持
 
 **关键代码位置**: 
-- `utils/databaseSync.js`
+- `utils/cloudSync.js`（Postgres 云端同步）
 - `utils/storage.js`
 
 ---

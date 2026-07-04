@@ -442,3 +442,56 @@ async function getHistoricalClose30Days(symbol, market, totalShares = 0) {
 
 window.getHistoricalClose30Days = getHistoricalClose30Days;
 
+/**
+ * 专业 K 线数据：优先后端统一日线（含 OHLC + 成交量），失败则回退浏览器直连数据源。
+ * 返回 [{date, open, high, low, close, volume}]，最多 days 根（后端上限 120）。
+ */
+async function getDailyKLine(symbol, market, days = 120) {
+  const want = Math.max(1, Math.min(Number(days) || 120, 120));
+  try {
+    const backend = await getHistoricalCloseFromBackend(symbol, market, want);
+    if (backend && Array.isArray(backend.history) && backend.history.length > 0) {
+      return backend.history
+        .map(function (item) {
+          const close = Number(item.close != null ? item.close : item.price);
+          if (!Number.isFinite(close) || close <= 0) return null;
+          return {
+            date: item.date,
+            open: Number.isFinite(Number(item.open)) ? Number(item.open) : null,
+            high: Number.isFinite(Number(item.high)) ? Number(item.high) : null,
+            low: Number.isFinite(Number(item.low)) ? Number(item.low) : null,
+            close: close,
+            volume: Number(item.volume) || 0,
+          };
+        })
+        .filter(Boolean);
+    }
+  } catch (error) {
+    console.warn('getDailyKLine 后端历史失败，尝试浏览器直连:', error);
+  }
+  try {
+    const result = await getHistoricalDataAndIndicators(symbol, market);
+    if (result && Array.isArray(result.history) && result.history.length) {
+      return result.history
+        .map(function (item) {
+          const close = Number(item.close != null ? item.close : item.price);
+          if (!Number.isFinite(close) || close <= 0) return null;
+          return {
+            date: item.date,
+            open: Number.isFinite(Number(item.open)) ? Number(item.open) : null,
+            high: Number.isFinite(Number(item.high)) ? Number(item.high) : null,
+            low: Number.isFinite(Number(item.low)) ? Number(item.low) : null,
+            close: close,
+            volume: Number(item.volume) || 0,
+          };
+        })
+        .filter(Boolean);
+    }
+  } catch (error) {
+    console.warn('getDailyKLine 浏览器直连失败:', error);
+  }
+  return [];
+}
+
+window.getDailyKLine = getDailyKLine;
+

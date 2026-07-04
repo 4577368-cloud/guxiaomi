@@ -478,6 +478,35 @@ def report_delete(base_name: str) -> bool:
     return True
 
 
+def backtest_reports(limit: int = 500) -> List[Dict[str, Any]]:
+    """回测取数：历史研报（含完整 report_json 与维度）。按生成时间倒序。"""
+    if not is_db_enabled():
+        return []
+    rows = _execute(
+        """
+        SELECT base_name, stock_code, market, stock_name, generated_at, report_json
+        FROM reports
+        ORDER BY generated_at DESC
+        LIMIT %s
+        """,
+        (int(limit),),
+        fetch=True,
+    )
+    out: List[Dict[str, Any]] = []
+    for row in rows or []:
+        rj = row["report_json"] or {}
+        generated_at = row["generated_at"]
+        out.append({
+            "base_name": row["base_name"],
+            "stock_code": row["stock_code"],
+            "market": row["market"],
+            "stock_name": row["stock_name"],
+            "generated_at": generated_at.isoformat() if generated_at else "",
+            "report_json": rj,
+        })
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Screener snapshots
 # ---------------------------------------------------------------------------
@@ -746,6 +775,46 @@ def screener_delete(base_name: str) -> bool:
         commit=True,
     )
     return True
+
+
+def backtest_predictions(limit: int = 5000) -> List[Dict[str, Any]]:
+    """回测取数：预测明细 JOIN 快照维度（周期/方向/资产类型/保存时间）。
+
+    每条返回：symbol/market/name/entry(下单参考价)/probability/profit/
+    symbol_type/period_type/trend_type/ts(预测时间)。
+    """
+    if not is_db_enabled():
+        return []
+    n = max(1, min(int(limit or 5000), 50000))
+    rows = _execute(
+        """
+        SELECT s.symbol, s.market, s.name, s.current_price, s.pre_close,
+               s.change_ratio, s.probability, s.profit, s.symbol_type,
+               ss.period_type, ss.trend_type, ss.saved_at, s.item_timestamp
+        FROM screener_symbols s
+        JOIN screener_snapshots ss ON s.base_name = ss.base_name
+        ORDER BY ss.saved_at DESC
+        LIMIT %s
+        """,
+        (n,),
+        fetch=True,
+    )
+    out: List[Dict[str, Any]] = []
+    for row in rows or []:
+        ts = row.get("item_timestamp") or row.get("saved_at")
+        out.append({
+            "symbol": row["symbol"],
+            "market": row.get("market") or "",
+            "name": row.get("name") or row["symbol"],
+            "entry": float(row["current_price"]) if row["current_price"] is not None else None,
+            "probability": float(row["probability"]) if row["probability"] is not None else None,
+            "profit": float(row["profit"]) if row["profit"] is not None else None,
+            "symbol_type": int(row["symbol_type"]) if row["symbol_type"] is not None else 0,
+            "period_type": int(row["period_type"]) if row["period_type"] is not None else 0,
+            "trend_type": int(row["trend_type"]) if row["trend_type"] is not None else 0,
+            "ts": ts.isoformat() if hasattr(ts, "isoformat") else str(ts or ""),
+        })
+    return out
 
 
 # ---------------------------------------------------------------------------

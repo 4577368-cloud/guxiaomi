@@ -9,7 +9,9 @@ import os
 import re
 import sys
 import threading
+import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -42,11 +44,11 @@ if _env_file.is_file():
     except ImportError:
         pass
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse, StreamingResponse
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 
 import requests
 
@@ -58,6 +60,10 @@ app = FastAPI(title="股票分析 API", version="1.0")
 @app.on_event("startup")
 def _startup():
     db.init_db()
+    try:
+        _maybe_start_scheduler()
+    except Exception as _e:
+        print(f"[cron] scheduler start skipped: {_e}")
 
 # 浏览器跨域：与 Vercel 等静态域配合时，可设 ALLOWED_ORIGINS=https://a.vercel.app,https://b.com
 # allow_origins=["*"] 时 allow_credentials 须为 False（规范要求）
@@ -1098,18 +1104,16 @@ def _safe_prediction_name(name: str) -> bool:
     return Path(name).name == name
 
 
-@app.post("/api/screener/fetch")
-def api_screener_fetch(req: ScreenerFetchRequest):
-    """拉取 Intellectia 选股列表并保存为本地快照（供「股票预测」历史查看）。"""
-    pt, tt, st = req.period_type, req.trend_type, req.symbol_type
+def _screener_fetch_and_save(pt: int, tt: int, st: int, page: int = 1, size: int = INTELLECTIA_SCREENER_MAX_SIZE) -> Dict[str, Any]:
+    """拉取 Intellectia 选股并保存快照（DB + 本地文件）。供接口与定时任务复用。"""
     if pt not in (0, 1, 2):
         raise HTTPException(status_code=400, detail="period_type 须为 0(日)/1(周)/2(月)")
     if tt not in (0, 1):
         raise HTTPException(status_code=400, detail="trend_type 须为 0(看涨)/1(看跌)")
     if st not in (0, 1, 2):
         raise HTTPException(status_code=400, detail="symbol_type 须为 0(股票)/1(ETF)/2(加密货币)")
-    page = max(1, int(req.page))
-    size = max(1, min(int(req.size), INTELLECTIA_SCREENER_MAX_SIZE))
+    page = max(1, int(page))
+    size = max(1, min(int(size), INTELLECTIA_SCREENER_MAX_SIZE))
 
     params = {
         "symbol_type": st,
@@ -1182,6 +1186,12 @@ def api_screener_fetch(req: ScreenerFetchRequest):
         "total": (inner or {}).get("total"),
         "list_count": len(lst),
     }
+
+
+@app.post("/api/screener/fetch")
+def api_screener_fetch(req: ScreenerFetchRequest):
+    """拉取 Intellectia 选股列表并保存为快照（供「股票预测」历史查看）。"""
+    return _screener_fetch_and_save(req.period_type, req.trend_type, req.symbol_type, req.page, req.size)
 
 
 @app.get("/api/screener/list")
@@ -1304,6 +1314,786 @@ def api_screener_symbol_history(symbol: str, market: Optional[str] = None, limit
         return {"ok": True, "items": []}
     items = db.screener_symbols_list(symbol=symbol, market=market, limit=limit)
     return {"ok": True, "items": items}
+
+
+# ---------------------------------------------------------------------------
+# Prediction backtest（预测命中率 / 胜率看板）
+# ---------------------------------------------------------------------------
+# 周期 → 结算交易日数：0 日(明日)=1，1 周=5，2 月=21
+_BT_PERIOD_DAYS = {0: 1, 1: 5, 2: 21}
+_BT_PERIOD_LABEL = {0: "日", 1: "周", 2: "月"}
+_BT_TREND_LABEL = {0: "看涨", 1: "看跌"}
+_BT_KIND_LABEL = {0: "股票", 1: "ETF", 2: "加密货币"}
+_BT_REPORT_HORIZON = 21       # 研报默认结算：约 1 个月（21 个交易日）
+_BT_REPORT_DEADZONE = 0.05    # |加权得分| 低于此值视为中性，不计入方向回测
+_BT_MARKET_LABEL = {"CN": "A股", "HK": "港股", "US": "美股"}
+
+_bt_hist_cache: Dict[str, Any] = {}          # "SYM|MKT" -> (fetched_ts, [(date, close), ...])
+_bt_result_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
+_BT_HIST_TTL = 3600.0
+_BT_RESULT_TTL = 1800.0
+
+
+def _load_backtest_predictions(limit: int = 5000) -> List[Dict[str, Any]]:
+    """所有历史预测（含维度）。数据库优先，本地 predictions 文件兜底。"""
+    if db.is_db_enabled():
+        rows = db.backtest_predictions(limit=limit)
+        if rows:
+            return rows
+    out: List[Dict[str, Any]] = []
+    for f in PREDICTIONS_DIR.glob("*.json"):
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        period = int(d.get("period_type", 0) or 0)
+        trend = int(d.get("trend_type", 0) or 0)
+        stype = int(d.get("symbol_type", 0) or 0)
+        saved = str(d.get("saved_at") or "")
+        inner = (d.get("data") or {}).get("list") or []
+        if not isinstance(inner, list):
+            continue
+        for it in inner:
+            if not isinstance(it, dict):
+                continue
+            code = str(it.get("code") or it.get("symbol") or "").strip().upper()
+            sym = str(it.get("symbol") or "").strip().upper() or code.split(".")[0]
+            if not sym:
+                continue
+            out.append({
+                "symbol": sym,
+                "market": db._infer_market_from_code(code),
+                "name": str(it.get("name") or sym),
+                "entry": _parse_float(it.get("price")),
+                "probability": _parse_float(it.get("probability")),
+                "profit": _parse_float(it.get("profit")),
+                "symbol_type": int(it.get("symbol_type", stype) or stype),
+                "period_type": period,
+                "trend_type": trend,
+                "ts": str(it.get("timestamp") or saved or ""),
+            })
+    return out
+
+
+def _backtest_history(sym: str, market: str) -> List[Any]:
+    """某标的近 120 日收盘序列（外部日线 + 数据库快照合并），带 1h 进程缓存。"""
+    m = _normalize_market_code(market)
+    key = f"{sym}|{m}"
+    cached = _bt_hist_cache.get(key)
+    now = time.time()
+    if cached and now - cached[0] < _BT_HIST_TTL:
+        return cached[1]
+    if m == "US":
+        srcs = [lambda: _fetch_us_history_yahoo(sym, 120), lambda: _fetch_us_history_alpha_vantage(sym, 120)]
+    elif m in {"HK", "CN"}:
+        srcs = [lambda: _fetch_tencent_history(sym, m, 120), lambda: _fetch_sohu_history(sym, m, 120)]
+    else:
+        srcs = []
+    ext: List[Dict[str, Any]] = []
+    for fetcher in srcs:
+        try:
+            rows = fetcher()
+            if rows:
+                ext = rows
+                break
+        except Exception:
+            continue
+    snaps = db.price_snapshot_list(sym, m, days=200) if db.is_db_enabled() else []
+    merged = _merge_history_rows(ext, snaps)
+    series: List[Any] = []
+    for row in merged:
+        d = str(row.get("date") or "")[:10]
+        c = _parse_float(row.get("close") if row.get("close") is not None else row.get("price"))
+        if d and c and c > 0:
+            series.append((d, c))
+    series.sort(key=lambda x: x[0])
+    _bt_hist_cache[key] = (now, series)
+    return series
+
+
+def _bt_norm_date(ts: Any) -> str:
+    """把预测时间统一成 YYYY-MM-DD。兼容 ISO 字符串与 Unix 时间戳(秒/毫秒)。"""
+    s = str(ts or "").strip()
+    if not s:
+        return ""
+    if re.match(r"^\d{4}-\d{2}-\d{2}", s):
+        return s[:10]
+    try:
+        v = int(float(s))
+        if v > 10 ** 12:  # 毫秒
+            v //= 1000
+        if v >= 10 ** 8:  # 合理的秒级时间戳（约 1973 年后）
+            return datetime.fromtimestamp(v).strftime("%Y-%m-%d")
+    except Exception:
+        return ""
+    return ""
+
+
+def _bt_agg(items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    n = len(items)
+    if n == 0:
+        return {"count": 0, "hit_rate": None, "win_rate": None, "avg_return": None, "avg_strategy": None}
+    hits = sum(1 for x in items if x["hit"])
+    wins = sum(1 for x in items if x["strat"] > 0)
+    avg_ret = sum(x["ret"] for x in items) / n
+    avg_str = sum(x["strat"] for x in items) / n
+    return {
+        "count": n,
+        "hit_rate": round(hits / n * 100, 1),
+        "win_rate": round(wins / n * 100, 1),
+        "avg_return": round(avg_ret * 100, 2),
+        "avg_strategy": round(avg_str * 100, 2),
+    }
+
+
+def _bt_resolve(sig: Dict[str, Any], series: List[Any]) -> Optional[Dict[str, Any]]:
+    """结算单条信号（预测/研报通用）。
+    返回 None=无价格数据；{'pending':True}=未到结算期；否则含收益/命中。"""
+    if not series:
+        return None
+    entry_date = _bt_norm_date(sig.get("ts"))
+    if not entry_date:
+        return None
+    horizon = int(sig.get("horizon") or 1)
+    idx = None
+    for i, (d, _c) in enumerate(series):
+        if d >= entry_date:
+            idx = i
+            break
+    if idx is None:
+        return None
+    target_idx = idx + horizon
+    if target_idx >= len(series):
+        return {"pending": True}
+    entry_close = series[idx][1]
+    target_close = series[target_idx][1]
+    if not entry_close or entry_close <= 0:
+        return None
+    ret = (target_close - entry_close) / entry_close
+    bull = sig.get("direction") == "bull"
+    hit = ret > 0 if bull else ret < 0
+    strat = ret if bull else -ret
+    return {
+        "pending": False,
+        "ret": ret,
+        "strat": strat,
+        "hit": bool(hit),
+        "entry": round(entry_close, 4),
+        "target": round(target_close, 4),
+        "entry_date": series[idx][0],
+        "target_date": series[target_idx][0],
+    }
+
+
+# --- 信号构建：预测与研报统一成同一 signal 结构 ------------------------------
+
+def _prediction_signals(pred_limit: int) -> List[Dict[str, Any]]:
+    """历史预测 → 统一信号。"""
+    sigs: List[Dict[str, Any]] = []
+    for p in _load_backtest_predictions(limit=pred_limit):
+        period = int(p.get("period_type", 0) or 0)
+        trend = int(p.get("trend_type", 0) or 0)
+        stype = int(p.get("symbol_type", 0) or 0)
+        prob = p.get("probability")
+        sigs.append({
+            "symbol": p["symbol"],
+            "market": p.get("market") or "",
+            "name": p.get("name") or p["symbol"],
+            "ts": p.get("ts") or "",
+            "direction": "bull" if trend == 0 else "bear",
+            "horizon": _BT_PERIOD_DAYS.get(period, 1),
+            "period_type": period,
+            "trend_type": trend,
+            "symbol_type": stype,
+            "probability": _parse_float(prob),
+        })
+    return sigs
+
+
+_BT_REPORT_DATE_RE = re.compile(r"_(\d{8})_\d{4,6}")
+
+
+def _bt_report_date(base_name: str, rj: Dict[str, Any]) -> str:
+    """研报日期：优先文件名 _YYYYMMDD_，回退「生成时间」。"""
+    m = _BT_REPORT_DATE_RE.search(str(base_name or ""))
+    if m:
+        s = m.group(1)
+        return f"{s[0:4]}-{s[4:6]}-{s[6:8]}"
+    g = str(rj.get("生成时间") or rj.get("generated_at") or "")
+    m2 = re.search(r"(\d{4})\D+(\d{1,2})\D+(\d{1,2})", g)
+    if m2:
+        return f"{int(m2.group(1)):04d}-{int(m2.group(2)):02d}-{int(m2.group(3)):02d}"
+    return _bt_norm_date(g)
+
+
+def _report_signal_from_json(
+    base_name: str, market: Any, stock_code: Any, stock_name: Any,
+    generated_at: Any, rj: Any,
+) -> Tuple[Optional[Dict[str, Any]], str]:
+    """研报 report_json → 信号。返回 (signal|None, status)；status='neutral' 表示得分处于中性带。"""
+    if not isinstance(rj, dict):
+        return None, "skip"
+    code = str(stock_code or rj.get("stock_code") or "").strip().upper()
+    if not code:
+        return None, "skip"
+    sym = code.split(".")[0]
+    if not sym:
+        return None, "skip"
+    score = _parse_float(rj.get("加权得分"))
+    if score is None:
+        score = _parse_float(rj.get("共识程度"))
+    if score is None:
+        return None, "skip"
+    if abs(score) > 5:          # 兼容个别以百分数存储的情况
+        score = score / 100.0
+    ts = _bt_report_date(base_name, rj)
+    if not ts:
+        return None, "skip"
+    if abs(score) < _BT_REPORT_DEADZONE:
+        return None, "neutral"
+    mkt = market or rj.get("market") or ""
+    name = str(stock_name or rj.get("stock_name") or sym).strip()
+    name = re.sub(r"^【[^】]*】\s*", "", name) or sym
+    return {
+        "symbol": sym,
+        "market": mkt,
+        "market_norm": _normalize_market_code(mkt),
+        "name": name,
+        "ts": ts,
+        "direction": "bull" if score > 0 else "bear",
+        "horizon": _BT_REPORT_HORIZON,
+        "strength": min(1.0, abs(score)),
+        "score": round(score, 3),
+    }, "ok"
+
+
+def _report_signals(limit: int = 500) -> Tuple[List[Dict[str, Any]], int]:
+    """历史研报 → 统一信号列表 + 中性数量。数据库优先，本地 reports 文件兜底。"""
+    sigs: List[Dict[str, Any]] = []
+    neutral = 0
+    rows: List[Dict[str, Any]] = []
+    if db.is_db_enabled():
+        try:
+            rows = db.backtest_reports(limit=limit)
+        except Exception:
+            rows = []
+    if rows:
+        for r in rows:
+            sig, status = _report_signal_from_json(
+                r.get("base_name"), r.get("market"), r.get("stock_code"),
+                r.get("stock_name"), r.get("generated_at"), r.get("report_json"),
+            )
+            if sig:
+                sigs.append(sig)
+            elif status == "neutral":
+                neutral += 1
+    else:
+        files = sorted(REPORTS_DIR.glob("*.json"), key=lambda f: f.stat().st_mtime, reverse=True)[:limit]
+        for f in files:
+            try:
+                rj = json.loads(f.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            sig, status = _report_signal_from_json(
+                f.stem, rj.get("market"), rj.get("stock_code"),
+                rj.get("stock_name"), rj.get("生成时间"), rj,
+            )
+            if sig:
+                sigs.append(sig)
+            elif status == "neutral":
+                neutral += 1
+    return sigs, neutral
+
+
+# --- 通用聚合：校准 / 分组 / 个股榜 ------------------------------------------
+
+def _bt_calibration(resolved, field, ranges, title, subtitle):
+    buckets = []
+    for lo, hi, label in ranges:
+        sub = [x for x in resolved if x.get(field) is not None and lo <= float(x[field]) < hi]
+        row = _bt_agg(sub)
+        row["label"] = label
+        buckets.append(row)
+    return {"title": title, "subtitle": subtitle, "buckets": buckets}
+
+
+def _bt_breakdown(resolved, field, values, labels, title, dim_label, is_int=True):
+    rows = []
+    for v in values:
+        if is_int:
+            sub = [x for x in resolved if int(x.get(field, -999) or 0) == v]
+        else:
+            sub = [x for x in resolved if x.get(field) == v]
+        row = _bt_agg(sub)
+        row["label"] = labels.get(v, str(v))
+        rows.append(row)
+    return {"title": title, "dim_label": dim_label, "rows": rows}
+
+
+def _bt_leaders(resolved, min_count=2, top=8):
+    per: Dict[str, List[Dict[str, Any]]] = {}
+    for x in resolved:
+        per.setdefault(x["symbol"], []).append(x)
+    rows = []
+    for sym, items in per.items():
+        if len(items) < min_count:
+            continue
+        agg = _bt_agg(items)
+        agg["symbol"] = sym
+        agg["name"] = items[0].get("name") or sym
+        agg["market"] = items[0].get("market") or ""
+        rows.append(agg)
+    rows.sort(key=lambda r: (r["avg_strategy"] if r["avg_strategy"] is not None else -999), reverse=True)
+    return {"best": rows[:top], "worst": list(reversed(rows[-top:])) if len(rows) > top else []}
+
+
+def _bt_streaks(resolved, min_len=2, top=12):
+    """连续命中榜：每只标的按时间排序，找同方向连续命中的最长连击（如「连续看涨且都涨」）。"""
+    per: Dict[str, List[Dict[str, Any]]] = {}
+    for x in resolved:
+        per.setdefault(x["symbol"], []).append(x)
+    rows = []
+    for sym, items in per.items():
+        items = sorted(items, key=lambda z: (z.get("target_date") or z.get("entry_date") or ""))
+        best_len, best_dir, best_start, best_end = 0, None, None, None
+        cur_len, cur_dir, cur_start = 0, None, None
+        for it in items:
+            d = it.get("direction")
+            hit = bool(it.get("hit"))
+            if hit and cur_len > 0 and d == cur_dir:
+                cur_len += 1
+            elif hit:
+                cur_len, cur_dir, cur_start = 1, d, it.get("entry_date")
+            else:
+                cur_len, cur_dir, cur_start = 0, None, None
+            if cur_len > best_len:
+                best_len, best_dir, best_start, best_end = cur_len, cur_dir, cur_start, it.get("target_date")
+        # 当前（最近一段）连击：从最后一条往前，同方向且命中
+        cur_streak, cur_sdir = 0, None
+        for it in reversed(items):
+            if not it.get("hit"):
+                break
+            if cur_sdir is None:
+                cur_sdir = it.get("direction")
+            if it.get("direction") != cur_sdir:
+                break
+            cur_streak += 1
+        if best_len >= min_len:
+            rows.append({
+                "symbol": sym,
+                "name": items[0].get("name") or sym,
+                "market": items[0].get("market") or "",
+                "streak": best_len,
+                "direction": best_dir,
+                "current": cur_streak,
+                "current_direction": cur_sdir,
+                "total": len(items),
+                "start": best_start,
+                "end": best_end,
+            })
+    rows.sort(key=lambda r: (r["streak"], r["current"], r["total"]), reverse=True)
+    return rows[:top]
+
+
+def _bt_prediction_payload(sigs, resolved, pending, no_data) -> Dict[str, Any]:
+    calibration = _bt_calibration(
+        resolved, "probability",
+        [(90, 101, "≥90%"), (80, 90, "80–90%"), (70, 80, "70–80%"), (0, 70, "<70%")],
+        "概率校准", "模型给出的概率越高，命中率是否越高",
+    )
+    breakdowns = [
+        _bt_breakdown(resolved, "period_type", [0, 1, 2], _BT_PERIOD_LABEL, "按周期", "周期"),
+        _bt_breakdown(resolved, "trend_type", [0, 1], _BT_TREND_LABEL, "按方向", "方向"),
+        _bt_breakdown(resolved, "symbol_type", [0, 1, 2], _BT_KIND_LABEL, "按资产类型", "类型"),
+    ]
+    recent = sorted(resolved, key=lambda x: x.get("target_date") or "", reverse=True)[:60]
+    recent_out = [{
+        "symbol": x["symbol"],
+        "name": x.get("name") or x["symbol"],
+        "market": x.get("market") or "",
+        "tag": _BT_PERIOD_LABEL.get(int(x.get("period_type", 0) or 0), ""),
+        "trend": _BT_TREND_LABEL.get(int(x.get("trend_type", 0) or 0), ""),
+        "strength": (f"{int(round(float(x['probability'])))}%" if x.get("probability") is not None else "—"),
+        "entry": x.get("entry"),
+        "target": x.get("target"),
+        "entry_date": x.get("entry_date"),
+        "target_date": x.get("target_date"),
+        "ret": round(x["ret"] * 100, 2),
+        "strat": round(x["strat"] * 100, 2),
+        "hit": x["hit"],
+    } for x in recent]
+    return {
+        "available": len(sigs) > 0,
+        "label": "预测信号",
+        "horizon_note": "结算周期：日→次交易日 · 周→5 个交易日 · 月→21 个交易日",
+        "counts": {"total": len(sigs), "resolved": len(resolved), "pending": pending, "no_data": no_data},
+        "overall": _bt_agg(resolved),
+        "calibration": calibration,
+        "breakdowns": breakdowns,
+        "leaders": _bt_leaders(resolved),
+        "streaks": _bt_streaks(resolved),
+        "recent": recent_out,
+        "recent_headers": {"tag": "周期", "strength": "概率"},
+    }
+
+
+def _bt_report_payload(sigs, resolved, pending, no_data, neutral) -> Dict[str, Any]:
+    calibration = _bt_calibration(
+        resolved, "strength",
+        [(0.6, 1.01, "强 ≥0.6"), (0.3, 0.6, "中 0.3–0.6"), (0.1, 0.3, "弱 0.1–0.3"), (0, 0.1, "极弱 <0.1")],
+        "信号强度校准", "加权得分绝对值越大，命中率是否越高",
+    )
+    breakdowns = [
+        _bt_breakdown(resolved, "direction", ["bull", "bear"], {"bull": "看多", "bear": "看空"}, "按方向", "方向", is_int=False),
+        _bt_breakdown(resolved, "market_norm", ["CN", "HK", "US"], _BT_MARKET_LABEL, "按市场", "市场", is_int=False),
+    ]
+    recent = sorted(resolved, key=lambda x: x.get("target_date") or "", reverse=True)[:60]
+    recent_out = [{
+        "symbol": x["symbol"],
+        "name": x.get("name") or x["symbol"],
+        "market": x.get("market") or "",
+        "tag": _BT_MARKET_LABEL.get(x.get("market_norm"), x.get("market") or ""),
+        "trend": "看多" if x.get("direction") == "bull" else "看空",
+        "strength": (f"{x['score']:+.2f}" if x.get("score") is not None else "—"),
+        "entry": x.get("entry"),
+        "target": x.get("target"),
+        "entry_date": x.get("entry_date"),
+        "target_date": x.get("target_date"),
+        "ret": round(x["ret"] * 100, 2),
+        "strat": round(x["strat"] * 100, 2),
+        "hit": x["hit"],
+    } for x in recent]
+    return {
+        "available": len(sigs) > 0,
+        "label": "研报信号",
+        "horizon_note": "方向取自研报「加权得分」正负、强度=|加权得分|；约 1 个月（21 个交易日）后结算",
+        "counts": {"total": len(sigs), "resolved": len(resolved), "pending": pending, "no_data": no_data, "neutral": neutral},
+        "overall": _bt_agg(resolved),
+        "calibration": calibration,
+        "breakdowns": breakdowns,
+        "leaders": _bt_leaders(resolved),
+        "streaks": _bt_streaks(resolved),
+        "recent": recent_out,
+        "recent_headers": {"tag": "市场", "strength": "得分"},
+    }
+
+
+def compute_prediction_backtest(
+    refresh: bool = False, max_symbols: int = 120,
+    pred_limit: int = 5000, report_limit: int = 500,
+) -> Dict[str, Any]:
+    now = time.time()
+    if not refresh and _bt_result_cache["payload"] and now - _bt_result_cache["ts"] < _BT_RESULT_TTL:
+        return _bt_result_cache["payload"]
+
+    pred_sigs = _prediction_signals(pred_limit)
+    report_sigs, report_neutral = _report_signals(report_limit)
+
+    def _key(s):
+        return (s["symbol"], _normalize_market_code(s.get("market") or ""))
+
+    # 跨两类信号取标的并集，按最近信号时间优先取数
+    latest: Dict[Any, str] = {}
+    for s in pred_sigs + report_sigs:
+        k = _key(s)
+        d = _bt_norm_date(s.get("ts"))
+        if d > latest.get(k, ""):
+            latest[k] = d
+    sym_keys = sorted(latest.keys(), key=lambda k: latest.get(k, ""), reverse=True)
+    fetch_keys = [k for k in sym_keys if k[1] in {"US", "HK", "CN"}][: max(1, max_symbols)]
+
+    if fetch_keys:
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            futs = [ex.submit(_backtest_history, k[0], k[1]) for k in fetch_keys]
+            for fu in futs:
+                try:
+                    fu.result()
+                except Exception:
+                    pass
+
+    fetch_set = set(fetch_keys)
+
+    def _series_for(k):
+        if k in fetch_set:
+            return _backtest_history(k[0], k[1])
+        cached = _bt_hist_cache.get(f"{k[0]}|{k[1]}")
+        return cached[1] if cached else []
+
+    def _resolve_group(sigs):
+        grouped: Dict[Any, List[Dict[str, Any]]] = {}
+        for s in sigs:
+            grouped.setdefault(_key(s), []).append(s)
+        resolved: List[Dict[str, Any]] = []
+        pending = 0
+        no_data = 0
+        for k, arr in grouped.items():
+            series = _series_for(k)
+            for s in arr:
+                r = _bt_resolve(s, series)
+                if r is None:
+                    no_data += 1
+                    continue
+                if r.get("pending"):
+                    pending += 1
+                    continue
+                resolved.append({**s, **r})
+        return resolved, pending, no_data
+
+    pred_resolved, pred_pending, pred_nodata = _resolve_group(pred_sigs)
+    rep_resolved, rep_pending, rep_nodata = _resolve_group(report_sigs)
+
+    payload = {
+        "ok": True,
+        "computed_at": (datetime.now(_TZ_SH).isoformat() if _TZ_SH else datetime.now().isoformat()),
+        "db_enabled": db.is_db_enabled(),
+        "symbols_total": len(sym_keys),
+        "symbols_fetched": len(fetch_keys),
+        "scopes": {
+            "prediction": _bt_prediction_payload(pred_sigs, pred_resolved, pred_pending, pred_nodata),
+            "report": _bt_report_payload(report_sigs, rep_resolved, rep_pending, rep_nodata, report_neutral),
+        },
+    }
+    _bt_result_cache["ts"] = now
+    _bt_result_cache["payload"] = payload
+    return payload
+
+
+@app.get("/api/backtest/predictions")
+def api_backtest_predictions(refresh: int = 0, max_symbols: int = 120):
+    """回测看板：把历史预测与研报逐条与真实走势结算后聚合（含命中率 / 胜率）。"""
+    try:
+        return compute_prediction_backtest(
+            refresh=bool(refresh),
+            max_symbols=max(10, min(int(max_symbols or 120), 300)),
+        )
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=200)
+
+
+# ---------------------------------------------------------------------------
+# 定时刷新：持仓/关注行情快照 + 预测。
+# 一个受保护的 /api/cron/refresh 端点，可由以下任一方式触发：
+#   1) Vercel Cron（见 vercel.json；会自动带 Authorization: Bearer <CRON_SECRET>）
+#   2) 外部定时器（GitHub Actions / cron-job.org / 系统 crontab）curl 该 URL 带 token
+#   3) 常驻进程（Render/Railway/本地）内置调度器（ENABLE_SCHEDULER=1）
+# ---------------------------------------------------------------------------
+
+_last_refresh: Dict[str, Any] = {"ts": 0.0, "summary": None}
+_scheduler_started = False
+
+
+def _cron_secret() -> str:
+    return (os.environ.get("CRON_SECRET") or os.environ.get("CRON_TOKEN") or "").strip()
+
+
+def _refresh_watch_symbols(max_symbols: int = 80) -> Dict[str, Any]:
+    """刷新「持仓 + 关注」行情并落日快照（供趋势图 / 回测持续累积真实数据）。"""
+    if not db.is_db_enabled():
+        return {"ok": False, "message": "数据库未启用，无法刷新", "symbols": 0, "updated": 0, "failed": 0}
+
+    seen: Dict[Any, str] = {}
+    try:
+        for it in (db.portfolio_list() or []):
+            sym = str(it.get("symbol") or "").strip().upper()
+            m = _normalize_market_code(it.get("market") or "")
+            if sym and m in {"US", "HK", "CN"}:
+                seen[(sym, m)] = it.get("name") or sym
+        for it in (db.watchlist_list() or []):
+            sym = str(it.get("symbol") or "").strip().upper()
+            m = _normalize_market_code(it.get("market") or "")
+            if sym and m in {"US", "HK", "CN"}:
+                seen.setdefault((sym, m), it.get("name") or sym)
+    except Exception as e:
+        return {"ok": False, "message": f"读取持仓/关注失败: {e}", "symbols": 0, "updated": 0, "failed": 0}
+
+    keys = list(seen.keys())[: max(1, max_symbols)]
+
+    def _one(key):
+        sym, m = key
+        if m == "US":
+            fetchers = [lambda: _fetch_us_quote_yahoo(sym), lambda: _fetch_us_quote_alpha_vantage(sym)]
+        else:
+            fetchers = [lambda: _fetch_tencent_spot_quote(sym, m)]
+        last_err = None
+        for f in fetchers:
+            try:
+                q = f()
+                if q:
+                    _persist_quote_snapshot(sym, m, q, source=(q.get("source") or "cron"), context="cron")
+                    return True, None
+            except Exception as e:
+                last_err = e
+        try:
+            q = _fetch_quote_via_stock_service(sym, m)
+            if q:
+                _persist_quote_snapshot(sym, m, q, source=(q.get("source") or "cron"), context="cron")
+                return True, None
+        except Exception as e:
+            last_err = e
+        return False, f"{sym}.{m}: {last_err}"
+
+    updated = 0
+    failed = 0
+    errors: List[str] = []
+    if keys:
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            for ok_, err in ex.map(_one, keys):
+                if ok_:
+                    updated += 1
+                else:
+                    failed += 1
+                    if err:
+                        errors.append(err)
+    return {"ok": True, "symbols": len(keys), "updated": updated, "failed": failed, "errors": errors[-8:]}
+
+
+def _parse_combos(raw: str) -> List[Tuple[int, int, int]]:
+    """解析 "period-trend-type,..."（如 0-0-0,1-0-2），过滤非法值。"""
+    combos: List[Tuple[int, int, int]] = []
+    for part in (raw or "").split(","):
+        nums = part.strip().split("-")
+        if len(nums) != 3:
+            continue
+        try:
+            pt, tt, st = int(nums[0]), int(nums[1]), int(nums[2])
+        except ValueError:
+            continue
+        if pt in (0, 1, 2) and tt in (0, 1) and st in (0, 1, 2):
+            combos.append((pt, tt, st))
+    return combos
+
+
+def _all_combos() -> List[Tuple[int, int, int]]:
+    """全部 18 组：周期(日/周/月) × 方向(看涨/看跌) × 类型(股票/ETF/加密)。"""
+    return [(pt, tt, st) for pt in (0, 1, 2) for tt in (0, 1) for st in (0, 1, 2)]
+
+
+def _cron_screener_combos() -> List[Tuple[int, int, int]]:
+    """默认刷新全部 18 组；可用 CRON_SCREENER_COMBOS=0-0-0,1-0-0 覆盖为子集。"""
+    combos = _parse_combos(os.environ.get("CRON_SCREENER_COMBOS") or "")
+    return (combos or _all_combos())[:24]
+
+
+def _refresh_predictions(combos: Optional[List[Tuple[int, int, int]]] = None) -> Dict[str, Any]:
+    """按组合刷新预测快照（复用 Intellectia 拉取逻辑）。combos 为空则用默认集。"""
+    combos = combos or _cron_screener_combos()
+    saved = 0
+    failed = 0
+    results: List[Dict[str, Any]] = []
+    errors: List[str] = []
+    for (pt, tt, st) in combos:
+        try:
+            r = _screener_fetch_and_save(pt, tt, st, page=1, size=INTELLECTIA_SCREENER_MAX_SIZE)
+            saved += 1
+            results.append({"combo": f"{pt}-{tt}-{st}", "base_name": r.get("base_name"), "list_count": r.get("list_count")})
+        except Exception as e:
+            failed += 1
+            errors.append(f"{pt}-{tt}-{st}: {e}")
+    return {"ok": True, "combos": len(combos), "saved": saved, "failed": failed, "results": results, "errors": errors[-8:]}
+
+
+def run_scheduled_refresh(
+    tasks: Optional[List[str]] = None,
+    max_symbols: int = 80,
+    combos: Optional[List[Tuple[int, int, int]]] = None,
+) -> Dict[str, Any]:
+    """执行一次定时刷新。tasks 子集：prices（行情快照）/ predictions（预测）。"""
+    t0 = time.time()
+    tasks = tasks or ["prices", "predictions"]
+    out: Dict[str, Any] = {
+        "ok": True,
+        "ran_at": (datetime.now(_TZ_SH).isoformat() if _TZ_SH else datetime.now().isoformat()),
+        "tasks": tasks,
+        "db_enabled": db.is_db_enabled(),
+    }
+    if "prices" in tasks:
+        out["prices"] = _refresh_watch_symbols(max_symbols=max_symbols)
+    if "predictions" in tasks:
+        out["predictions"] = _refresh_predictions(combos)
+    out["elapsed_sec"] = round(time.time() - t0, 1)
+    _last_refresh["ts"] = time.time()
+    _last_refresh["summary"] = out
+    try:
+        print(f"[cron] refresh {out['elapsed_sec']}s tasks={tasks} "
+              f"prices={out.get('prices', {}).get('updated')} preds={out.get('predictions', {}).get('saved')}")
+    except Exception:
+        pass
+    return out
+
+
+@app.api_route("/api/cron/refresh", methods=["GET", "POST"])
+def api_cron_refresh(
+    request: Request,
+    tasks: str = "prices,predictions",
+    max_symbols: int = 80,
+    combos: str = "",
+    token: str = "",
+):
+    """定时刷新入口（受保护）。设置 CRON_SECRET 后须带 Authorization: Bearer <secret> 或 ?token=。
+    combos 可选：如 0-0-0,1-0-2 只刷这些预测组合（用于把 18 组拆成多次短请求）。"""
+    secret = _cron_secret()
+    if secret:
+        auth = request.headers.get("authorization") or ""
+        bearer = auth.split(" ", 1)[1].strip() if auth.lower().startswith("bearer ") else ""
+        if (token or bearer) != secret:
+            return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+    elif _is_vercel_runtime():
+        # 线上未配置密钥时拒绝，避免公开端点被滥用
+        return JSONResponse(
+            {"ok": False, "error": "请先在环境变量中设置 CRON_SECRET 再使用定时刷新"},
+            status_code=503,
+        )
+
+    task_list = [t.strip() for t in (tasks or "").split(",") if t.strip() in {"prices", "predictions"}]
+    if not task_list:
+        task_list = ["prices", "predictions"]
+    override = _parse_combos(combos) if combos.strip() else None
+    try:
+        return run_scheduled_refresh(
+            task_list,
+            max_symbols=max(1, min(int(max_symbols or 80), 300)),
+            combos=override,
+        )
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=200)
+
+
+@app.get("/api/cron/status")
+def api_cron_status():
+    """查看上一次定时刷新的结果摘要。"""
+    return {"ok": True, "last": _last_refresh.get("summary"), "last_ts": _last_refresh.get("ts")}
+
+
+def _maybe_start_scheduler():
+    """常驻进程（Render/Railway/本地）可选内置调度器；Serverless 上禁用（改用 Vercel Cron）。"""
+    global _scheduler_started
+    if _scheduler_started:
+        return
+    flag = (os.environ.get("ENABLE_SCHEDULER") or "").strip().lower()
+    if flag not in {"1", "true", "yes", "on"}:
+        return
+    if _is_vercel_runtime():
+        print("[cron] 检测到 Serverless，跳过内置调度器（请改用 Vercel Cron）")
+        return
+    try:
+        interval_min = float(os.environ.get("SCHEDULER_INTERVAL_MIN") or 60)
+    except ValueError:
+        interval_min = 60.0
+    interval = max(5.0, interval_min) * 60.0
+    tasks = [t.strip() for t in (os.environ.get("CRON_REFRESH_TASKS") or "prices,predictions").split(",") if t.strip()]
+
+    def _loop():
+        time.sleep(20)  # 等建表等初始化就绪
+        while True:
+            try:
+                run_scheduled_refresh(tasks)
+            except Exception as e:
+                print(f"[cron] scheduler run error: {e}")
+            time.sleep(interval)
+
+    threading.Thread(target=_loop, name="guxiaomi-scheduler", daemon=True).start()
+    _scheduler_started = True
+    print(f"[cron] 内置调度器已启动：每 {interval_min} 分钟，tasks={tasks}")
 
 
 # ---------------------------------------------------------------------------

@@ -1519,6 +1519,7 @@ function StockDetailApp() {
   const [detailHistory, setDetailHistory] = React.useState([]);
   const [historyRefreshing, setHistoryRefreshing] = React.useState(false);
   const [historyMessage, setHistoryMessage] = React.useState('');
+  const [chartMode, setChartMode] = React.useState('kline');
 
   const stock = React.useMemo(() => {
     const same = (item) => {
@@ -1927,9 +1928,25 @@ function StockDetailApp() {
         <div className="grid gap-3 lg:grid-cols-12 lg:gap-4">
           <section className="card !p-3 lg:col-span-8 md:!p-4">
             <div className="mb-2 flex items-center justify-between gap-3 md:mb-3">
-              <h3 className="text-base font-bold text-slate-50 md:text-lg">价格趋势</h3>
+              <div className="flex items-center gap-2.5">
+                <h3 className="text-base font-bold text-slate-50 md:text-lg">{chartMode === 'kline' ? 'K 线走势' : '价格趋势'}</h3>
+                <div className="flex rounded-xl border border-white/10 bg-white/[0.05] p-0.5">
+                  {[{ k: 'kline', label: 'K线' }, { k: 'trend', label: '走势' }].map((m) => (
+                    <button
+                      key={m.k}
+                      type="button"
+                      onClick={() => setChartMode(m.k)}
+                      className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-colors ${
+                        chartMode === m.k ? 'bg-cyan-400/20 text-cyan-100' : 'text-slate-400 hover:bg-white/[0.08] hover:text-slate-200'
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400">历史日线 / 本地记录</span>
+                <span className="hidden text-xs text-slate-400 sm:inline">历史日线 / 本地记录</span>
                 <button
                   type="button"
                   onClick={() => loadDetailHistory({ silent: false })}
@@ -1942,7 +1959,11 @@ function StockDetailApp() {
                 </button>
               </div>
             </div>
-            <DetailSparkline history={history} currentPrice={current} positive={watchGain >= 0 || effectiveChange >= 0} market={market} />
+            {chartMode === 'kline' && typeof KLineChart !== 'undefined' ? (
+              <KLineChart symbol={stock.symbol} market={market} fallbackHistory={history} currentPrice={current} />
+            ) : (
+              <DetailSparkline history={history} currentPrice={current} positive={watchGain >= 0 || effectiveChange >= 0} market={market} />
+            )}
             {historyMessage && (
               <div className="mt-2 rounded-xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs text-slate-300">
                 {historyMessage}

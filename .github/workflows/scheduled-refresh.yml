@@ -1,0 +1,82 @@
+name: Scheduled data refresh
+
+# 定时刷新「持仓/关注行情」与「预测（全 18 组）」，把数据持续写进数据库，
+# 这样即使不打开系统，趋势图与回测也能持续累积真实数据。
+#
+# 使用前在仓库 Settings → Secrets and variables → Actions 添加两个 Secret：
+#   REFRESH_BASE_URL  例如 https://your-app.vercel.app （不要带结尾斜杠）
+#   CRON_SECRET       与线上环境变量 CRON_SECRET 相同的密钥
+#
+# 说明：GitHub Actions 计划任务用 UTC；下面两个时段分别对应
+#   16:30 北京（港股/A股收盘后）和 次日 06:00 北京（美股收盘后）。
+
+on:
+  schedule:
+    - cron: '30 8 * * 1-5'   # 08:30 UTC = 16:30 北京（港股/A股收盘）
+    - cron: '0 22 * * 1-5'   # 22:00 UTC = 次日 06:00 北京（美股收盘）
+  workflow_dispatch:
+    inputs:
+      tasks:
+        description: '手动运行的任务（prices,predictions）'
+        default: 'prices,predictions'
+        required: false
+
+concurrency:
+  group: scheduled-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BASE_URL: ${{ secrets.REFRESH_BASE_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      TASKS: ${{ github.event.inputs.tasks || 'prices,predictions' }}
+    steps:
+      - name: Check secrets
+        run: |
+          if [ -z "$BASE_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::请先配置 REFRESH_BASE_URL 与 CRON_SECRET 两个仓库 Secret"
+            exit 1
+          fi
+
+      - name: Refresh holdings & watchlist prices
+        if: ${{ contains(env.TASKS, 'prices') }}
+        run: |
+          base="${BASE_URL%/}"
+          echo "刷新持仓/关注行情…"
+          curl -fsS --retry 2 --retry-delay 5 -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${base}/api/cron/refresh?tasks=prices&max_symbols=300" \
+            -w "prices -> HTTP %{http_code}\n" -o /tmp/prices.json
+          cat /tmp/prices.json | head -c 600; echo
+
+      - name: Refresh all prediction combos (18)
+        if: ${{ contains(env.TASKS, 'predictions') }}
+        run: |
+          base="${BASE_URL%/}"
+          fail=0
+          for pt in 0 1 2; do
+            for tt in 0 1; do
+              for st in 0 1 2; do
+                combo="${pt}-${tt}-${st}"
+                code=$(curl -sS --retry 2 --retry-delay 5 -X POST \
+                  -H "Authorization: Bearer ${CRON_SECRET}" \
+                  "${base}/api/cron/refresh?tasks=predictions&combos=${combo}" \
+                  -o /tmp/pred.json -w "%{http_code}")
+                echo "pred ${combo} -> HTTP ${code}"
+                if [ "$code" != "200" ]; then fail=1; cat /tmp/pred.json | head -c 300; echo; fi
+                sleep 2
+              done
+            done
+          done
+          if [ "$fail" = "1" ]; then
+            echo "::warning::部分预测组合刷新未返回 200，请检查 CRON_SECRET / 上游数据源"
+          fi
+
+      - name: Show last refresh status
+        if: ${{ always() }}
+        run: |
+          base="${BASE_URL%/}"
+          curl -fsS "${base}/api/cron/status" -w "\nstatus -> HTTP %{http_code}\n" | head -c 800 || true

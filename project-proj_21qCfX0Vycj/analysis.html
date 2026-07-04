@@ -266,25 +266,25 @@
 </head>
 <body>
     <div id="root"></div>
-    <script src="env.js"></script>
-    <script src="env.local.js?v=20260630-model-slots"></script>
+    <script src="env.js?v=845a3744"></script>
+    <script src="env.local.js?v=11515f31"></script>
     <!-- 与持仓页同源：浏览器拉腾讯行情；生成报告时随请求带给后端，缓解 Vercel 服务端连不通 gtimg -->
-    <script src="utils/stockAPI.js?v=20260701-real-quote"></script>
-    <script type="text/babel" src="utils/technicalIndicators.js?v=20260701-analysis-notes"></script>
+    <script src="utils/stockAPI.js?v=157b6a73"></script>
+    <script type="text/babel" src="utils/technicalIndicators.js?v=9bcd23d5"></script>
     <!-- 监控列表存储功能 -->
-    <script type="text/babel" src="utils/storage.js"></script>
+    <script type="text/babel" src="utils/storage.js?v=a3ed77df"></script>
     <!-- 须在 analysis-app 之前加载，才能收到 stock-analysis-complete（同步直出时无 job 轮询） -->
-    <script src="analysis-notify.js"></script>
-    <script type="text/babel" src="utils/chatContext.js?v=20260701-deep-diagnosis"></script>
-    <script type="text/babel" src="utils/chatStorage.js?v=20260701-chat-threads"></script>
-    <script type="text/babel" src="utils/chatService.js?v=20260701-deep-diagnosis"></script>
-    <script type="text/babel" src="utils/chatDiagnosisPrompts.js?v=20260701-deep-diagnosis"></script>
-    <script type="text/babel" src="utils/chatDiagnosis.js?v=20260701-chat-threads"></script>
-    <script type="text/babel" src="utils/chatStockCache.js?v=20260701-stock-cache"></script>
-    <script type="text/babel" src="utils/chatRoles.js?v=20260701-deep-diagnosis"></script>
-    <script type="text/babel" src="utils/chatRichText.js?v=20260701-roles"></script>
-    <script type="text/babel" src="components/GlobalChat.js?v=20260701-chat-threads"></script>
-    <script src="chat-bootstrap.js?v=20260701-diagnosis"></script>
-    <script type="text/babel" src="analysis-app.js?v=20260701-trim-copy"></script>
+    <script src="analysis-notify.js?v=74cf4c03"></script>
+    <script type="text/babel" src="utils/chatContext.js?v=0be1969e"></script>
+    <script type="text/babel" src="utils/chatStorage.js?v=69618b8a"></script>
+    <script type="text/babel" src="utils/chatService.js?v=b795f36b"></script>
+    <script type="text/babel" src="utils/chatDiagnosisPrompts.js?v=e2ab5bcd"></script>
+    <script type="text/babel" src="utils/chatDiagnosis.js?v=a24000ac"></script>
+    <script type="text/babel" src="utils/chatStockCache.js?v=7d2b5d07"></script>
+    <script type="text/babel" src="utils/chatRoles.js?v=6c654234"></script>
+    <script type="text/babel" src="utils/chatRichText.js?v=076069c8"></script>
+    <script type="text/babel" src="components/GlobalChat.js?v=989bef07"></script>
+    <script src="chat-bootstrap.js?v=74484910"></script>
+    <script type="text/babel" src="analysis-app.js?v=9a00530e"></script>
 </body>
 </html>

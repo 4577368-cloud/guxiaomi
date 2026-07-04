@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>回测 · 命中率 / 胜率看板 - 股小蜜</title>
+    <meta name="description" content="股小蜜回测看板：把历史选股预测与 AI 研报逐条与真实走势结算，量化方向命中率、策略胜率与概率/信号强度校准">
+    <script src="https://resource.trickle.so/vendor_lib/unpkg/react@18/umd/react.production.min.js"></script>
+    <script src="https://resource.trickle.so/vendor_lib/unpkg/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://resource.trickle.so/vendor_lib/unpkg/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+    <link href="https://resource.trickle.so/vendor_lib/unpkg/lucide-static@0.516.0/font/lucide.css" rel="stylesheet">
+    <style type="text/tailwindcss">
+        :root {
+            --primary-color: #38bdf8;
+            --primary-hover: #7dd3fc;
+            --success-color: #34d399;
+            --danger-color: #f87171;
+            --text-primary: #f1f5f9;
+            --text-secondary: #cbd5e1;
+            --text-muted: #94a3b8;
+            --border-color: rgba(255, 255, 255, 0.12);
+            --page-bg-top: #1a2235;
+            --page-bg-bottom: #243048;
+            --page-bg-mid: #1e2a40;
+        }
+        @layer base {
+            body {
+              font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+              color: var(--text-primary);
+              min-height: 100vh;
+              -webkit-font-smoothing: antialiased;
+              -moz-osx-font-smoothing: grayscale;
+              background-color: var(--page-bg-top);
+              background-image:
+                radial-gradient(900px 500px at 12% -8%, rgba(56, 189, 248, 0.06), transparent 55%),
+                radial-gradient(700px 400px at 88% 5%, rgba(94, 234, 212, 0.05), transparent 50%),
+                radial-gradient(600px 350px at 50% 100%, rgba(251, 191, 36, 0.03), transparent 45%),
+                linear-gradient(165deg, var(--page-bg-top) 0%, var(--page-bg-bottom) 55%, var(--page-bg-mid) 100%);
+              background-attachment: fixed;
+            }
+        }
+        @layer components {
+            .font-display { font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif; }
+            .gx-num { font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+            .btn {
+              @apply inline-flex items-center justify-center h-10 md:h-11 min-h-0 px-4 md:px-5 py-0 rounded-xl font-medium text-sm md:text-base transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+              --tw-ring-offset-color: #1a2235;
+            }
+            .btn-sm, .btn-xs {
+              @apply h-6 md:h-7 min-h-0 px-2 md:px-2.5 py-0 text-[11px] md:text-xs rounded-lg;
+            }
+            .btn-primary { @apply text-slate-950 shadow-md shadow-sky-500/20 hover:bg-[var(--primary-hover)] focus-visible:ring-sky-400; background: var(--primary-color); }
+            .btn-secondary {
+              @apply border border-white/15 text-slate-100 shadow-sm hover:bg-white/10 focus-visible:ring-sky-400/50;
+              background: linear-gradient(165deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.04) 100%);
+            }
+            .card {
+              @apply rounded-2xl border shadow-xl p-4 md:p-6;
+              background: linear-gradient(168deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.04) 48%, rgba(26, 34, 53, 0.28) 100%);
+              border-color: rgba(255, 255, 255, 0.1);
+              color: var(--text-primary);
+              backdrop-filter: blur(20px) saturate(140%);
+              box-shadow: 0 22px 44px -14px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+            }
+            .kpi {
+              @apply rounded-2xl border p-3.5 md:p-4;
+              background: linear-gradient(168deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.035) 55%, rgba(26, 34, 53, 0.25) 100%);
+              border-color: rgba(255, 255, 255, 0.1);
+              box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            }
+        }
+    </style>
+    <link rel="icon" href="https://app.trickle.so/storage/app/46bdde6b-ce0a-436d-9861-f705820c2391.png">
+</head>
+<body>
+    <div id="root"></div>
+    <script src="env.js?v=845a3744"></script>
+    <script src="env.local.js?v=11515f31"></script>
+    <script type="text/babel" src="backtest-app.js?v=795be595"></script>
+</body>
+</html>
