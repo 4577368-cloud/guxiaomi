@@ -1492,6 +1492,27 @@ function AnalysisApp() {
       })
       .catch(function () {});
   }, [apiBase]);
+  React.useEffect(
+    function () {
+      if (!apiBase || typeof window.fetchCronRefreshStatus !== "function") return;
+      var cancelled = false;
+      function load() {
+        window
+          .fetchCronRefreshStatus(apiBase)
+          .then(function (data) {
+            if (!cancelled && data) setCronRefresh(data);
+          })
+          .catch(function () {});
+      }
+      load();
+      var timer = setInterval(load, 5 * 60 * 1000);
+      return function () {
+        cancelled = true;
+        clearInterval(timer);
+      };
+    },
+    [apiBase],
+  );
   const [jobId, setJobId] = React.useState(() => {
     try {
       var stored = localStorage.getItem(JOB_STORAGE_KEY) || "";
@@ -1562,6 +1583,8 @@ function AnalysisApp() {
   const [selectedPredDateKey, setSelectedPredDateKey] = React.useState(null);
   /** 日历弹层：查看/切换更早的预测日期 */
   const [showPredCalendar, setShowPredCalendar] = React.useState(false);
+  /** 定时刷新状态（行情 / 预测上次自动刷新时间） */
+  const [cronRefresh, setCronRefresh] = React.useState(null);
   const predPeriodTabRef = React.useRef(0);
   React.useEffect(() => {
     predPeriodTabRef.current = predPeriodTab;
@@ -3205,6 +3228,29 @@ function AnalysisApp() {
           <h2 className="text-sm md:text-base font-semibold text-slate-50 tracking-tight">
             股票预测
           </h2>
+          {(() => {
+            var fmt = window.formatCronRefreshAt;
+            var stale = window.isCronRefreshStale;
+            var prices = cronRefresh && cronRefresh.prices;
+            var preds = cronRefresh && cronRefresh.predictions;
+            if (!prices && !preds) return null;
+            return (
+              <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
+                {prices && prices.at ? (
+                  <span className={stale && stale(prices.at, 26) ? "text-amber-300" : "text-emerald-300/85"}>
+                    行情自动刷新 {fmt ? fmt(prices.at) : prices.at}
+                  </span>
+                ) : null}
+                {preds && preds.at ? (
+                  <span className={stale && stale(preds.at, 30) ? "text-amber-300/90" : "text-slate-400"}>
+                    预测自动刷新 {fmt ? fmt(preds.at) : preds.at}
+                  </span>
+                ) : (
+                  <span>预测尚未自动刷新</span>
+                )}
+              </p>
+            );
+          })()}
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-2">
           <div className="flex flex-wrap items-center gap-1.5 min-w-0">

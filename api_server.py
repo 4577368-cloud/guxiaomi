@@ -2013,12 +2013,49 @@ def run_scheduled_refresh(
     out["elapsed_sec"] = round(time.time() - t0, 1)
     _last_refresh["ts"] = time.time()
     _last_refresh["summary"] = out
+    _persist_cron_refresh_meta(out)
     try:
         print(f"[cron] refresh {out['elapsed_sec']}s tasks={tasks} "
               f"prices={out.get('prices', {}).get('updated')} preds={out.get('predictions', {}).get('saved')}")
     except Exception:
         pass
     return out
+
+
+def _persist_cron_refresh_meta(out: Dict[str, Any]) -> None:
+    """把定时刷新结果写入 Postgres，供 /api/cron/status 跨实例读取。"""
+    if not db.is_db_enabled():
+        return
+    try:
+        stored = db.cron_refresh_status_get() or {}
+        ran_at = out.get("ran_at") or datetime.now().isoformat()
+        if "prices" in (out.get("tasks") or []) and out.get("prices", {}).get("ok"):
+            p = out["prices"]
+            stored["prices"] = {
+                "at": ran_at,
+                "updated": p.get("updated"),
+                "failed": p.get("failed"),
+                "symbols": p.get("symbols"),
+            }
+        if "predictions" in (out.get("tasks") or []) and out.get("predictions", {}).get("ok"):
+            pred = out["predictions"]
+            stored["predictions"] = {
+                "at": ran_at,
+                "saved": pred.get("saved"),
+                "failed": pred.get("failed"),
+                "combos": pred.get("combos"),
+            }
+        stored["last"] = {
+            "at": ran_at,
+            "tasks": out.get("tasks"),
+            "elapsed_sec": out.get("elapsed_sec"),
+        }
+        db.meta_set("cron_refresh", stored)
+    except Exception as e:
+        try:
+            print(f"[cron] persist meta failed: {e}")
+        except Exception:
+            pass
 
 
 @app.api_route("/api/cron/refresh", methods=["GET", "POST"])
@@ -2060,8 +2097,17 @@ def api_cron_refresh(
 
 @app.get("/api/cron/status")
 def api_cron_status():
-    """查看上一次定时刷新的结果摘要。"""
-    return {"ok": True, "last": _last_refresh.get("summary"), "last_ts": _last_refresh.get("ts")}
+    """查看定时刷新摘要（优先读 Postgres 持久化记录，跨 Serverless 实例可用）。"""
+    stored = db.cron_refresh_status_get() if db.is_db_enabled() else {}
+    mem = _last_refresh.get("summary")
+    return {
+        "ok": True,
+        "stored": stored or None,
+        "last": mem or None,
+        "last_ts": _last_refresh.get("ts") or 0.0,
+        "prices": (stored or {}).get("prices"),
+        "predictions": (stored or {}).get("predictions"),
+    }
 
 
 def _maybe_start_scheduler():

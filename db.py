@@ -291,6 +291,16 @@ def init_db() -> None:
     )
     _execute(
         """
+        CREATE TABLE IF NOT EXISTS system_meta (
+            meta_key VARCHAR(64) PRIMARY KEY,
+            value_json JSONB NOT NULL DEFAULT '{}',
+            updated_at TIMESTAMP DEFAULT NOW()
+        );
+        """,
+        commit=True,
+    )
+    _execute(
+        """
         CREATE TABLE IF NOT EXISTS ziwei_reports (
             id SERIAL PRIMARY KEY,
             user_id VARCHAR(64) DEFAULT 'default',
@@ -1136,6 +1146,43 @@ def settings_set(user_id: str, settings: Dict[str, Any]) -> None:
         ),
         commit=True,
     )
+
+
+def meta_get(key: str) -> Dict[str, Any]:
+    """读取系统级元数据（如定时刷新时间戳）。"""
+    if not is_db_enabled():
+        return {}
+    rows = _execute(
+        "SELECT value_json FROM system_meta WHERE meta_key = %s",
+        (key,),
+        fetch=True,
+    )
+    if not rows:
+        return {}
+    val = rows[0].get("value_json") or {}
+    return val if isinstance(val, dict) else {}
+
+
+def meta_set(key: str, value: Dict[str, Any]) -> None:
+    """写入系统级元数据。"""
+    if not is_db_enabled():
+        return
+    _execute(
+        """
+        INSERT INTO system_meta (meta_key, value_json)
+        VALUES (%s, %s)
+        ON CONFLICT (meta_key) DO UPDATE SET
+            value_json = EXCLUDED.value_json,
+            updated_at = NOW();
+        """,
+        (key, json.dumps(value or {}, ensure_ascii=False)),
+        commit=True,
+    )
+
+
+def cron_refresh_status_get() -> Dict[str, Any]:
+    """最近一次定时刷新摘要（持久化，跨 Serverless 实例可读）。"""
+    return meta_get("cron_refresh")
 
 
 # ---------------------------------------------------------------------------

@@ -231,6 +231,7 @@ function HomeDashboard({
     const [expandedDailyId, setExpandedDailyId] = React.useState('');
     const [expandedCard, setExpandedCard] = React.useState(null); // 'movers' | 'tasks' | null
     const [editingCapital, setEditingCapital] = React.useState(false);
+    const [cronRefresh, setCronRefresh] = React.useState(null);
     const [capitalDraft, setCapitalDraft] = React.useState({
       usd: Number(capitalPool?.usd) || 0,
       hkd: Number(capitalPool?.hkd) || 0,
@@ -243,6 +244,25 @@ function HomeDashboard({
       : { totalCost: 0, totalValue: 0, totalProfit: 0, totalProfitPercent: 0, stockCount: 0 };
     const pool = capitalPool && typeof capitalPool === 'object' ? capitalPool : { usd: 0, hkd: 0, cny: 0 };
     const totalCapitalHKD = Number(pool.usd || 0) * 7.78 + Number(pool.hkd || 0) + Number(pool.cny || 0);
+
+    React.useEffect(function () {
+      var cancelled = false;
+      function loadCronStatus() {
+        if (typeof window.fetchCronRefreshStatus !== 'function') return;
+        window.fetchCronRefreshStatus(getHomeDashboardApiBase())
+          .then(function (data) {
+            if (!cancelled && data) setCronRefresh(data);
+          })
+          .catch(function () {});
+      }
+      loadCronStatus();
+      var timer = setInterval(loadCronStatus, 5 * 60 * 1000);
+      return function () {
+        cancelled = true;
+        clearInterval(timer);
+      };
+    }, []);
+
     const remainingCapital = totalCapitalHKD > 0 ? totalCapitalHKD - (Number(safeSummary.totalCost) || 0) : 0;
     const todayProfitHKD = safePortfolio.reduce((sum, stock) => {
       const analysis = calculateStockAnalysis(stock, stock.brokerChannel || 'futu');
@@ -713,6 +733,36 @@ function HomeDashboard({
               <h2 className="mt-1 font-display text-2xl font-black tracking-tight text-slate-50 md:text-4xl">
                 股小蜜投资工作台
               </h2>
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
+                {(() => {
+                  var fmt = window.formatCronRefreshAt;
+                  var stale = window.isCronRefreshStale;
+                  var prices = cronRefresh && cronRefresh.prices;
+                  var preds = cronRefresh && cronRefresh.predictions;
+                  if (!prices && !preds) {
+                    return (
+                      <span className="text-slate-500">自动刷新：尚未记录（定时任务跑通后会显示）</span>
+                    );
+                  }
+                  return (
+                    <>
+                      {prices && prices.at ? (
+                        <span className={stale && stale(prices.at, 26) ? 'text-amber-300' : 'text-emerald-300/90'}>
+                          行情 {fmt ? fmt(prices.at) : prices.at}
+                          {prices.updated != null ? ` · ${prices.updated} 只` : ''}
+                        </span>
+                      ) : (
+                        <span className="text-slate-500">行情尚未自动刷新</span>
+                      )}
+                      {preds && preds.at ? (
+                        <span className={stale && stale(preds.at, 30) ? 'text-amber-300/90' : 'text-slate-400'}>
+                          预测 {fmt ? fmt(preds.at) : preds.at}
+                        </span>
+                      ) : null}
+                    </>
+                  );
+                })()}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <button
