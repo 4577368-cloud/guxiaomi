@@ -455,11 +455,23 @@ async function getDailyKLine(symbol, market, days = 120) {
         .map(function (item) {
           const close = Number(item.close != null ? item.close : item.price);
           if (!Number.isFinite(close) || close <= 0) return null;
+          function ohlc(v) {
+            const n = Number(v);
+            return Number.isFinite(n) && n > 0 ? n : null;
+          }
+          let open = ohlc(item.open);
+          let high = ohlc(item.high);
+          let low = ohlc(item.low);
+          if (open == null) open = close;
+          if (high == null) high = close;
+          if (low == null) low = close;
+          high = Math.max(high, open, close);
+          low = Math.min(low, open, close);
           return {
             date: item.date,
-            open: Number.isFinite(Number(item.open)) ? Number(item.open) : null,
-            high: Number.isFinite(Number(item.high)) ? Number(item.high) : null,
-            low: Number.isFinite(Number(item.low)) ? Number(item.low) : null,
+            open: open,
+            high: high,
+            low: low,
             close: close,
             volume: Number(item.volume) || 0,
           };
@@ -476,11 +488,23 @@ async function getDailyKLine(symbol, market, days = 120) {
         .map(function (item) {
           const close = Number(item.close != null ? item.close : item.price);
           if (!Number.isFinite(close) || close <= 0) return null;
+          function ohlc(v) {
+            const n = Number(v);
+            return Number.isFinite(n) && n > 0 ? n : null;
+          }
+          let open = ohlc(item.open);
+          let high = ohlc(item.high);
+          let low = ohlc(item.low);
+          if (open == null) open = close;
+          if (high == null) high = close;
+          if (low == null) low = close;
+          high = Math.max(high, open, close);
+          low = Math.min(low, open, close);
           return {
             date: item.date,
-            open: Number.isFinite(Number(item.open)) ? Number(item.open) : null,
-            high: Number.isFinite(Number(item.high)) ? Number(item.high) : null,
-            low: Number.isFinite(Number(item.low)) ? Number(item.low) : null,
+            open: open,
+            high: high,
+            low: low,
             close: close,
             volume: Number(item.volume) || 0,
           };

@@ -19,6 +19,32 @@
     return Number.isFinite(n) ? n : null;
   }
 
+  /** 开高低为 0 或缺失时视为无效，避免 K 线从 0 拉到收盘价把主图压扁 */
+  function sanitizeOhlcRow(row) {
+    var close = num(row.close);
+    if (close == null || close <= 0) return null;
+    function field(v) {
+      var n = num(v);
+      return n != null && n > 0 ? n : null;
+    }
+    var open = field(row.open);
+    var high = field(row.high);
+    var low = field(row.low);
+    if (open == null) open = close;
+    if (high == null) high = close;
+    if (low == null) low = close;
+    high = Math.max(high, open, close);
+    low = Math.min(low, open, close);
+    return {
+      date: row.date,
+      open: open,
+      high: high,
+      low: low,
+      close: close,
+      volume: Math.max(0, num(row.volume) || 0),
+    };
+  }
+
   function normalizeKlineRows(rows) {
     if (!Array.isArray(rows)) return [];
     return rows
@@ -26,14 +52,14 @@
         if (!r) return null;
         var close = num(r.close != null ? r.close : r.price);
         if (close == null || close <= 0) return null;
-        return {
+        return sanitizeOhlcRow({
           date: String(r.date || r.time || '').slice(0, 10),
-          open: num(r.open),
-          high: num(r.high),
-          low: num(r.low),
+          open: r.open,
+          high: r.high,
+          low: r.low,
           close: close,
-          volume: num(r.volume) || 0,
-        };
+          volume: r.volume,
+        });
       })
       .filter(Boolean)
       .sort(function (a, b) {
@@ -371,7 +397,7 @@
       drawSeries(ctx, ind.ma60, py, cx, n, COLOR.ma60, 1.1);
     }
 
-    // 成交量副图
+    // 成交量副图（量为 0 的不画柱，避免占位干扰）
     var maxV = 0;
     for (i = 0; i < n; i++) {
       if ((rows[i].volume || 0) > maxV) maxV = rows[i].volume || 0;
@@ -382,9 +408,10 @@
     }
     for (i = 0; i < n; i++) {
       r = rows[i];
-      var vUp = r.open == null ? (i > 0 ? r.close >= rows[i - 1].close : true) : r.close >= r.open;
-      ctx.fillStyle = vUp ? COLOR.upFill : COLOR.downFill;
       var vv = r.volume || 0;
+      if (vv <= 0) continue;
+      var vUp = r.close >= r.open;
+      ctx.fillStyle = vUp ? COLOR.upFill : COLOR.downFill;
       var vYy = vy(vv);
       ctx.fillRect(Math.round(cx(i) - bodyW / 2) + 0.5, vYy, Math.max(1, bodyW - 1), Math.max(0.5, volBot - vYy));
     }
