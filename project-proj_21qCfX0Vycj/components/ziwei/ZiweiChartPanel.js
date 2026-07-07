@@ -331,18 +331,14 @@ function ZiweiChartPanel({ birth, birthLabel, apiBase, modelKey, modelLabel }) {
   return (
     <div className="rounded-xl border border-stone-200 bg-white shadow-lg shadow-stone-900/10 overflow-hidden">
       <div className="border-b border-stone-100 bg-gradient-to-r from-stone-50 to-white px-3 py-2.5">
-        <div className="flex items-center gap-2 mb-2">
-          <div className="icon-compass text-sm text-indigo-600" aria-hidden />
-          <span className="text-sm font-bold text-stone-800">交互命盘</span>
-          <span className="text-[10px] text-stone-400 uppercase tracking-wider">玄枢引擎</span>
-          <span className="text-[10px] text-stone-400 hidden sm:inline">· 宫名旁「解析」· 可切 AI 解读</span>
+        <div className="flex items-center justify-end gap-2 mb-2">
           <button
             type="button"
             onClick={toggleLinkage}
             aria-pressed={linkageMode}
             title="宫位联动图谱：宫干四化飞星 + 三方四正连线"
             className={
-              'ml-auto inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ' +
+              'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ' +
               (linkageMode
                 ? 'bg-indigo-600 text-white shadow-sm'
                 : 'bg-stone-100 text-stone-600 hover:bg-stone-200')

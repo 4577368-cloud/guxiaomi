@@ -404,10 +404,9 @@
           React.createElement('h1', { className: 'font-display text-xl font-extrabold text-slate-50 md:text-2xl' }, '回测 · 命中率 / 胜率看板'),
           React.createElement('p', { className: 'mt-0.5 text-xs text-slate-400 md:text-sm' }, '把历史「预测」与「研报」逐条与真实走势结算，量化模型到底「说得准不准」')
         ),
-        React.createElement(
-          'div',
-          { className: 'flex items-center gap-2' },
-          React.createElement('a', { href: 'analysis.html', className: 'btn btn-secondary btn-sm gap-1' }, React.createElement('span', { className: 'icon-arrow-left', 'aria-hidden': true }), '返回分析'),
+        React.createElement('div', { className: 'flex flex-wrap items-center gap-2' },
+            React.createElement('a', { href: 'index.html', className: 'btn btn-secondary btn-sm gap-1' }, React.createElement('span', { className: 'icon-home', 'aria-hidden': true }), '首页'),
+            React.createElement('a', { href: 'analysis.html', className: 'btn btn-secondary btn-sm gap-1' }, React.createElement('span', { className: 'icon-arrow-left', 'aria-hidden': true }), '返回分析'),
           React.createElement(
             'button',
             {

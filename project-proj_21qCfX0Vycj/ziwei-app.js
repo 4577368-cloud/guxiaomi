@@ -1398,7 +1398,8 @@ function ZiweiApp() {
   const [historyList, setHistoryList] = React.useState([]);
   const [activeHistoryName, setActiveHistoryName] = React.useState(null);
   const [activeReportTab, setActiveReportTab] = React.useState('basic');
-  const [renamingHistory, setRenamingHistory] = React.useState(null);
+    const [activeMainTab, setActiveMainTab] = React.useState('input');
+    const [renamingHistory, setRenamingHistory] = React.useState(null);
   const [newHistoryName, setNewHistoryName] = React.useState('');
   const [showSaveDialog, setShowSaveDialog] = React.useState(false);
   const [saveDialogName, setSaveDialogName] = React.useState('');
@@ -1421,7 +1422,7 @@ function ZiweiApp() {
       id: 'zp_local',
       name: '',
       gender: 'male',
-      birthDate: '',
+      birthDate: '1990-01-01',
       birthTime: '12:00',
       province: '北京',
       city: '北京',
@@ -1521,6 +1522,12 @@ function ZiweiApp() {
       setIsNewProfileDraft(false);
       setActiveProfileId(saved.id);
       setProfileDraft(Object.assign({}, saved));
+      setActiveMainTab('chart');
+      setTimeout(function () {
+        if (!isGenerating && !isGeneratingBasic && !isGeneratingWealth && !isGeneratingPortfolio) {
+          handleGenerate();
+        }
+      }, 0);
     };
 
     const handleDeleteZiweiProfile = function (id) {
@@ -3139,9 +3146,9 @@ ${allStocksData}
             <div className="mx-auto flex max-w-6xl items-center gap-2 px-3 py-2 md:px-4">
               <div className="flex min-w-0 items-center gap-2">
                 <img 
-                  src="https://imgus.tangbuy.com/static/images/2025-09-26/e9e9e871b0b2477697e4b59f6da02ab5-17588742994027430860421454933872.png"
+                  src="images/logo.png"
                   alt="股小蜜 Logo"
-                  className="h-8 w-8 shrink-0 rounded-xl shadow-lg shadow-slate-900/20 ring-2 ring-white/40 md:h-9 md:w-9"
+                  className="h-8 w-8 shrink-0 rounded-full object-contain bg-transparent md:h-9 md:w-9"
                 />
                 <div className="min-w-0">
                   <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">股小蜜</p>
@@ -3151,6 +3158,10 @@ ${allStocksData}
                 </div>
               </div>
               <div className="ml-auto flex items-center justify-end gap-1.5 overflow-x-auto">
+                <a href="index.html" className="btn btn-secondary nav-chip gap-1 shrink-0">
+                  <div className="icon-home"></div>
+                  <span>首页</span>
+                </a>
                 <label className="flex shrink-0 items-center gap-1.5 text-xs text-slate-300">
                   <span className="hidden sm:inline">模型</span>
                   <select
@@ -3189,10 +3200,47 @@ ${allStocksData}
             </div>
           </header>
           <main className="px-2 py-4 md:px-4 md:py-5">
-          <div className="max-w-6xl mx-auto space-y-3">
+          <div className="max-w-6xl mx-auto">
+            <div className="zi-card overflow-hidden">
+              <div className="flex border-b border-white/10 bg-slate-950/40">
+                <button
+                  onClick={() => setActiveMainTab('input')}
+                  className={`flex-1 px-3 md:px-6 py-3 md:py-4 font-semibold transition-all whitespace-nowrap text-xs md:text-base ${
+                    activeMainTab === 'input'
+                      ? 'bg-gradient-to-b from-cyan-600 to-cyan-800 text-white shadow-[inset_0_-2px_0_rgba(34,211,238,0.5)]'
+                      : 'bg-transparent text-slate-500 hover:text-slate-200 hover:bg-white/5'
+                  }`}
+                >
+                  填写档案
+                </button>
+                <button
+                  onClick={() => setActiveMainTab('chart')}
+                  className={`flex-1 px-3 md:px-6 py-3 md:py-4 font-semibold transition-all whitespace-nowrap text-xs md:text-base ${
+                    activeMainTab === 'chart'
+                      ? 'bg-gradient-to-b from-violet-600 to-violet-800 text-white shadow-[inset_0_-2px_0_rgba(167,139,250,0.5)]'
+                      : 'bg-transparent text-slate-500 hover:text-slate-200 hover:bg-white/5'
+                  }`}
+                >
+                  命盘网格
+                </button>
+                <button
+                  onClick={() => setActiveMainTab('report')}
+                  className={`flex-1 px-3 md:px-6 py-3 md:py-4 font-semibold transition-all whitespace-nowrap text-xs md:text-base ${
+                    activeMainTab === 'report'
+                      ? 'bg-gradient-to-b from-emerald-600 to-emerald-800 text-white shadow-[inset_0_-2px_0_rgba(52,211,153,0.5)]'
+                      : 'bg-transparent text-slate-500 hover:text-slate-200 hover:bg-white/5'
+                  }`}
+                >
+                  解读报告
+                </button>
+              </div>
+            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3 items-stretch">
-              <ZiweiBirthSection
+            <div className="mt-3">
+              {activeMainTab === 'input' && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 gap-3 items-stretch">
+                    <ZiweiBirthSection
                 profiles={ziweiProfiles}
                 activeId={activeProfileId}
                 isNewDraft={isNewProfileDraft}
@@ -3220,17 +3268,20 @@ ${allStocksData}
                 setRenamingHistory={setRenamingHistory}
                 onConfirmRename={renameHistoryItem}
               />
-            </div>
-
-            <ZiweiChartPanel
-              birth={parsedBirth}
-              birthLabel={chartBirthLabel}
-              apiBase={getZiweiApiBase()}
-              modelKey={selectedModelKey}
-              modelLabel={selectedModelOption && selectedModelOption.label}
-            />
-
-            <div id="ziwei-report-section" className="space-y-4 md:space-y-6 scroll-mt-20">
+                  </div>
+                </div>
+              )}
+              {activeMainTab === 'chart' && (
+                <ZiweiChartPanel
+                  birth={parsedBirth}
+                  birthLabel={chartBirthLabel}
+                  apiBase={getZiweiApiBase()}
+                  modelKey={selectedModelKey}
+                  modelLabel={selectedModelOption && selectedModelOption.label}
+                />
+              )}
+              {activeMainTab === 'report' && (
+                <div id="ziwei-report-section" className="space-y-4 md:space-y-6 scroll-mt-20">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-lg md:text-xl font-bold text-slate-50 flex items-center gap-2">
                 <div className="icon-file-text text-lg text-cyan-400" aria-hidden />
@@ -3669,8 +3720,8 @@ ${allStocksData}
                 </div>
               </div>
             </div>
-            
-
+              )}
+            </div>
           </div>
 
         {showSaveDialog && (

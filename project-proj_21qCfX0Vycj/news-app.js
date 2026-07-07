@@ -477,6 +477,10 @@ function NewsApp() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <a href="index.html" className="btn btn-secondary btn-sm gap-1">
+              <span className="icon-home"></span>
+              首页
+            </a>
             <button type="button" onClick={refreshAll} className="btn btn-primary btn-sm">
               刷新
             </button>

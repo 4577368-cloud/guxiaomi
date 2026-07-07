@@ -665,9 +665,9 @@ function App() {
                 <div className="flex min-w-0 items-center gap-2">
                   <div className="relative shrink-0">
                     <img
-                      src="https://imgus.tangbuy.com/static/images/2025-09-26/e9e9e871b0b2477697e4b59f6da02ab5-17588742994027430860421454933872.png"
+                      src="images/logo.png"
                       alt="股小蜜 Logo"
-                      className="h-8 w-8 rounded-xl shadow-lg shadow-slate-900/20 ring-2 ring-white/70 md:h-9 md:w-9"
+                      className="h-8 w-8 rounded-full object-contain bg-transparent md:h-9 md:w-9"
                     />
                     <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-400 ring-2 ring-slate-900"></div>
                   </div>

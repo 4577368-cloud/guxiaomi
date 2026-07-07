@@ -84,7 +84,7 @@
       id: 'zp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
       name: '',
       gender: 'male',
-      birthDate: '',
+      birthDate: '1990-01-01',
       birthTime: '12:00',
       province: '北京',
       city: '北京',

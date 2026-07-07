@@ -1,6 +1,256 @@
 /**
  * 紧凑出生信息表单
  */
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+function parseDateParts(dateStr) {
+  if (!dateStr || typeof dateStr !== 'string') return { y: 1990, m: 1, d: 1 };
+  var parts = dateStr.split('-');
+  return {
+    y: parseInt(parts[0], 10) || 1990,
+    m: parseInt(parts[1], 10) || 1,
+    d: parseInt(parts[2], 10) || 1,
+  };
+}
+
+function daysInMonth(y, m) {
+  return new Date(y, m, 0).getDate();
+}
+
+function CompactWheelPicker({ options, value, onChange }) {
+  var containerRef = React.useRef(null);
+  var itemHeight = 32;
+  var visibleCount = 3;
+  var edgePadding = Math.floor((visibleCount - 1) / 2) * itemHeight;
+  var centerItemRef = React.useRef(value);
+  var observerRef = React.useRef(null);
+  var ignoreObserverRef = React.useRef(false);
+
+  function select(v) {
+    if (ignoreObserverRef.current) return;
+    if (v !== centerItemRef.current) {
+      centerItemRef.current = v;
+      onChange(v);
+    }
+  }
+
+  React.useEffect(function () {
+    var container = containerRef.current;
+    if (!container) return;
+
+    var idx = options.findIndex(function (o) { return o.value === value; });
+    centerItemRef.current = value;
+    ignoreObserverRef.current = true;
+
+    var obs = new IntersectionObserver(
+      function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+            var v = Number(entry.target.dataset.value);
+            select(v);
+          }
+        });
+      },
+      {
+        root: container,
+        rootMargin: '-' + edgePadding + 'px 0px',
+        threshold: 0.5,
+      }
+    );
+
+    Array.from(container.children).forEach(function (child) {
+      obs.observe(child);
+    });
+    observerRef.current = obs;
+
+    if (idx >= 0) {
+      window.requestAnimationFrame(function () {
+        container.scrollTop = idx * itemHeight;
+        window.setTimeout(function () {
+          ignoreObserverRef.current = false;
+        }, 250);
+      });
+    } else {
+      ignoreObserverRef.current = false;
+    }
+
+    return function () {
+      obs.disconnect();
+      observerRef.current = null;
+    };
+  }, [options, value]);
+
+  return (
+    <div className="relative h-24 overflow-hidden rounded-lg border border-white/10 bg-slate-950/40">
+      <div
+        ref={containerRef}
+        className="h-full overflow-y-auto snap-y snap-mandatory scrollbar-hide"
+        style={{ paddingTop: edgePadding + 'px', paddingBottom: edgePadding + 'px' }}
+      >
+        {options.map(function (opt) {
+          var active = opt.value === value;
+          return (
+            <div
+            key={opt.value}
+            data-value={opt.value}
+            onClick={function () {
+              var container = containerRef.current;
+              if (container) {
+                var idx = options.findIndex(function (o) { return o.value === opt.value; });
+                if (idx >= 0) container.scrollTop = idx * itemHeight;
+              }
+              select(opt.value);
+            }}
+            className={
+              'h-8 flex items-center justify-center snap-center text-xs cursor-pointer transition-colors ' +
+              (active ? 'text-cyan-100 font-bold bg-cyan-600/20' : 'text-slate-400 hover:text-slate-200')
+            }
+          >
+            {opt.label}
+          </div>
+          );
+        })}
+      </div>
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-slate-950/70 via-transparent to-slate-950/70" />
+    </div>
+  );
+}
+
+function useClickOutside(ref, onOutside) {
+  React.useEffect(function () {
+    function handle(e) {
+      if (ref.current && !ref.current.contains(e.target)) {
+        onOutside();
+      }
+    }
+    document.addEventListener('click', handle);
+    return function () {
+      document.removeEventListener('click', handle);
+    };
+  }, [onOutside]);
+}
+
+function FieldTrigger({ label, active, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        'input-field input-field-compact flex h-8 w-full items-center justify-between px-2 text-xs ' +
+        (active ? 'border-cyan-500/50 bg-cyan-950/30 text-cyan-100' : '')
+      }
+    >
+      <span>{label}</span>
+      <span className={'icon-chevron-down text-[10px] transition-transform ' + (active ? 'rotate-180' : '')} />
+    </button>
+  );
+}
+
+function ExpandableDatePicker({ dateStr, onDateChange }) {
+  var _active = React.useState(null);
+  var activeField = _active[0];
+  var setActiveField = _active[1];
+  var wrapperRef = React.useRef(null);
+  useClickOutside(wrapperRef, function () { setActiveField(null); });
+
+  var dp = parseDateParts(dateStr);
+  var maxDay = daysInMonth(dp.y, dp.m);
+  var safeD = Math.min(dp.d, maxDay);
+  var years = React.useMemo(function () { return Array.from({ length: 201 }, function (_, i) { return 1900 + i; }); }, []);
+  var months = React.useMemo(function () { return Array.from({ length: 12 }, function (_, i) { return i + 1; }); }, []);
+  var days = React.useMemo(function () { return Array.from({ length: maxDay }, function (_, i) { return i + 1; }); }, [maxDay]);
+
+  function updateDate(y, m, d) {
+    var md = daysInMonth(y, m);
+    var dd = Math.min(d, md);
+    onDateChange(y + '-' + pad2(m) + '-' + pad2(dd));
+  }
+
+  function toggle(field) {
+    setActiveField(activeField === field ? null : field);
+  }
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <div className="grid grid-cols-3 gap-1.5">
+        <FieldTrigger label={dp.y + '年'} active={activeField === 'y'} onClick={function () { toggle('y'); }} />
+        <FieldTrigger label={pad2(dp.m) + '月'} active={activeField === 'm'} onClick={function () { toggle('m'); }} />
+        <FieldTrigger label={pad2(safeD) + '日'} active={activeField === 'd'} onClick={function () { toggle('d'); }} />
+      </div>
+      {activeField && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-max min-w-[4rem] rounded-lg border border-white/10 bg-slate-900/95 p-1 shadow-xl backdrop-blur-sm">
+          {activeField === 'y' && (
+            <CompactWheelPicker
+              options={years.map(function (y) { return { value: y, label: y + '年' }; })}
+              value={dp.y}
+              onChange={function (v) { updateDate(v, dp.m, safeD); }}
+            />
+          )}
+          {activeField === 'm' && (
+            <CompactWheelPicker
+              options={months.map(function (m) { return { value: m, label: pad2(m) + '月' }; })}
+              value={dp.m}
+              onChange={function (v) { updateDate(dp.y, v, safeD); }}
+            />
+          )}
+          {activeField === 'd' && (
+            <CompactWheelPicker
+              options={days.map(function (d) { return { value: d, label: pad2(d) + '日' }; })}
+              value={safeD}
+              onChange={function (v) { updateDate(dp.y, dp.m, v); }}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExpandableTimePicker({ timeStr, onTimeChange }) {
+  var _open = React.useState(false);
+  var open = _open[0];
+  var setOpen = _open[1];
+  var wrapperRef = React.useRef(null);
+  useClickOutside(wrapperRef, function () { setOpen(false); });
+
+  var parts = (timeStr || '12:00').split(':');
+  var hour = parseInt(parts[0], 10) || 0;
+  var minute = parseInt(parts[1], 10) || 0;
+  var hours = React.useMemo(function () { return Array.from({ length: 24 }, function (_, i) { return i; }); }, []);
+  var minutes = React.useMemo(function () { return Array.from({ length: 60 }, function (_, i) { return i; }); }, []);
+
+  function updateTime(h, m) {
+    onTimeChange(pad2(h) + ':' + pad2(m));
+  }
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <div className="grid grid-cols-2 gap-1.5">
+        <FieldTrigger label={pad2(hour) + '时'} active={open} onClick={function () { setOpen(!open); }} />
+        <FieldTrigger label={pad2(minute) + '分'} active={open} onClick={function () { setOpen(!open); }} />
+      </div>
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-max min-w-[6rem] rounded-lg border border-white/10 bg-slate-900/95 p-1 shadow-xl backdrop-blur-sm">
+          <div className="grid grid-cols-2 gap-1">
+            <CompactWheelPicker
+              options={hours.map(function (h) { return { value: h, label: pad2(h) + '时' }; })}
+              value={hour}
+              onChange={function (v) { updateTime(v, minute); }}
+            />
+            <CompactWheelPicker
+              options={minutes.map(function (m) { return { value: m, label: pad2(m) + '分' }; })}
+              value={minute}
+              onChange={function (v) { updateTime(hour, v); }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ZiweiBirthProfileForm({ draft, onDraftChange, onSave, onImportFromText, canImport, saveDisabled, isEditing }) {
   var _cityQuery = React.useState('');
   var cityQuery = _cityQuery[0];
@@ -97,25 +347,19 @@ function ZiweiBirthProfileForm({ draft, onDraftChange, onSave, onImportFromText,
           </div>
         </label>
 
-        <label className="block">
+        <label className="block col-span-2 sm:col-span-1">
           <span className="mb-0.5 block text-[10px] font-medium text-slate-500">出生日期</span>
-          <input
-            type="date"
-            value={draft.birthDate || ''}
-            onChange={function (e) { patch({ birthDate: e.target.value }); }}
-            className="input-field input-field-compact !h-8 !text-xs"
-            min="1900-01-01"
-            max="2100-12-31"
+          <ExpandableDatePicker
+            dateStr={draft.birthDate}
+            onDateChange={function (v) { patch({ birthDate: v }); }}
           />
         </label>
 
-        <label className="block">
+        <label className="block col-span-2 sm:col-span-1">
           <span className="mb-0.5 block text-[10px] font-medium text-slate-500">出生时间</span>
-          <input
-            type="time"
-            value={draft.birthTime || '12:00'}
-            onChange={function (e) { patch({ birthTime: e.target.value }); }}
-            className="input-field input-field-compact !h-8 !text-xs"
+          <ExpandableTimePicker
+            timeStr={draft.birthTime}
+            onTimeChange={function (v) { patch({ birthTime: v }); }}
           />
         </label>
 

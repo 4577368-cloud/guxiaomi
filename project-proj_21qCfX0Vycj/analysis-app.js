@@ -2828,9 +2828,9 @@ function AnalysisApp() {
         <div className="mx-auto flex max-w-none items-center gap-2 px-3 py-2 md:px-6">
           <a href="index.html" className="flex min-w-0 items-center gap-2">
             <img
-              src="https://imgus.tangbuy.com/static/images/2025-09-26/e9e9e871b0b2477697e4b59f6da02ab5-17588742994027430860421454933872.png"
+              src="images/logo.png"
               alt="股小蜜 Logo"
-              className="h-8 w-8 shrink-0 rounded-xl shadow-lg shadow-slate-900/20 ring-2 ring-white/40 md:h-9 md:w-9"
+              className="h-8 w-8 shrink-0 rounded-full object-contain bg-transparent md:h-9 md:w-9"
             />
             <div className="min-w-0">
               <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
@@ -2842,6 +2842,10 @@ function AnalysisApp() {
             </div>
           </a>
           <div className="ml-auto flex items-center gap-1 overflow-x-auto">
+            <a href="index.html" className="btn btn-secondary nav-chip gap-1 shrink-0">
+              <div className="icon-home"></div>
+              <span>首页</span>
+            </a>
             <button type="button" onClick={goBackToSource} className="btn btn-secondary nav-chip gap-1 shrink-0">
               <div className="icon-arrow-left"></div>
               <span>返回</span>
