@@ -354,7 +354,7 @@ function ZiweiGenerateReportButton({
       title={title || ''}
       className={
         'btn btn-primary gap-1 shrink-0 disabled:opacity-50 ' +
-        (isCompact ? 'btn-xs ' : 'nav-chip ') +
+        (isCompact ? 'btn-xs min-w-[5rem] ' : 'nav-chip min-w-[5rem] ') +
         (className || '')
       }
     >
@@ -3157,18 +3157,19 @@ ${allStocksData}
                   </h1>
                 </div>
               </div>
-              <div className="ml-auto flex items-center justify-end gap-1.5 overflow-x-auto">
+              <div className="ml-auto flex items-center justify-end gap-1 overflow-x-auto">
                 <a href="index.html" className="btn btn-secondary nav-chip gap-1 shrink-0">
                   <div className="icon-home"></div>
                   <span>首页</span>
                 </a>
-                <label className="flex shrink-0 items-center gap-1.5 text-xs text-slate-300">
+                <label className="flex shrink-0 items-center gap-1 text-xs text-slate-300">
                   <span className="hidden sm:inline">模型</span>
                   <select
                     value={selectedModelKey}
                     onChange={(e) => setSelectedModelKey(normalizeZiweiModelKey(e.target.value))}
                     disabled={isGenerating || isAnalyzingStock || isGeneratingBasic || isGeneratingWealth || isGeneratingPortfolio}
-                    className="input-field input-field-compact nav-model-select !w-auto max-w-[10rem]"
+                    className="input-field input-field-compact nav-model-select !w-auto max-w-[5.5rem] truncate sm:max-w-[10rem]"
+                    title={modelOptions.find(function (m) { return m.key === selectedModelKey; })?.label || ''}
                   >
                     {modelOptions.map((m) => (
                       <option key={m.key} value={m.key}>
@@ -3180,6 +3181,10 @@ ${allStocksData}
                 <a href={withCurrentSource('analysis.html')} className="btn btn-secondary nav-chip gap-1 shrink-0">
                   <div className="icon-chart-bar"></div>
                   <span>分析</span>
+                </a>
+                <a href={withCurrentSource('news.html')} className="btn btn-secondary nav-chip gap-1 shrink-0">
+                  <div className="icon-newspaper"></div>
+                  <span>新闻</span>
                 </a>
                 <button
                   onClick={() => {
@@ -3278,16 +3283,17 @@ ${allStocksData}
                   apiBase={getZiweiApiBase()}
                   modelKey={selectedModelKey}
                   modelLabel={selectedModelOption && selectedModelOption.label}
+                  onSharePoster={function () { setShowSharePoster(true); }}
                 />
               )}
               {activeMainTab === 'report' && (
                 <div id="ziwei-report-section" className="space-y-4 md:space-y-6 scroll-mt-20">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-lg md:text-xl font-bold text-slate-50 flex items-center gap-2">
                 <div className="icon-file-text text-lg text-cyan-400" aria-hidden />
                 分析报告
               </h2>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
                 <ZiweiGenerateReportButton
                   onClick={handleGenerate}
                   disabled={!hasReportInput}

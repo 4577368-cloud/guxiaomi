@@ -2846,10 +2846,6 @@ function AnalysisApp() {
               <div className="icon-home"></div>
               <span>首页</span>
             </a>
-            <button type="button" onClick={goBackToSource} className="btn btn-secondary nav-chip gap-1 shrink-0">
-              <div className="icon-arrow-left"></div>
-              <span>返回</span>
-            </button>
             <a href={withCurrentSource("ziwei.html")} className="btn btn-secondary nav-chip gap-1 shrink-0">
               <div className="icon-sparkles"></div>
               <span>排盘</span>
@@ -2858,6 +2854,10 @@ function AnalysisApp() {
               <div className="icon-newspaper"></div>
               <span>新闻</span>
             </a>
+            <button type="button" onClick={goBackToSource} className="btn btn-secondary nav-chip gap-1 shrink-0">
+              <div className="icon-arrow-left"></div>
+              <span>返回</span>
+            </button>
           </div>
         </div>
       </header>
@@ -3022,7 +3022,7 @@ function AnalysisApp() {
             <button
               type="button"
               className={
-                "btn btn-primary shrink-0 w-auto max-w-full " +
+                "btn btn-primary shrink-0 w-auto min-w-[7.5rem] max-w-full " +
                 (analyzing ? "btn-analyze-busy" : "")
               }
               onClick={runAnalysis}

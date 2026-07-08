@@ -105,7 +105,7 @@ function ZiweiLinkagePanel({ chartData, activePalaceName, focusedStar, onClearFo
 /**
  * 交互命盘面板：预制解读 + AI 解读（双 Tab）
  */
-function ZiweiChartPanel({ birth, birthLabel, apiBase, modelKey, modelLabel }) {
+function ZiweiChartPanel({ birth, birthLabel, apiBase, modelKey, modelLabel, onSharePoster }) {
   var now = new Date();
   var _timeMode = React.useState('natal');
   var timeMode = _timeMode[0];
@@ -332,6 +332,17 @@ function ZiweiChartPanel({ birth, birthLabel, apiBase, modelKey, modelLabel }) {
     <div className="rounded-xl border border-stone-200 bg-white shadow-lg shadow-stone-900/10 overflow-hidden">
       <div className="border-b border-stone-100 bg-gradient-to-r from-stone-50 to-white px-3 py-2.5">
         <div className="flex items-center justify-end gap-2 mb-2">
+          {onSharePoster && (
+            <button
+              type="button"
+              onClick={onSharePoster}
+              title="生成命盘分享海报"
+              className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 bg-stone-100 text-stone-600 hover:bg-stone-200"
+            >
+              <div className="icon-image text-[11px]" aria-hidden />
+              <span>海报</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={toggleLinkage}

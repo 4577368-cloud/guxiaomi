@@ -54,6 +54,17 @@ function parseNewsUrlParams() {
   };
 }
 
+function buildCrossPageUrl(path, urlParams) {
+  const params = new URLSearchParams();
+  if (urlParams.code) params.set('code', urlParams.code);
+  if (urlParams.market) params.set('market', urlParams.market);
+  if (urlParams.name) params.set('name', urlParams.name);
+  if (urlParams.keywords && urlParams.keywords.length) params.set('keywords', urlParams.keywords.join(','));
+  params.set('from', encodeURIComponent(getReturnTarget('index.html')));
+  const separator = path.indexOf('?') >= 0 ? '&' : '?';
+  return `${path}${separator}${params.toString()}`;
+}
+
 function getReturnTarget(fallback) {
   const q = new URLSearchParams(window.location.search);
   const from = q.get('from') || '';
@@ -480,6 +491,20 @@ function NewsApp() {
             <a href="index.html" className="btn btn-secondary btn-sm gap-1">
               <span className="icon-home"></span>
               首页
+            </a>
+            <a
+              href={buildCrossPageUrl('analysis.html', urlParams)}
+              className="btn btn-secondary btn-sm gap-1"
+            >
+              <span className="icon-chart-bar"></span>
+              分析
+            </a>
+            <a
+              href={buildCrossPageUrl('ziwei.html', urlParams)}
+              className="btn btn-secondary btn-sm gap-1"
+            >
+              <span className="icon-sparkles"></span>
+              排盘
             </a>
             <button type="button" onClick={refreshAll} className="btn btn-primary btn-sm">
               刷新

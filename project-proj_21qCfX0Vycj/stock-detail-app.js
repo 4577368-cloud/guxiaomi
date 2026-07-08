@@ -1496,7 +1496,7 @@ function DetailInlineAnalysis({ stock, onReportDone, className }) {
 
   return (
     <>
-      <button type="button" onClick={run} disabled={running} className={`btn btn-secondary nav-chip gap-1 disabled:opacity-50 ${className || ''}`}>
+      <button type="button" onClick={run} disabled={running} className={`btn btn-secondary nav-chip min-w-[4.5rem] gap-1 disabled:opacity-50 ${className || ''}`}>
         <div className="icon-chart-bar"></div>
         <span>{running ? '分析中…' : '分析'}</span>
       </button>
@@ -1520,6 +1520,7 @@ function StockDetailApp() {
   const [historyRefreshing, setHistoryRefreshing] = React.useState(false);
   const [historyMessage, setHistoryMessage] = React.useState('');
   const [chartMode, setChartMode] = React.useState('kline');
+  const [priceRefreshing, setPriceRefreshing] = React.useState(false);
 
   const stock = React.useMemo(() => {
     const same = (item) => {
@@ -1788,6 +1789,45 @@ function StockDetailApp() {
     if (window.saveWatchlist) window.saveWatchlist(next);
   };
 
+  const refreshPrice = async () => {
+    if (!stock || priceRefreshing) return;
+    if (typeof getStockPrice !== 'function') {
+      console.warn('股价刷新功能未加载');
+      return;
+    }
+    setPriceRefreshing(true);
+    try {
+      const data = await getStockPrice(stock.symbol, normalizeDetailMarket(stock.market));
+      if (!data || !Number.isFinite(Number(data.price))) return;
+      const nextPrice = Number(data.price);
+      const nextMarketData = { ...(stock.marketData || {}), ...data };
+      const sym = String(stock.symbol || '').toUpperCase();
+      const mkt = normalizeDetailMarket(stock.market);
+      const updateItem = (item) => {
+        if (!item) return item;
+        const itemSym = String(item.symbol || '').toUpperCase();
+        const itemMkt = normalizeDetailMarket(item.market);
+        if (itemSym !== sym || itemMkt !== mkt) return item;
+        return {
+          ...item,
+          currentPrice: nextPrice,
+          previousClose: Number(data.previousClose) || Number(item.previousClose) || 0,
+          change: Number(data.change) || (Number(data.previousClose) > 0 ? nextPrice - Number(data.previousClose) : 0),
+          changePercent: Number(data.changePercent) || 0,
+          marketData: nextMarketData,
+        };
+      };
+      const nextPortfolio = portfolio.map(updateItem);
+      const nextWatchlist = watchlist.map(updateItem);
+      persistPortfolio(nextPortfolio);
+      persistWatchlist(nextWatchlist);
+    } catch (error) {
+      console.warn('刷新股价失败:', error);
+    } finally {
+      setPriceRefreshing(false);
+    }
+  };
+
   const updateKeywords = (keywords) => {
     const clean = (keywords || []).map((k) => String(k).trim()).filter(Boolean);
     let touchedPortfolio = false;
@@ -1857,6 +1897,10 @@ function StockDetailApp() {
               <div className="icon-layout-dashboard"></div>
               <span>首页</span>
             </a>
+            <a href={analysisUrl} className="btn btn-secondary nav-chip gap-1 shrink-0">
+              <div className="icon-chart-bar"></div>
+              <span>分析</span>
+            </a>
             <a href={paipanUrl} className="btn btn-secondary nav-chip gap-1 shrink-0">
               <div className="icon-sparkles"></div>
               <span>排盘</span>
@@ -1890,7 +1934,18 @@ function StockDetailApp() {
               </h2>
             </div>
             <div className="shrink-0 text-right">
-              <div className="text-[10px] text-slate-400 md:text-xs">当前价格</div>
+              <div className="flex items-center justify-end gap-1">
+                <button
+                  type="button"
+                  onClick={refreshPrice}
+                  disabled={priceRefreshing}
+                  aria-label="刷新股价"
+                  title="刷新股价"
+                  className="inline-flex items-center justify-center rounded-md p-1 text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-200 disabled:opacity-50"
+                >
+                  <span className={`icon-refresh-cw text-[13px] md:text-sm ${priceRefreshing ? 'animate-spin' : ''}`} aria-hidden="true" />
+                </button>
+              </div>
               <div className="gx-num mt-0.5 text-2xl font-black tabular-nums text-amber-100 md:mt-1 md:text-5xl">{detailMoney(current, market, market === 'US' ? 3 : 2)}</div>
               <div className={`gx-num mt-0.5 text-xs font-semibold tabular-nums md:mt-1 md:text-sm ${positive ? 'text-emerald-300' : 'text-rose-300'}`}>
                 {effectiveChange >= 0 ? '+' : ''}{detailMoney(effectiveChange, market, market === 'US' ? 3 : 2)} · {detailPercent(effectiveChangePct)}

@@ -152,6 +152,62 @@ function App() {
       loadInitialData();
     }, []);
 
+    React.useEffect(() => {
+      function handleStorageChange(e) {
+        if (e && e.key === 'stock_watchlist_data') {
+          reloadWatchlistFromStorage();
+        }
+      }
+      window.addEventListener('storage', handleStorageChange);
+      return () => window.removeEventListener('storage', handleStorageChange);
+    }, []);
+
+    const reloadWatchlistFromStorage = () => {
+      try {
+        const savedWatchlist = typeof window.loadWatchlist === 'function' ? window.loadWatchlist() : [];
+        applyWatchlistItems(savedWatchlist, { skipSave: true });
+      } catch (e) {
+        console.error('重载监控列表失败', e);
+      }
+    };
+
+    const applyWatchlistItems = (savedWatchlist, options) => {
+      const normalizedWatchlist = (Array.isArray(savedWatchlist) ? savedWatchlist : []).map(item => {
+        const symNorm = normalizePortfolioSymbol(item.symbol, item.market);
+        const persistedHistory = window.loadStockPriceHistory
+          ? window.loadStockPriceHistory(symNorm, item.market)
+          : [];
+        const combinedHistoryMap = new Map();
+        (Array.isArray(persistedHistory) ? persistedHistory : []).forEach(row => {
+          if (row && row.date) combinedHistoryMap.set(row.date, row);
+        });
+        (Array.isArray(item.priceHistory) ? item.priceHistory : []).forEach(row => {
+          if (row && row.date) combinedHistoryMap.set(row.date, row);
+        });
+        const mergedHistory = Array.from(combinedHistoryMap.values())
+          .slice()
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+          .slice(-365);
+        return {
+          ...item,
+          symbol: symNorm,
+          priceHistory: mergedHistory,
+          watchStartPrice:
+            Number(item.watchStartPrice) ||
+            (mergedHistory.length > 0 ? Number(mergedHistory[0].price) : 0) ||
+            Number(item.currentPrice) ||
+            0
+        };
+      });
+      setWatchlist(normalizedWatchlist);
+      if (!options || !options.skipSave) {
+        if (JSON.stringify(normalizedWatchlist) !== JSON.stringify(savedWatchlist) && window.saveWatchlist) {
+          window.saveWatchlist(normalizedWatchlist, { skipCloudSync: true });
+        }
+      }
+      console.log('监控列表已重载:', normalizedWatchlist?.length || 0, '只股票');
+    };
+
   async function refreshTodayHistoryForPortfolio(existingPortfolio) {
     const today = new Date().toISOString().split('T')[0];
     let updatedPortfolio = [...existingPortfolio];

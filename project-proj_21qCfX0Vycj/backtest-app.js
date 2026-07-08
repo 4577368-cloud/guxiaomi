@@ -50,6 +50,63 @@
     return /^\d{4}-\d{2}-\d{2}/.test(str) ? str.slice(5) : str;
   }
 
+  function inferMarketFromSymbol(symbol) {
+    var s = String(symbol || '').trim();
+    if (/^\d{6}$/.test(s)) return 'CN';
+    if (/^\d{4,5}$/.test(s)) return 'HK';
+    if (/^\d+$/.test(s)) return 'HK';
+    return 'US';
+  }
+
+  function showToast(message, type) {
+    var el = document.createElement('div');
+    el.className = 'fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full px-4 py-2 text-xs font-semibold shadow-lg ' +
+      (type === 'success' ? 'bg-emerald-500/90 text-white' : 'bg-amber-500/90 text-white');
+    el.textContent = message;
+    document.body.appendChild(el);
+    window.setTimeout(function () {
+      el.style.opacity = '0';
+      el.style.transition = 'opacity 0.3s';
+      window.setTimeout(function () { el.remove(); }, 300);
+    }, 2200);
+  }
+
+  function followStock(row) {
+    if (!row || !row.symbol) return;
+    if (typeof window.addToWatchlist !== 'function') {
+      showToast('关注功能未加载，请刷新页面重试', 'error');
+      return;
+    }
+    var market = inferMarketFromSymbol(row.symbol);
+    var result = window.addToWatchlist({
+      symbol: row.symbol,
+      market: market,
+      name: row.name || '',
+      currentPrice: row.entry || 0,
+      previousClose: row.entry || 0,
+    });
+    if (result && result.success) {
+      showToast('已将 ' + row.symbol + ' 加入关注列表', 'success');
+    } else {
+      showToast(result && result.message ? result.message : '关注失败', 'error');
+    }
+  }
+
+  function FollowButton(props) {
+    var row = props.row;
+    return React.createElement(
+      'button',
+      {
+        type: 'button',
+        onClick: function () { followStock(row); },
+        title: '加入关注列表',
+        className: 'inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/[0.06] px-2 py-1 text-[11px] font-semibold text-slate-200 transition-colors hover:bg-white/10 hover:text-white',
+      },
+      React.createElement('span', { className: 'icon-star', 'aria-hidden': true }),
+      '关注'
+    );
+  }
+
   function KpiCard(props) {
     return React.createElement(
       'div',
@@ -165,7 +222,8 @@
               React.createElement('th', { className: 'p-2 font-medium' }, '标的'),
               React.createElement('th', { className: 'p-2 text-right font-medium' }, '样本'),
               React.createElement('th', { className: 'p-2 text-right font-medium' }, '命中率'),
-              React.createElement('th', { className: 'p-2 text-right font-medium' }, '均策略收益')
+              React.createElement('th', { className: 'p-2 text-right font-medium' }, '均策略收益'),
+              React.createElement('th', { className: 'p-2 text-center font-medium' }, '操作')
             )
           ),
           React.createElement(
@@ -185,7 +243,8 @@
                 ),
                 React.createElement('td', { className: 'gx-num p-2 text-right tabular-nums text-slate-300' }, r.count),
                 React.createElement('td', { className: 'gx-num p-2 text-right tabular-nums font-semibold ' + rateColor(r.hit_rate) }, fmtRate(r.hit_rate)),
-                React.createElement('td', { className: 'gx-num p-2 text-right tabular-nums font-bold ' + retColor(r.avg_strategy) }, fmtSigned(r.avg_strategy))
+                React.createElement('td', { className: 'gx-num p-2 text-right tabular-nums font-bold ' + retColor(r.avg_strategy) }, fmtSigned(r.avg_strategy)),
+                React.createElement('td', { className: 'p-2 text-center' }, React.createElement(FollowButton, { row: r }))
               );
             })
           )
@@ -198,7 +257,7 @@
     var rows = props.rows || [];
     if (!rows.length) return null;
     var headers = props.headers || { tag: '周期', strength: '概率' };
-    var cols = ['结算日', '标的', headers.tag, '方向', headers.strength, '买入→结算', '实际', '策略', '命中'];
+    var cols = ['结算日', '标的', headers.tag, '方向', headers.strength, '买入→结算', '实际', '策略', '命中', '操作'];
     return React.createElement(
       'div',
       { className: 'overflow-x-auto' },
@@ -246,7 +305,8 @@
                 r.hit
                   ? React.createElement('span', { className: 'icon-check text-emerald-400', 'aria-label': '命中' })
                   : React.createElement('span', { className: 'icon-x text-rose-400', 'aria-label': '未命中' })
-              )
+              ),
+              React.createElement('td', { className: 'p-2 text-center' }, React.createElement(FollowButton, { row: r }))
             );
           })
         )
@@ -406,9 +466,12 @@
         ),
         React.createElement('div', { className: 'flex flex-wrap items-center gap-2' },
             React.createElement('a', { href: 'index.html', className: 'btn btn-secondary btn-sm gap-1' }, React.createElement('span', { className: 'icon-home', 'aria-hidden': true }), '首页'),
+            React.createElement('a', { href: 'analysis.html', className: 'btn btn-secondary btn-sm gap-1' }, React.createElement('span', { className: 'icon-chart-bar', 'aria-hidden': true }), '分析'),
+            React.createElement('a', { href: 'ziwei.html', className: 'btn btn-secondary btn-sm gap-1' }, React.createElement('span', { className: 'icon-sparkles', 'aria-hidden': true }), '排盘'),
+            React.createElement('a', { href: 'news.html', className: 'btn btn-secondary btn-sm gap-1' }, React.createElement('span', { className: 'icon-newspaper', 'aria-hidden': true }), '新闻'),
             React.createElement('a', { href: 'analysis.html', className: 'btn btn-secondary btn-sm gap-1' }, React.createElement('span', { className: 'icon-arrow-left', 'aria-hidden': true }), '返回分析'),
-          React.createElement(
-            'button',
+            React.createElement(
+              'button',
             {
               type: 'button',
               className: 'btn btn-primary btn-sm gap-1 disabled:opacity-50',

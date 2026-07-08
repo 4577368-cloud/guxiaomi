@@ -301,6 +301,15 @@ function saveWatchlist(watchlist, options) {
     };
     localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(dataToSave));
     console.log('监控列表已保存');
+    if (typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(new StorageEvent('storage', {
+          key: WATCHLIST_STORAGE_KEY,
+          newValue: JSON.stringify(dataToSave),
+          url: window.location.href
+        }));
+      } catch (_) {}
+    }
     if (!options || !options.skipCloudSync) {
       if (typeof window.persistAppWatchlist === 'function') {
         window.persistAppWatchlist(sanitized);

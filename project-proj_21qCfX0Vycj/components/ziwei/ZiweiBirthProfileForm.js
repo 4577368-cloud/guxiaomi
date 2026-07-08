@@ -175,45 +175,53 @@ function ExpandableDatePicker({ dateStr, onDateChange }) {
   return (
     <div ref={wrapperRef} className="relative">
       <div className="grid grid-cols-3 gap-1.5">
-        <FieldTrigger label={dp.y + '年'} active={activeField === 'y'} onClick={function () { toggle('y'); }} />
-        <FieldTrigger label={pad2(dp.m) + '月'} active={activeField === 'm'} onClick={function () { toggle('m'); }} />
-        <FieldTrigger label={pad2(safeD) + '日'} active={activeField === 'd'} onClick={function () { toggle('d'); }} />
-      </div>
-      {activeField && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-max min-w-[4rem] rounded-lg border border-white/10 bg-slate-900/95 p-1 shadow-xl backdrop-blur-sm">
+        <div className="relative">
+          <FieldTrigger label={dp.y + '年'} active={activeField === 'y'} onClick={function () { toggle('y'); }} />
           {activeField === 'y' && (
-            <CompactWheelPicker
-              options={years.map(function (y) { return { value: y, label: y + '年' }; })}
-              value={dp.y}
-              onChange={function (v) { updateDate(v, dp.m, safeD); }}
-            />
-          )}
-          {activeField === 'm' && (
-            <CompactWheelPicker
-              options={months.map(function (m) { return { value: m, label: pad2(m) + '月' }; })}
-              value={dp.m}
-              onChange={function (v) { updateDate(dp.y, v, safeD); }}
-            />
-          )}
-          {activeField === 'd' && (
-            <CompactWheelPicker
-              options={days.map(function (d) { return { value: d, label: pad2(d) + '日' }; })}
-              value={safeD}
-              onChange={function (v) { updateDate(dp.y, dp.m, v); }}
-            />
+            <div className="absolute left-0 top-full z-50 mt-1 w-max min-w-[4rem] rounded-lg border border-white/10 bg-slate-900/95 p-1 shadow-xl backdrop-blur-sm">
+              <CompactWheelPicker
+                options={years.map(function (y) { return { value: y, label: y + '年' }; })}
+                value={dp.y}
+                onChange={function (v) { updateDate(v, dp.m, safeD); }}
+              />
+            </div>
           )}
         </div>
-      )}
+        <div className="relative">
+          <FieldTrigger label={pad2(dp.m) + '月'} active={activeField === 'm'} onClick={function () { toggle('m'); }} />
+          {activeField === 'm' && (
+            <div className="absolute left-0 top-full z-50 mt-1 w-max min-w-[4rem] rounded-lg border border-white/10 bg-slate-900/95 p-1 shadow-xl backdrop-blur-sm">
+              <CompactWheelPicker
+                options={months.map(function (m) { return { value: m, label: pad2(m) + '月' }; })}
+                value={dp.m}
+                onChange={function (v) { updateDate(dp.y, v, safeD); }}
+              />
+            </div>
+          )}
+        </div>
+        <div className="relative">
+          <FieldTrigger label={pad2(safeD) + '日'} active={activeField === 'd'} onClick={function () { toggle('d'); }} />
+          {activeField === 'd' && (
+            <div className="absolute left-0 top-full z-50 mt-1 w-max min-w-[4rem] rounded-lg border border-white/10 bg-slate-900/95 p-1 shadow-xl backdrop-blur-sm">
+              <CompactWheelPicker
+                options={days.map(function (d) { return { value: d, label: pad2(d) + '日' }; })}
+                value={safeD}
+                onChange={function (v) { updateDate(dp.y, dp.m, v); }}
+              />
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
 function ExpandableTimePicker({ timeStr, onTimeChange }) {
-  var _open = React.useState(false);
-  var open = _open[0];
-  var setOpen = _open[1];
+  var _active = React.useState(null);
+  var activeField = _active[0];
+  var setActiveField = _active[1];
   var wrapperRef = React.useRef(null);
-  useClickOutside(wrapperRef, function () { setOpen(false); });
+  useClickOutside(wrapperRef, function () { setActiveField(null); });
 
   var parts = (timeStr || '12:00').split(':');
   var hour = parseInt(parts[0], 10) || 0;
@@ -225,28 +233,38 @@ function ExpandableTimePicker({ timeStr, onTimeChange }) {
     onTimeChange(pad2(h) + ':' + pad2(m));
   }
 
+  function toggle(field) {
+    setActiveField(activeField === field ? null : field);
+  }
+
   return (
     <div ref={wrapperRef} className="relative">
       <div className="grid grid-cols-2 gap-1.5">
-        <FieldTrigger label={pad2(hour) + '时'} active={open} onClick={function () { setOpen(!open); }} />
-        <FieldTrigger label={pad2(minute) + '分'} active={open} onClick={function () { setOpen(!open); }} />
-      </div>
-      {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-max min-w-[6rem] rounded-lg border border-white/10 bg-slate-900/95 p-1 shadow-xl backdrop-blur-sm">
-          <div className="grid grid-cols-2 gap-1">
-            <CompactWheelPicker
-              options={hours.map(function (h) { return { value: h, label: pad2(h) + '时' }; })}
-              value={hour}
-              onChange={function (v) { updateTime(v, minute); }}
-            />
-            <CompactWheelPicker
-              options={minutes.map(function (m) { return { value: m, label: pad2(m) + '分' }; })}
-              value={minute}
-              onChange={function (v) { updateTime(hour, v); }}
-            />
-          </div>
+        <div className="relative">
+          <FieldTrigger label={pad2(hour) + '时'} active={activeField === 'h'} onClick={function () { toggle('h'); }} />
+          {activeField === 'h' && (
+            <div className="absolute left-0 top-full z-50 mt-1 w-max min-w-[4rem] rounded-lg border border-white/10 bg-slate-900/95 p-1 shadow-xl backdrop-blur-sm">
+              <CompactWheelPicker
+                options={hours.map(function (h) { return { value: h, label: pad2(h) + '时' }; })}
+                value={hour}
+                onChange={function (v) { updateTime(v, minute); }}
+              />
+            </div>
+          )}
         </div>
-      )}
+        <div className="relative">
+          <FieldTrigger label={pad2(minute) + '分'} active={activeField === 'min'} onClick={function () { toggle('min'); }} />
+          {activeField === 'min' && (
+            <div className="absolute left-0 top-full z-50 mt-1 w-max min-w-[4rem] rounded-lg border border-white/10 bg-slate-900/95 p-1 shadow-xl backdrop-blur-sm">
+              <CompactWheelPicker
+                options={minutes.map(function (m) { return { value: m, label: pad2(m) + '分' }; })}
+                value={minute}
+                onChange={function (v) { updateTime(hour, v); }}
+              />
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
