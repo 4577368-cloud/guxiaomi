@@ -377,6 +377,163 @@
     );
   }
 
+  function SummaryReport(props) {
+    var sc = props.sc || {};
+    var quotes = props.quotes || {};
+    var overall = props.overall || {};
+    var counts = props.counts || {};
+    var leaders = sc.leaders || { best: [], worst: [] };
+    var best = leaders.best || [];
+    var worst = leaders.worst || [];
+
+    function enrich(row) {
+      var q = quotes[quoteKey(row.symbol, row.market)];
+      var entryToNow = q && q.price != null ? calcReturn(row.entry, q.price) : null;
+      var targetToNow = q && q.price != null ? calcReturn(row.target, q.price) : null;
+      return { row: row, quote: q, entryToNow: entryToNow, targetToNow: targetToNow };
+    }
+
+    var enrichedBest = best.map(enrich);
+    var enrichedWorst = worst.map(enrich);
+
+    // 靠谱：命中率高、样本≥2、结算至今为正
+    var reliable = enrichedBest
+      .filter(function (e) {
+        return e.row.hit_rate >= 0.7 && e.row.count >= 2 && e.targetToNow != null && e.targetToNow > 0;
+      })
+      .sort(function (a, b) { return b.row.avg_strategy - a.row.avg_strategy; })
+      .slice(0, 3);
+
+    // 警惕：命中率高但结算至今转负（纸面盈利回吐）
+    var risky = enrichedBest
+      .filter(function (e) {
+        return e.row.hit_rate >= 0.7 && e.row.count >= 2 && e.targetToNow != null && e.targetToNow < 0;
+      })
+      .sort(function (a, b) { return a.targetToNow - b.targetToNow; })
+      .slice(0, 3);
+
+    // 如果 best 里没有，去 worst 里找「买入至今也亏」的
+    if (!risky.length) {
+      risky = enrichedWorst
+        .filter(function (e) {
+          return e.row.count >= 2 && e.entryToNow != null && e.entryToNow < 0;
+        })
+        .sort(function (a, b) { return a.entryToNow - b.entryToNow; })
+        .slice(0, 3);
+    }
+
+    var topGainer = enrichedBest[0];
+    var topLoser = enrichedWorst[0];
+
+    function buildAdvice() {
+      var parts = [];
+      if (reliable.length) {
+        parts.push('重点关注：' + reliable.map(function (e) { return e.row.symbol; }).join('、') + '。');
+      }
+      if (risky.length) {
+        parts.push('需要警惕：' + risky.map(function (e) { return e.row.symbol; }).join('、') + '，历史命中率高但结算后回撤明显，建议等待信号重新确认。');
+      }
+      if (!reliable.length && !risky.length) {
+        parts.push('当前数据不足以给出明确操作建议，建议积累更多信号后再评估。');
+      }
+      if (overall.hit_rate != null && overall.hit_rate < 0.55) {
+        parts.push('整体命中率偏低，建议优先关注高概率（≥80%）信号。');
+      } else if (overall.win_rate != null && overall.win_rate >= 0.7) {
+        parts.push('整体策略胜率较好，可结合靠谱榜择机跟随。');
+      }
+      return parts.join('');
+    }
+
+    function MiniRow(props) {
+      var e = props.e;
+      var label = props.label;
+      return React.createElement(
+        'div',
+        { className: 'flex items-center justify-between gap-2 border-t border-white/[0.06] py-2' },
+        React.createElement(
+          'div',
+          { className: 'min-w-0' },
+          React.createElement('span', { className: 'font-semibold text-slate-100' }, e.row.symbol),
+          React.createElement('span', { className: 'ml-1 text-[10px] text-slate-500' }, label)
+        ),
+        React.createElement(
+          'div',
+          { className: 'text-right' },
+          React.createElement('div', { className: 'gx-num text-xs font-semibold tabular-nums ' + retColor(e.targetToNow != null ? e.targetToNow : e.entryToNow) }, fmtSigned(e.targetToNow != null ? e.targetToNow : e.entryToNow)),
+          React.createElement('div', { className: 'gx-num text-[10px] tabular-nums text-slate-500' }, '均收益 ' + fmtSigned(e.row.avg_strategy))
+        )
+      );
+    }
+
+    return React.createElement(
+      'div',
+      { className: 'card mb-4 !p-4 md:!p-5' },
+      React.createElement(
+        'div',
+        { className: 'mb-1 flex items-center gap-1.5 text-sm font-bold text-slate-100' },
+        React.createElement('span', { className: 'icon-file-text text-indigo-400', 'aria-hidden': true }),
+        '阶段二 · 回测总结报告'
+      ),
+      React.createElement('p', { className: 'mb-3 text-[11px] text-slate-500' }, '基于已结算信号，筛选出最靠谱的标的与需要警惕的纸面盈利回吐风险。'),
+
+      // 核心指标
+      React.createElement(
+        'div',
+        { className: 'mb-4 grid grid-cols-2 gap-2 md:grid-cols-4' },
+        React.createElement(
+          'div',
+          { className: 'rounded-lg border border-white/10 bg-slate-950/30 p-2.5 text-center' },
+          React.createElement('div', { className: 'mb-0.5 text-[10px] text-slate-500' }, '已结算 / 总预测'),
+          React.createElement('div', { className: 'gx-num text-sm font-bold tabular-nums text-slate-100' }, (counts.resolved || 0) + ' / ' + (counts.total || 0))
+        ),
+        React.createElement(
+          'div',
+          { className: 'rounded-lg border border-white/10 bg-slate-950/30 p-2.5 text-center' },
+          React.createElement('div', { className: 'mb-0.5 text-[10px] text-slate-500' }, '方向命中率'),
+          React.createElement('div', { className: 'gx-num text-sm font-bold tabular-nums ' + rateColor(overall.hit_rate) }, fmtRate(overall.hit_rate))
+        ),
+        React.createElement(
+          'div',
+          { className: 'rounded-lg border border-white/10 bg-slate-950/30 p-2.5 text-center' },
+          React.createElement('div', { className: 'mb-0.5 text-[10px] text-slate-500' }, '策略胜率'),
+          React.createElement('div', { className: 'gx-num text-sm font-bold tabular-nums ' + rateColor(overall.win_rate) }, fmtRate(overall.win_rate))
+        ),
+        React.createElement(
+          'div',
+          { className: 'rounded-lg border border-white/10 bg-slate-950/30 p-2.5 text-center' },
+          React.createElement('div', { className: 'mb-0.5 text-[10px] text-slate-500' }, '平均策略收益'),
+          React.createElement('div', { className: 'gx-num text-sm font-bold tabular-nums ' + retColor(overall.avg_strategy) }, fmtSigned(overall.avg_strategy))
+        )
+      ),
+
+      // 靠谱榜 / 警惕榜
+      React.createElement(
+        'div',
+        { className: 'mb-4 grid gap-3 md:grid-cols-2' },
+        React.createElement(
+          'div',
+          { className: 'rounded-xl border border-emerald-400/20 bg-emerald-500/[0.06] p-3' },
+          React.createElement('div', { className: 'mb-2 text-xs font-semibold text-emerald-300' }, '靠谱榜 · 历史准且仍在涨'),
+          reliable.length ? reliable.map(function (e, i) { return React.createElement(MiniRow, { key: i, e: e, label: '命中 ' + fmtRate(e.row.hit_rate) }); }) : React.createElement('div', { className: 'py-2 text-[11px] text-slate-500' }, '暂无同时满足“命中率高 + 结算后仍涨”的标的')
+        ),
+        React.createElement(
+          'div',
+          { className: 'rounded-xl border border-rose-400/20 bg-rose-500/[0.06] p-3' },
+          React.createElement('div', { className: 'mb-2 text-xs font-semibold text-rose-300' }, '警惕榜 · 历史准但已回吐'),
+          risky.length ? risky.map(function (e, i) { return React.createElement(MiniRow, { key: i, e: e, label: '命中 ' + fmtRate(e.row.hit_rate) }); }) : React.createElement('div', { className: 'py-2 text-[11px] text-slate-500' }, '暂无高命中但结算后转跌的标的')
+        )
+      ),
+
+      // 操作建议
+      React.createElement(
+        'div',
+        { className: 'rounded-lg border border-indigo-400/20 bg-indigo-500/[0.06] px-3 py-2.5' },
+        React.createElement('div', { className: 'mb-1 text-xs font-semibold text-indigo-300' }, '操作建议'),
+        React.createElement('div', { className: 'text-[11px] leading-relaxed text-slate-300' }, buildAdvice())
+      )
+    );
+  }
+
   function LeaderSection(props) {
     var best = props.best || [];
     var worst = props.worst || [];
@@ -836,6 +993,9 @@
                     hint: '共 ' + (counts.total || 0) + (isReport ? ' 篇研报' : ' 条预测'),
                   })
                 ),
+
+                // 阶段二总结报告
+                React.createElement(SummaryReport, { sc: sc, quotes: liveQuotes, overall: overall, counts: counts }),
 
                 // 校准（概率 / 信号强度）
                 (calibration.buckets && calibration.buckets.length) &&
