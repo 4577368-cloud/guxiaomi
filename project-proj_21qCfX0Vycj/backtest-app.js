@@ -58,6 +58,31 @@
     return 'US';
   }
 
+  function normalizeBacktestMarket(market) {
+    var m = String(market || '').trim().toUpperCase();
+    if (m === 'US' || m === '美股') return 'US';
+    if (m === 'HK' || m === '港股') return 'HK';
+    if (m === 'CN' || m === 'A股' || m === 'A') return 'CN';
+    return m || '';
+  }
+
+  function marketFromRow(row) {
+    var m = normalizeBacktestMarket(row && row.market);
+    if (m) return m;
+    return inferMarketFromSymbol(row && row.symbol);
+  }
+
+  function calcReturn(fromPrice, toPrice) {
+    var f = Number(fromPrice);
+    var t = Number(toPrice);
+    if (!isFinite(f) || f <= 0 || !isFinite(t) || t <= 0) return null;
+    return Math.round((t - f) / f * 10000) / 100;
+  }
+
+  function quoteKey(symbol, market) {
+    return String(symbol || '').toUpperCase() + '|' + normalizeBacktestMarket(market);
+  }
+
   function showToast(message, type) {
     var el = document.createElement('div');
     el.className = 'fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full px-4 py-2 text-xs font-semibold shadow-lg ' +
@@ -77,7 +102,7 @@
       showToast('关注功能未加载，请刷新页面重试', 'error');
       return;
     }
-    var market = inferMarketFromSymbol(row.symbol);
+    var market = marketFromRow(row);
     var result = window.addToWatchlist({
       symbol: row.symbol,
       market: market,
@@ -201,8 +226,31 @@
     );
   }
 
+  function LivePriceCell(props) {
+    var q = props.quote;
+    if (!q || q.price == null) {
+      return React.createElement('span', { className: 'text-[11px] text-slate-500' }, '—');
+    }
+    var price = Number(q.price);
+    return React.createElement(
+      'div',
+      { className: 'flex flex-col items-end leading-tight' },
+      React.createElement('span', { className: 'gx-num font-semibold tabular-nums text-slate-200' }, fmtNum(price)),
+      q.changePercent != null && React.createElement('span', { className: 'gx-num text-[10px] tabular-nums ' + retColor(Number(q.changePercent)) }, fmtSigned(Number(q.changePercent)))
+    );
+  }
+
+  function ReturnCell(props) {
+    var v = props.value;
+    if (v == null || !isFinite(v)) {
+      return React.createElement('span', { className: 'text-[11px] text-slate-500' }, '—');
+    }
+    return React.createElement('span', { className: 'gx-num tabular-nums font-semibold ' + retColor(v) }, fmtSigned(v));
+  }
+
   function LeaderTable(props) {
     if (!props.rows || !props.rows.length) return null;
+    var quotes = props.quotes || {};
     return React.createElement(
       'div',
       { className: 'flex-1' },
@@ -223,6 +271,9 @@
               React.createElement('th', { className: 'p-2 text-right font-medium' }, '样本'),
               React.createElement('th', { className: 'p-2 text-right font-medium' }, '命中率'),
               React.createElement('th', { className: 'p-2 text-right font-medium' }, '均策略收益'),
+              React.createElement('th', { className: 'hidden p-2 text-right font-medium md:table-cell' }, '最新价'),
+              React.createElement('th', { className: 'hidden p-2 text-right font-medium md:table-cell' }, '买入至今'),
+              React.createElement('th', { className: 'hidden p-2 text-right font-medium md:table-cell' }, '结算至今'),
               React.createElement('th', { className: 'p-2 text-center font-medium' }, '操作')
             )
           ),
@@ -230,6 +281,9 @@
             'tbody',
             null,
             props.rows.map(function (r, i) {
+              var q = quotes[quoteKey(r.symbol, r.market)];
+              var entryToNow = q && q.price != null ? calcReturn(r.entry, q.price) : null;
+              var targetToNow = q && q.price != null ? calcReturn(r.target, q.price) : null;
               return React.createElement(
                 'tr',
                 { key: i, className: 'border-t border-white/8 text-slate-200' },
@@ -244,6 +298,76 @@
                 React.createElement('td', { className: 'gx-num p-2 text-right tabular-nums text-slate-300' }, r.count),
                 React.createElement('td', { className: 'gx-num p-2 text-right tabular-nums font-semibold ' + rateColor(r.hit_rate) }, fmtRate(r.hit_rate)),
                 React.createElement('td', { className: 'gx-num p-2 text-right tabular-nums font-bold ' + retColor(r.avg_strategy) }, fmtSigned(r.avg_strategy)),
+                React.createElement('td', { className: 'hidden p-2 text-right md:table-cell' }, React.createElement(LivePriceCell, { quote: q })),
+                React.createElement('td', { className: 'hidden p-2 text-right md:table-cell' }, React.createElement(ReturnCell, { value: entryToNow })),
+                React.createElement('td', { className: 'hidden p-2 text-right md:table-cell' }, React.createElement(ReturnCell, { value: targetToNow })),
+                React.createElement('td', { className: 'p-2 text-center' }, React.createElement(FollowButton, { row: r }))
+              );
+            })
+          )
+        )
+      )
+    );
+  }
+
+  function LiveValidationTable(props) {
+    var rows = props.rows || [];
+    var quotes = props.quotes || {};
+    if (!rows.length) return null;
+    return React.createElement(
+      'div',
+      { className: 'card mb-4 !p-4 md:!p-5' },
+      React.createElement(
+        'div',
+        { className: 'mb-1 flex items-center gap-1.5 text-sm font-bold text-slate-100' },
+        React.createElement('span', { className: 'icon-activity text-sky-400', 'aria-hidden': true }),
+        '阶段一 · 实时行情验证'
+      ),
+      React.createElement('p', { className: 'mb-3 text-[11px] text-slate-500' }, '把回测中的“买入价 / 结算价”与最新真实行情对比，看表现最好的股票现在是否还在涨。'),
+      React.createElement(
+        'div',
+        { className: 'overflow-x-auto' },
+        React.createElement(
+          'table',
+          { className: 'w-full min-w-[680px] text-xs md:text-sm' },
+          React.createElement(
+            'thead',
+            { className: 'text-left text-slate-400' },
+            React.createElement(
+              'tr',
+              null,
+              React.createElement('th', { className: 'p-2 font-medium' }, '标的'),
+              React.createElement('th', { className: 'p-2 text-right font-medium' }, '最新价'),
+              React.createElement('th', { className: 'p-2 text-right font-medium' }, '信号买入价'),
+              React.createElement('th', { className: 'p-2 text-right font-medium' }, '买入至今'),
+              React.createElement('th', { className: 'p-2 text-right font-medium' }, '信号结算价'),
+              React.createElement('th', { className: 'p-2 text-right font-medium' }, '结算至今'),
+              React.createElement('th', { className: 'p-2 text-center font-medium' }, '操作')
+            )
+          ),
+          React.createElement(
+            'tbody',
+            null,
+            rows.map(function (r, i) {
+              var q = quotes[quoteKey(r.symbol, r.market)];
+              var entryToNow = q && q.price != null ? calcReturn(r.entry, q.price) : null;
+              var targetToNow = q && q.price != null ? calcReturn(r.target, q.price) : null;
+              return React.createElement(
+                'tr',
+                { key: i, className: 'border-t border-white/8 text-slate-200 hover:bg-white/[0.05]' },
+                React.createElement(
+                  'td',
+                  { className: 'p-2' },
+                  React.createElement('span', { className: 'font-semibold text-slate-50' }, r.symbol),
+                  r.name && r.name !== r.symbol
+                    ? React.createElement('span', { className: 'ml-1 text-[11px] text-slate-500' }, r.name.length > 10 ? r.name.slice(0, 10) : r.name)
+                    : null
+                ),
+                React.createElement('td', { className: 'p-2 text-right' }, React.createElement(LivePriceCell, { quote: q })),
+                React.createElement('td', { className: 'gx-num p-2 text-right tabular-nums text-slate-300' }, fmtNum(r.entry)),
+                React.createElement('td', { className: 'p-2 text-right' }, React.createElement(ReturnCell, { value: entryToNow })),
+                React.createElement('td', { className: 'gx-num p-2 text-right tabular-nums text-slate-300' }, fmtNum(r.target)),
+                React.createElement('td', { className: 'p-2 text-right' }, React.createElement(ReturnCell, { value: targetToNow })),
                 React.createElement('td', { className: 'p-2 text-center' }, React.createElement(FollowButton, { row: r }))
               );
             })
@@ -316,6 +440,7 @@
 
   function StreakCard(props) {
     var rows = props.rows || [];
+    var quotes = props.quotes || {};
     if (!rows.length) return null;
     return React.createElement(
       'div',
@@ -335,6 +460,8 @@
           var dirLabel = bull ? '连涨' : '连跌';
           var dirCls = bull ? 'text-emerald-300 bg-emerald-500/10 border-emerald-400/30' : 'text-rose-300 bg-rose-500/10 border-rose-400/30';
           var live = r.current >= 2 && r.current_direction === r.direction;
+          var q = quotes[quoteKey(r.symbol, r.market)];
+          var liveReturn = q && q.price != null && r.entry ? calcReturn(r.entry, q.price) : null;
           return React.createElement(
             'div',
             { key: i, className: 'flex items-center gap-3 rounded-xl border border-white/10 bg-slate-950/30 p-2.5' },
@@ -358,6 +485,12 @@
                 'div',
                 { className: 'mt-0.5 truncate text-[11px] text-slate-500' },
                 (r.name && r.name !== r.symbol ? r.name + ' · ' : '') + '共 ' + r.total + ' 次预测' + (r.end ? ' · 至 ' + shortDate(r.end) : '')
+              ),
+              liveReturn != null && React.createElement(
+                'div',
+                { className: 'mt-1 flex items-center gap-1.5 text-[11px]' },
+                React.createElement('span', { className: 'text-slate-500' }, '买入至今'),
+                React.createElement('span', { className: 'gx-num font-semibold tabular-nums ' + retColor(liveReturn) }, fmtSigned(liveReturn))
               )
             )
           );
@@ -415,6 +548,15 @@
     var scs = React.useState('prediction');
     var scope = scs[0];
     var setScope = scs[1];
+    var lqs = React.useState({});
+    var liveQuotes = lqs[0];
+    var setLiveQuotes = lqs[1];
+    var lls = React.useState(false);
+    var liveLoading = lls[0];
+    var setLiveLoading = lls[1];
+    var les = React.useState('');
+    var liveErr = les[0];
+    var setLiveErr = les[1];
 
     var load = React.useCallback(function (refresh) {
       var base = getApiBase();
@@ -439,9 +581,72 @@
         });
     }, []);
 
+    var fetchLiveQuotes = React.useCallback(function (rows) {
+      if (!rows || !rows.length) return;
+      if (typeof window.getStockPrice !== 'function') {
+        setLiveErr('实时行情接口未加载');
+        return;
+      }
+      setLiveLoading(true);
+      setLiveErr('');
+      var tasks = rows.map(function (r) {
+        var market = marketFromRow(r);
+        return window.getStockPrice(r.symbol, market)
+          .then(function (q) {
+            return { key: quoteKey(r.symbol, r.market), ok: true, quote: q, symbol: r.symbol, market: market };
+          })
+          .catch(function (e) {
+            return { key: quoteKey(r.symbol, r.market), ok: false, error: e && e.message ? e.message : String(e), symbol: r.symbol, market: market };
+          });
+      });
+      Promise.allSettled(tasks).then(function (results) {
+        var next = {};
+        var failed = 0;
+        results.forEach(function (res) {
+          if (res.status !== 'fulfilled') return;
+          var r = res.value;
+          if (r.ok && r.quote) {
+            next[r.key] = r.quote;
+          } else {
+            failed += 1;
+            console.warn('回测实时行情失败:', r.symbol, r.error);
+          }
+        });
+        setLiveQuotes(function (prev) { return Object.assign({}, prev, next); });
+        if (failed > 0 && Object.keys(next).length === 0) {
+          setLiveErr(failed + ' 只标的未能获取实时行情');
+        }
+        setLiveLoading(false);
+      });
+    }, []);
+
     React.useEffect(function () {
       load(false);
     }, [load]);
+
+    React.useEffect(function () {
+      if (!data) return;
+      var sc = (data.scopes || {})[scope] || {};
+      var leaders = (sc.leaders || {});
+      var streaks = sc.streaks || [];
+      var rows = []
+        .concat(leaders.best || [])
+        .concat(leaders.worst || [])
+        .concat(streaks);
+      // 去重
+      var seen = {};
+      var unique = [];
+      rows.forEach(function (r) {
+        var k = quoteKey(r.symbol, r.market);
+        if (!seen[k]) {
+          seen[k] = true;
+          unique.push(r);
+        }
+      });
+      if (unique.length) {
+        fetchLiveQuotes(unique);
+      }
+    }, [data, scope, fetchLiveQuotes]);
 
     var scopes = (data && data.scopes) || {};
     var sc = scopes[scope] || {};
@@ -614,6 +819,18 @@
                     })
                   ),
 
+                // 实时行情验证（阶段一）
+                (sc.leaders && (sc.leaders.best.length || sc.leaders.worst.length)) &&
+                  React.createElement(
+                    React.Fragment,
+                    null,
+                    liveErr && React.createElement('div', { className: 'mb-3 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200' }, liveErr),
+                    React.createElement(LiveValidationTable, {
+                      rows: (sc.leaders.best || []).concat(sc.leaders.worst || []),
+                      quotes: liveQuotes,
+                    })
+                  ),
+
                 // 个股榜
                 (sc.leaders && (sc.leaders.best.length || sc.leaders.worst.length)) &&
                   React.createElement(
@@ -628,13 +845,13 @@
                     React.createElement(
                       'div',
                       { className: 'flex flex-col gap-4 md:flex-row' },
-                      React.createElement(LeaderTable, { title: '表现最好', titleClass: 'text-emerald-300', rows: sc.leaders.best }),
-                      React.createElement(LeaderTable, { title: '表现最差', titleClass: 'text-rose-300', rows: sc.leaders.worst })
+                      React.createElement(LeaderTable, { title: '表现最好', titleClass: 'text-emerald-300', rows: sc.leaders.best, quotes: liveQuotes }),
+                      React.createElement(LeaderTable, { title: '表现最差', titleClass: 'text-rose-300', rows: sc.leaders.worst, quotes: liveQuotes })
                     )
                   ),
 
                 // 连续命中榜
-                React.createElement(StreakCard, { rows: sc.streaks }),
+                React.createElement(StreakCard, { rows: sc.streaks, quotes: liveQuotes }),
 
                 // 最近结算明细
                 React.createElement(

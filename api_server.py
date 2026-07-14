@@ -1642,6 +1642,12 @@ def _bt_leaders(resolved, min_count=2, top=8):
         agg["symbol"] = sym
         agg["name"] = items[0].get("name") or sym
         agg["market"] = items[0].get("market") or ""
+        # 取最新一次信号的价格锚点，供前端对接实时行情
+        latest = sorted(items, key=lambda z: z.get("entry_date") or "", reverse=True)[0]
+        agg["entry"] = latest.get("entry")
+        agg["target"] = latest.get("target")
+        agg["entry_date"] = latest.get("entry_date")
+        agg["target_date"] = latest.get("target_date")
         rows.append(agg)
     rows.sort(key=lambda r: (r["avg_strategy"] if r["avg_strategy"] is not None else -999), reverse=True)
     return {"best": rows[:top], "worst": list(reversed(rows[-top:])) if len(rows) > top else []}
@@ -1679,6 +1685,14 @@ def _bt_streaks(resolved, min_len=2, top=12):
                 break
             cur_streak += 1
         if best_len >= min_len:
+            # 找到最长连击末尾那条信号的价格锚点
+            streak_end = None
+            for it in items:
+                if it.get("target_date") == best_end and it.get("direction") == best_dir:
+                    streak_end = it
+                    break
+            if streak_end is None:
+                streak_end = items[-1]
             rows.append({
                 "symbol": sym,
                 "name": items[0].get("name") or sym,
@@ -1690,6 +1704,10 @@ def _bt_streaks(resolved, min_len=2, top=12):
                 "total": len(items),
                 "start": best_start,
                 "end": best_end,
+                "entry": streak_end.get("entry"),
+                "target": streak_end.get("target"),
+                "entry_date": streak_end.get("entry_date"),
+                "target_date": streak_end.get("target_date"),
             })
     rows.sort(key=lambda r: (r["streak"], r["current"], r["total"]), reverse=True)
     return rows[:top]
