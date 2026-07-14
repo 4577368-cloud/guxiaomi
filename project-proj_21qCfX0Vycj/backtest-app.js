@@ -254,7 +254,7 @@
     return React.createElement(
       'div',
       { className: 'flex-1' },
-      React.createElement('div', { className: 'mb-1.5 text-xs font-semibold ' + props.titleClass }, props.title),
+      props.title && React.createElement('div', { className: 'mb-1.5 text-xs font-semibold ' + props.titleClass }, props.title),
       React.createElement(
         'div',
         { className: 'overflow-x-auto rounded-xl border border-white/10 bg-slate-950/20' },
@@ -329,7 +329,7 @@
         { className: 'overflow-x-auto' },
         React.createElement(
           'table',
-          { className: 'w-full min-w-[680px] text-xs md:text-sm' },
+          { className: 'w-full min-w-[520px] text-xs md:text-sm' },
           React.createElement(
             'thead',
             { className: 'text-left text-slate-400' },
@@ -338,9 +338,9 @@
               null,
               React.createElement('th', { className: 'p-2 font-medium' }, '标的'),
               React.createElement('th', { className: 'p-2 text-right font-medium' }, '最新价'),
-              React.createElement('th', { className: 'p-2 text-right font-medium' }, '信号买入价'),
+              React.createElement('th', { className: 'hidden p-2 text-right font-medium md:table-cell' }, '信号买入价'),
               React.createElement('th', { className: 'p-2 text-right font-medium' }, '买入至今'),
-              React.createElement('th', { className: 'p-2 text-right font-medium' }, '信号结算价'),
+              React.createElement('th', { className: 'hidden p-2 text-right font-medium md:table-cell' }, '信号结算价'),
               React.createElement('th', { className: 'p-2 text-right font-medium' }, '结算至今'),
               React.createElement('th', { className: 'p-2 text-center font-medium' }, '操作')
             )
@@ -364,9 +364,9 @@
                     : null
                 ),
                 React.createElement('td', { className: 'p-2 text-right' }, React.createElement(LivePriceCell, { quote: q })),
-                React.createElement('td', { className: 'gx-num p-2 text-right tabular-nums text-slate-300' }, fmtNum(r.entry)),
+                React.createElement('td', { className: 'hidden gx-num p-2 text-right tabular-nums text-slate-300 md:table-cell' }, fmtNum(r.entry)),
                 React.createElement('td', { className: 'p-2 text-right' }, React.createElement(ReturnCell, { value: entryToNow })),
-                React.createElement('td', { className: 'gx-num p-2 text-right tabular-nums text-slate-300' }, fmtNum(r.target)),
+                React.createElement('td', { className: 'hidden gx-num p-2 text-right tabular-nums text-slate-300 md:table-cell' }, fmtNum(r.target)),
                 React.createElement('td', { className: 'p-2 text-right' }, React.createElement(ReturnCell, { value: targetToNow })),
                 React.createElement('td', { className: 'p-2 text-center' }, React.createElement(FollowButton, { row: r }))
               );
@@ -374,6 +374,55 @@
           )
         )
       )
+    );
+  }
+
+  function LeaderSection(props) {
+    var best = props.best || [];
+    var worst = props.worst || [];
+    var quotes = props.quotes || {};
+    var tabs = React.useState('best');
+    var active = tabs[0];
+    var setActive = tabs[1];
+    if (!best.length && !worst.length) return null;
+    var activeRows = active === 'best' ? best : worst;
+    var total = best.length + worst.length;
+    return React.createElement(
+      'div',
+      { className: 'card mb-4 !p-4 md:!p-5' },
+      React.createElement(
+        'div',
+        { className: 'mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between' },
+        React.createElement(
+          'div',
+          { className: 'flex items-center gap-1.5 text-sm font-bold text-slate-100' },
+          React.createElement('span', { className: 'icon-list-ordered text-slate-400', 'aria-hidden': true }),
+          props.isReport ? '个股表现榜（≥2 篇研报）' : '个股表现榜（≥2 次预测）'
+        ),
+        React.createElement(
+          'div',
+          { className: 'inline-flex rounded-lg border border-white/10 bg-slate-950/30 p-0.5' },
+          React.createElement(
+            'button',
+            {
+              type: 'button',
+              onClick: function () { setActive('best'); },
+              className: 'px-3 py-1 text-xs font-semibold rounded-md transition-colors ' + (active === 'best' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-slate-200')
+            },
+            '表现最好'
+          ),
+          React.createElement(
+            'button',
+            {
+              type: 'button',
+              onClick: function () { setActive('worst'); },
+              className: 'px-3 py-1 text-xs font-semibold rounded-md transition-colors ' + (active === 'worst' ? 'bg-rose-500/20 text-rose-300' : 'text-slate-400 hover:text-slate-200')
+            },
+            '表现最差'
+          )
+        )
+      ),
+      React.createElement(LeaderTable, { title: active === 'best' ? '表现最好' : '表现最差', titleClass: active === 'best' ? 'text-emerald-300' : 'text-rose-300', rows: activeRows, quotes: quotes })
     );
   }
 
@@ -831,24 +880,14 @@
                     })
                   ),
 
-                // 个股榜
+                // 个股榜（Tab 切换最好/最差）
                 (sc.leaders && (sc.leaders.best.length || sc.leaders.worst.length)) &&
-                  React.createElement(
-                    'div',
-                    { className: 'card mb-4 !p-4 md:!p-5' },
-                    React.createElement(
-                      'div',
-                      { className: 'mb-3 flex items-center gap-1.5 text-sm font-bold text-slate-100' },
-                      React.createElement('span', { className: 'icon-list-ordered text-slate-400', 'aria-hidden': true }),
-                      isReport ? '个股表现榜（≥2 篇研报）' : '个股表现榜（≥2 次预测）'
-                    ),
-                    React.createElement(
-                      'div',
-                      { className: 'flex flex-col gap-4 md:flex-row' },
-                      React.createElement(LeaderTable, { title: '表现最好', titleClass: 'text-emerald-300', rows: sc.leaders.best, quotes: liveQuotes }),
-                      React.createElement(LeaderTable, { title: '表现最差', titleClass: 'text-rose-300', rows: sc.leaders.worst, quotes: liveQuotes })
-                    )
-                  ),
+                  React.createElement(LeaderSection, {
+                    isReport: isReport,
+                    best: sc.leaders.best,
+                    worst: sc.leaders.worst,
+                    quotes: liveQuotes,
+                  }),
 
                 // 连续命中榜
                 React.createElement(StreakCard, { rows: sc.streaks, quotes: liveQuotes }),
